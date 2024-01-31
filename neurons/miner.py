@@ -3,20 +3,26 @@ import typing
 
 import bittensor as bt
 
+from mining import load_models, TextTo3DModels, forward
 from neurons import protocol
 from neurons.base_miner import BaseMinerNeuron
 from neurons.config import read_config
 
 
 class Miner(BaseMinerNeuron):
+    models: TextTo3DModels
+
     def __init__(self, config: bt.config):
         super(Miner, self).__init__(config=config)
 
-    async def forward(self, synapse: protocol.Task404) -> protocol.Task404:
-        synapse.dummy_output = synapse.dummy_input * 2
+        self.models = load_models(config.neuron.device, config.neuron.full_path)
+
+    async def forward(self, synapse: protocol.TextTo3D) -> protocol.TextTo3D:
+        bt.logging.debug(f"Text-to-3D task received: {synapse.prompt_in}")
+        forward(synapse, self.models)
         return synapse
 
-    async def blacklist(self, synapse: protocol.Task404) -> typing.Tuple[bool, str]:
+    async def blacklist(self, synapse: protocol.TextTo3D) -> typing.Tuple[bool, str]:
         if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
             bt.logging.trace(
                 f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}"
@@ -42,7 +48,7 @@ class Miner(BaseMinerNeuron):
 
         return False, "OK"
 
-    async def priority(self, synapse: protocol.Task404) -> float:
+    async def priority(self, synapse: protocol.TextTo3D) -> float:
         try:
             uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
         except ValueError:

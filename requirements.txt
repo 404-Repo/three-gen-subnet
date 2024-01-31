@@ -1,2 +1,11 @@
-bittensor
-torch
+bittensor==6.7.0
+torch==2.1.2
+
+# Miner
+ipywidgets==8.1.1
+git+https://github.com/openai/shap-e.git
+
+# Validator
+pyrender==0.1.45
+trimesh==4.1.0
+pandas==2.2.0

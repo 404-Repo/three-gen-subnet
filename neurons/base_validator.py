@@ -147,7 +147,7 @@ class BaseValidatorNeuron(ABC):
         random.shuffle(miners)
         return miners if sample_size is None else miners[:sample_size]
 
-    def update_scores(self, scores: torch.FloatTensor, miner_uids: List[int]):
+    def update_scores(self, scores: torch.tensor, miner_uids: List[int]):
         """Updates moving average scores based on the recent received scores"""
 
         # Check if rewards contains NaN values.
@@ -166,9 +166,9 @@ class BaseValidatorNeuron(ABC):
         # Update scores with rewards produced by this step.
         # shape: [ metagraph.n ]
         alpha: float = self.config.neuron.moving_average_alpha
-        self.scores = alpha * scattered_scores + (
-            1 - alpha
-        ) * self.scores.to(self.device)
+        self.scores = alpha * scattered_scores + (1 - alpha) * self.scores.to(
+            self.device
+        )
         bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def _save_state(self):
@@ -413,7 +413,7 @@ class BaseValidatorNeuron(ABC):
             uids=converted_uids,
             weights=converted_weights,
             wait_for_finalization=False,
-            wait_for_inclusion=True,
+            wait_for_inclusion=False,
             version_key=__spec_version__,
         )
         if result is True:
@@ -500,4 +500,11 @@ class BaseValidatorNeuron(ABC):
             action="store_true",
             help="Set this flag to not attempt to serve an Axon.",
             default=False,
+        )
+
+        parser.add_argument(
+            "--neuron.dataset_url",
+            type=str,
+            help="URL to the dataset with prompts",
+            default="https://huggingface.co/datasets/tiange/Cap3D/resolve/main/Cap3D_automated_Objaverse_no3Dword.csv",
         )
