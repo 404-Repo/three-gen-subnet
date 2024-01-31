@@ -112,15 +112,15 @@ class BaseMinerNeuron(ABC):
         self._stop_background_thread()
 
     @abc.abstractmethod
-    def forward(self, synapse: protocol.Task404) -> protocol.Task404:
+    def forward(self, synapse: protocol.TextTo3D) -> protocol.TextTo3D:
         ...
 
     @abc.abstractmethod
-    def blacklist(self, synapse: protocol.Task404) -> typing.Tuple[bool, str]:
+    def blacklist(self, synapse: protocol.TextTo3D) -> typing.Tuple[bool, str]:
         ...
 
     @abc.abstractmethod
-    def priority(self, synapse: protocol.Task404) -> float:
+    def priority(self, synapse: protocol.TextTo3D) -> float:
         ...
 
     def block(self):
@@ -293,7 +293,7 @@ class BaseMinerNeuron(ABC):
             uids=converted_uids,
             weights=converted_weights,
             wait_for_finalization=False,
-            wait_for_inclusion=True,
+            wait_for_inclusion=False,
             version_key=__spec_version__,
         )
 

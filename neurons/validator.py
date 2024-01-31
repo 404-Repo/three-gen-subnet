@@ -1,17 +1,26 @@
+import os.path
+import pandas
+import requests
 import time
-from typing import List
+import random
 
 import bittensor as bt
-import torch
 from config import read_config
-from protocol import Task404
+from validating import Validate3DModels, load_models, score_responses
+from protocol import TextTo3D
 
 from neurons.base_validator import BaseValidatorNeuron
 
 
 class Validator(BaseValidatorNeuron):
+    models: Validate3DModels
+    dataset: list[str]
+
     def __init__(self, config: bt.config):
         super(Validator, self).__init__(config)
+
+        self.models = load_models(self.device, config.neuron.full_path)
+        self.dataset = self.load_dataset()
 
     async def forward(self):
         """
@@ -24,31 +33,45 @@ class Validator(BaseValidatorNeuron):
         """
         miner_uids = self.get_random_miners_uids(self.config.neuron.sample_size)
 
-        # TODO: move probe creation to a separate module
+        prompt = random.choice(self.dataset)
+
+        bt.logging.debug(f"Sending prompt: {prompt}")
+
         responses = await self.dendrite.forward(
             axons=[self.metagraph.axons[uid] for uid in miner_uids],
-            synapse=Task404(dummy_input=self.step),
+            synapse=TextTo3D(prompt_in=prompt),
             deserialize=False,
+            timeout=30,
         )
 
-        bt.logging.info(f"Received responses: {responses}")
+        bt.logging.info(
+            f"Received {len([r for r in responses if r.mesh_out is not None])} responses"
+        )
 
-        # TODO: move scoring to a separate module
-        scores = self.score_responses(responses=responses)
+        scores = score_responses(prompt, responses, self.device, self.models)
 
         bt.logging.info(f"Scored responses: {scores}")
 
         self.update_scores(scores, miner_uids)
 
-    def score_response(self, synapse: Task404) -> float:
-        if synapse.dummy_output is None:
-            return 0.0
-        return 1.0 if synapse.dummy_output == synapse.dummy_input * 2 else 0.0
+    def load_dataset(self) -> list[str]:
+        dataset_path = f"{self.config.neuron.full_path}/dataset.csv"
+        if not os.path.exists(dataset_path):
+            bt.logging.info(
+                f"Downloading dataset from {self.config.neuron.dataset_url}"
+            )
 
-    def score_responses(self, responses: List[Task404]) -> torch.FloatTensor:
-        return torch.FloatTensor(
-            [self.score_response(synapse) for synapse in responses]
-        ).to(self.device)
+            with requests.get(self.config.neuron.dataset_url, stream=True) as r:
+                r.raise_for_status()
+                with open(dataset_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+            bt.logging.info(f"Dataset downloaded successfully")
+
+        bt.logging.info(f"Loading the dataset")
+        dt = pandas.read_csv(dataset_path, header=None, usecols=[1])
+        return dt[1].to_list()
 
 
 def main():

@@ -1,14 +1,11 @@
-import typing
+from __future__ import annotations
 
 import bittensor as bt
 
 
-class Task404(bt.Synapse):
-    # Required request input, filled by sending dendrite caller.
-    dummy_input: int
+class TextTo3D(bt.Synapse):
+    prompt_in: str = ""
+    mesh_out: bytes | None = None
 
-    # Optional request output, filled by receiving axon.
-    dummy_output: typing.Optional[int] = None
-
-    def deserialize(self) -> int:
-        return self.dummy_output or 0
+    def deserialize(self) -> TextTo3D:
+        return self
