@@ -21,7 +21,7 @@ class Validator(BaseValidatorNeuron):
     def __init__(self, config: bt.config):
         super(Validator, self).__init__(config)
 
-        if self.config.neuron.opengl_platform in ("egl", "omesa"):
+        if self.config.neuron.opengl_platform in ("egl", "osmesa"):
             os.environ["PYOPENGL_PLATFORM"] = self.config.neuron.opengl_platform
 
         self.models = load_models(self.device, config.neuron.full_path)
