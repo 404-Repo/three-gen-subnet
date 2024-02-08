@@ -1,3 +1,5 @@
+import argparse
+import os
 import os.path
 import pandas
 import requests
@@ -18,6 +20,9 @@ class Validator(BaseValidatorNeuron):
 
     def __init__(self, config: bt.config):
         super(Validator, self).__init__(config)
+
+        if self.config.neuron.opengl_platform in ("egl", "osmesa"):
+            os.environ["PYOPENGL_PLATFORM"] = self.config.neuron.opengl_platform
 
         self.models = load_models(self.device, config.neuron.full_path)
         self.dataset = self.load_dataset()
@@ -44,9 +49,12 @@ class Validator(BaseValidatorNeuron):
             timeout=30,
         )
 
-        bt.logging.info(
-            f"Received {len([r for r in responses if r.mesh_out is not None])} responses"
-        )
+        n = len([r for r in responses if r.mesh_out is not None])
+
+        bt.logging.info(f"Received {n} responses")
+
+        if n == 0:
+            return
 
         scores = score_responses(prompt, responses, self.device, self.models)
 
@@ -72,6 +80,24 @@ class Validator(BaseValidatorNeuron):
         bt.logging.info(f"Loading the dataset")
         dt = pandas.read_csv(dataset_path, header=None, usecols=[1])
         return dt[1].to_list()
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser):
+        BaseValidatorNeuron.add_args(parser)
+
+        parser.add_argument(
+            "--neuron.opengl_platform",
+            type=str,
+            help="Pyrender backend (pyglet, egl, osmesa).",
+            default="egl",
+        )
+
+        parser.add_argument(
+            "--neuron.dataset_url",
+            type=str,
+            help="URL to the dataset with prompts",
+            default="https://huggingface.co/datasets/tiange/Cap3D/resolve/main/Cap3D_automated_Objaverse_no3Dword.csv",
+        )
 
 
 def main():
