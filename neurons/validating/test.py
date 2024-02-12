@@ -2,7 +2,7 @@ import torch
 import time
 from neurons.protocol import TextTo3D
 
-from validating import score_responses, load_models
+from neurons.validating import score_responses, load_models
 
 with open("output.ply", "rb") as f:
     mesh = f.read()

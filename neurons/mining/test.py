@@ -1,5 +1,5 @@
 import torch
-from mining import forward, load_models
+from neurons.mining import forward, load_models
 from neurons.protocol import TextTo3D
 
 device = torch.device("cuda:0")
