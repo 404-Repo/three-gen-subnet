@@ -8,7 +8,7 @@ import random
 
 import bittensor as bt
 from config import read_config
-from validating import Validate3DModels, load_models, score_responses
+from neurons.validating import Validate3DModels, load_models, score_responses
 from protocol import TextTo3D
 
 from neurons.base_validator import BaseValidatorNeuron

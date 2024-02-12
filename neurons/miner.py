@@ -3,7 +3,7 @@ import typing
 
 import bittensor as bt
 
-from mining import load_models, TextTo3DModels, forward
+from neurons.mining import load_models, TextTo3DModels, forward
 from neurons import protocol
 from neurons.base_miner import BaseMinerNeuron
 from neurons.config import read_config
