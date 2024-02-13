@@ -11,7 +11,7 @@ from shap_e.diffusion.gaussian_diffusion import diffusion_from_config, GaussianD
 from shap_e.models.transmitter.base import Transmitter
 from shap_e.util.notebooks import decode_latent_mesh
 
-from neurons import protocol
+import protocol
 
 
 class TextTo3DModels:

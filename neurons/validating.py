@@ -12,7 +12,7 @@ import trimesh
 import numpy as np
 from pyrender import RenderFlags
 
-from neurons import protocol
+import protocol
 
 
 class Validate3DModels:

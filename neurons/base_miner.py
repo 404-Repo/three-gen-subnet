@@ -12,7 +12,7 @@ import torch
 from config import check_config
 from version import __spec_version__
 
-from neurons import protocol
+import protocol
 
 
 class BaseMinerNeuron(ABC):
