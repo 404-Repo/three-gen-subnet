@@ -8,10 +8,10 @@ import random
 
 import bittensor as bt
 from config import read_config
-from neurons.validating import Validate3DModels, load_models, score_responses
+from validating import Validate3DModels, load_models, score_responses
 from protocol import TextTo3D
 
-from neurons.base_validator import BaseValidatorNeuron
+from base_validator import BaseValidatorNeuron
 
 
 class Validator(BaseValidatorNeuron):
