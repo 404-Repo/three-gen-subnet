@@ -51,13 +51,8 @@ class BaseMinerNeuron(ABC):
         bt.logging(config=config, logging_dir=config.full_path)
 
         self.device = torch.device(self.config.neuron.device)
-        if (
-            self.device.type.lower().startswith("cuda")
-            and not torch.cuda.is_available()
-        ):
-            raise RuntimeError(
-                f"{self.device.type} device is selected while CUDA is not available"
-            )
+        if self.device.type.lower().startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(f"{self.device.type} device is selected while CUDA is not available")
 
         self.wallet = bt.wallet(config=self.config)
         bt.logging.info(f"Wallet: {self.wallet}")
@@ -234,9 +229,7 @@ class BaseMinerNeuron(ABC):
         """
         Check if enough epoch blocks have elapsed since the last checkpoint to sync.
         """
-        return (
-            self.block() - self.metagraph.last_update[self.uid]
-        ) > self.config.neuron.epoch_length
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _resync_metagraph(self):
         """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""
@@ -251,9 +244,7 @@ class BaseMinerNeuron(ABC):
             return False
 
         # Define appropriate logic for when set weights.
-        return (
-            self.block() - self.metagraph.last_update[self.uid]
-        ) > self.config.neuron.epoch_length
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _set_weights(self):
         """

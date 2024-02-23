@@ -67,9 +67,7 @@ def load_models(device: torch.device, cache_dir: str) -> TextTo3DModels:
     """
     model_cache_dir = f"{cache_dir}/shap_e_model_cache"
 
-    transmitter_instance = load_model(
-        "transmitter", device=device, cache_dir=model_cache_dir
-    )
+    transmitter_instance = load_model("transmitter", device=device, cache_dir=model_cache_dir)
     text_to_3d_model = load_model("text300M", device=device, cache_dir=model_cache_dir)
     config = load_config("diffusion", cache_dir=model_cache_dir)
     diffusion_instance = diffusion_from_config(config)

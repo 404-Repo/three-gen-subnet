@@ -65,9 +65,7 @@ class Validator(BaseValidatorNeuron):
     def load_dataset(self) -> list[str]:
         dataset_path = f"{self.config.neuron.full_path}/dataset.csv"
         if not os.path.exists(dataset_path):
-            bt.logging.info(
-                f"Downloading dataset from {self.config.neuron.dataset_url}"
-            )
+            bt.logging.info(f"Downloading dataset from {self.config.neuron.dataset_url}")
 
             with requests.get(self.config.neuron.dataset_url, stream=True) as r:
                 r.raise_for_status()

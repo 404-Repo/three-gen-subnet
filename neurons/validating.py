@@ -16,18 +16,14 @@ import protocol
 
 
 class Validate3DModels:
-    def __init__(
-        self, model: torch.nn.Module, preprocess: Callable[[PIL.Image], torch.Tensor]
-    ):
+    def __init__(self, model: torch.nn.Module, preprocess: Callable[[PIL.Image], torch.Tensor]):
         self.model = model
         self.preprocess = preprocess
 
 
 class Renderer:
     def __init__(self):
-        self.r = pyrender.OffscreenRenderer(
-            viewport_width=512, viewport_height=512, point_size=1.0
-        )
+        self.r = pyrender.OffscreenRenderer(viewport_width=512, viewport_height=512, point_size=1.0)
 
         w = 512
         h = 512
@@ -36,9 +32,7 @@ class Renderer:
         cy = 0.5 * h
         znear = 0.01
         zfar = 100
-        self.pc = pyrender.IntrinsicsCamera(
-            fx=f, fy=f, cx=cx, cy=cy, znear=znear, zfar=zfar
-        )
+        self.pc = pyrender.IntrinsicsCamera(fx=f, fy=f, cx=cx, cy=cy, znear=znear, zfar=zfar)
 
 
 def score_responses(
@@ -77,15 +71,11 @@ def score_responses(
 
 def load_models(device: torch.device, cache_dir: str) -> Validate3DModels:
     download_root = f"{cache_dir}/clip"
-    model, preprocess = clip.load(
-        "ViT-B/32", device=device, jit=False, download_root=download_root
-    )
+    model, preprocess = clip.load("ViT-B/32", device=device, jit=False, download_root=download_root)
     return Validate3DModels(model, preprocess)
 
 
-def _get_prompt_features(
-    prompt: str, device: torch.device, models: Validate3DModels
-) -> torch.Tensor:
+def _get_prompt_features(prompt: str, device: torch.device, models: Validate3DModels) -> torch.Tensor:
     text = clip.tokenize([prompt]).to(device)
     prompt_features = models.model.encode_text(text)
     return prompt_features
@@ -100,13 +90,9 @@ def _score_images(
     with torch.no_grad():
         dists = []
         for img in images:
-            img_tensor = (
-                models.preprocess(PIL.Image.fromarray(img)).unsqueeze(0).to(device)
-            )
+            img_tensor = models.preprocess(PIL.Image.fromarray(img)).unsqueeze(0).to(device)
             image_features = models.model.encode_image(img_tensor)
-            dist = torch.nn.functional.cosine_similarity(
-                prompt_features, image_features, dim=1
-            )
+            dist = torch.nn.functional.cosine_similarity(prompt_features, image_features, dim=1)
             dist_norm = dist.item()
             dists.append(dist_norm)
 
