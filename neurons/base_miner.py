@@ -8,10 +8,11 @@ from abc import ABC
 
 import bittensor as bt
 import bittensor.utils.weight_utils
-import protocol
 import torch
 from config import check_config
 from version import __spec_version__
+
+import protocol
 
 
 class BaseMinerNeuron(ABC):
@@ -43,8 +44,6 @@ class BaseMinerNeuron(ABC):
     _cached_block_time: float = 0.0
     _cached_block_ttl: float = 12.0
     """Not to request the current block on each validator tick, it's value is cached for the next `ttl` seconds."""
-
-    _last_resync_block: int = 0
 
     def __init__(self, config: bt.config):
         self.config: bt.config = copy.deepcopy(config)
@@ -86,7 +85,7 @@ class BaseMinerNeuron(ABC):
                 "You are allowing non-registered entities to send requests to your miner. This is a security risk."
             )
 
-        self.axon = bt.axon(wallet=self.wallet, config=self.config)
+        self.axon = bt.axon(wallet=self.wallet, port=self.config.axon.port)
 
         bt.logging.info(f"Attaching forward function to the miner axon.")
 
@@ -230,7 +229,7 @@ class BaseMinerNeuron(ABC):
         """
         Check if enough epoch blocks have elapsed since the last checkpoint to sync.
         """
-        return (self.block() - self._last_resync_block) > self.config.neuron.epoch_length
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _resync_metagraph(self):
         """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""
@@ -238,18 +237,14 @@ class BaseMinerNeuron(ABC):
         bt.logging.info("Resyncing metagraph")
 
         self.metagraph.sync(subtensor=self.subtensor)
-        self._last_resync_block = self.block()
 
     def _should_set_weights(self) -> bool:
-        return False
         # Check if enough epoch blocks have elapsed since the last epoch.
-        # if self.config.neuron.disable_set_weights:
-        #     return False
-        #
-        # # Define appropriate logic for when set weights.
-        # return (
-        #     self.block() - self.metagraph.last_update[self.uid]
-        # ) > self.config.neuron.epoch_length
+        if self.config.neuron.disable_set_weights:
+            return False
+
+        # Define appropriate logic for when set weights.
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _set_weights(self):
         """
