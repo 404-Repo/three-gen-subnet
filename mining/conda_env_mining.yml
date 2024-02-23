@@ -1,0 +1,39 @@
+name: three_gen_mining
+channels:
+  - defaults
+  - conda-forge
+  - nvidia
+  
+dependencies:
+  - python=3.10
+  - pip
+  - cuda-toolkit=12.1.1
+  - cmake=3.28.2
+  - gcc=11.4
+  - gcc_linux-64=11.4
+  - mesa-libegl-devel-cos7-x86_64=18.3.4
+  - mesa-libgl-devel-cos7-x86_64=18.3.4
+  - libglvnd-devel-cos7-x86_64=1.0.1
+  - libpq=16.1
+  - pip:
+    - h5py==3.10.0
+    - numpy==1.22.4
+    - rich==13.4.2
+    - tqdm==4.65.2
+    - scipy==1.11.4
+    - scikit-learn==1.3.0
+    - opencv-python==4.8.0.76
+    - imageio==2.21.1
+    - imageio-ffmpeg==0.4.8
+    - omegaconf==2.3.0
+    - einops==0.4.1
+    - torch==2.1.1
+    - huggingface_hub==0.19.4
+    - diffusers==0.24.0
+    - accelerate==0.24.1
+    - transformers==4.36.2
+    - rembg[gpu,cli]==2.0.49
+    - xformers==0.0.23
+    - bittensor==6.7.0
+    - gradio
+    - open-clip-torch==2.24.0

@@ -1,216 +1,179 @@
 import base64
 import io
-import os
+from traceback import print_exception
+from typing import Any, Callable
 
 import bittensor as bt
-import numpy as np
 import PIL
-import protocol
+import pyrender
+import clip
 import torch
 import trimesh
-import vedo
-from transformers import CLIPModel, CLIPProcessor
+import numpy as np
+from pyrender import RenderFlags
 
-"""
-Validation mechanism (general overview).
-
-Input: generated mesh by the ML project (in our case Shap-E);
-       format:
-               buffer = io.BytesIO()
-               test_mesh.export(buffer, file_type='ply')
-               encoded_buffer = base64.b64encode(buffer.getbuffer()) 
-       prompt that was used for generating the mesh (python str type)
-
-Output: the score between 0 and 1 that defines the correlation between the prompt and the mesh.
-        0 means no correlation, 1 means 100% match, everything in between just tells the user how far/close is the 
-        generated mesh from/to the prompt. (score, python float type)
-
-The algorithm for validation is as follows (general overview):
-- Input for the evaluation algorithm is an encoded mesh object & prompt that was used for its generarion
-- We want to evaluate provided prompt against several other prompts that will be always negative. We need a set of prompts as only in this case open clip will be able to estimate scores correctly.
-- We render several views of the input mesh and store rendered images in the array for further processing using open clip.
-- We embed both prompts array and rendred images to the same high dimensional space. Only in this case open clip will be able to figure out similarities and assign corresponding scores.
-- After scoring the input we will store the score for our input prompt per rendered view and output the average score to the user.
-"""
+import protocol
 
 
-class ValidateTextTo3DModel:
-    def __init__(self, img_width: int, img_height: int, views: int, device: torch.device):
-        self._device = device
-        self._model = None
-        self._preprocess = None
-        self._renderer = None
-        self.__views = views
-        self._img_width = img_width
-        self._img_height = img_height
+class Validate3DModels:
+    def __init__(self, model: torch.nn.Module, preprocess: Callable[[PIL.Image], torch.Tensor]):
+        self.model = model
+        self.preprocess = preprocess
 
-        self._negative_prompts = [
-            "empty",
-            "nothing",
-            "false",
-            "wrong",
-            "negative",
-            "not quite right",
-        ]
-        self._false_neg_thres = 0.4
 
-        self._camera_params = {
-            "pos": (0, 0, 0),
-            "focalPoint": (0, 0, 0),
-            "viewup": (0, 1, 0),
-            "clipping_range": (0, 100),
-        }
+class Renderer:
+    def __init__(self):
+        self.r = pyrender.OffscreenRenderer(viewport_width=512, viewport_height=512, point_size=1.0)
 
-        self._preload_clip_model()
+        w = 512
+        h = 512
+        f = 0.5 * w / np.tan(0.5 * 55 * np.pi / 180.0)
+        cx = 0.5 * w
+        cy = 0.5 * h
+        znear = 0.01
+        zfar = 100
+        self.pc = pyrender.IntrinsicsCamera(fx=f, fy=f, cx=cx, cy=cy, znear=znear, zfar=zfar)
 
-    """
-    Function for preloading open clip model from transformers package. 
-    It preloads model and preprocessing functions for both input prompts and images
-    """
 
-    def _preload_clip_model(self):
-        bt.logging.info("Preloading CLIP model for validation.")
+def score_responses(
+    prompt: str,
+    synapses: list[protocol.TextTo3D],
+    device: torch.device,
+    models: Validate3DModels,
+) -> torch.Tensor:
+    scores = np.zeros(len(synapses), dtype=float)
+    renderer = Renderer()
 
-        self._model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-        self._preprocess = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
-
-        bt.logging.info("CLIP models preloaded.")
-
-    """
-    Function that calls the validation pipeline
-    @param synapses: struct like data type that contains mesh to evaluate and prompt that was used for creating the mesh
-    @param cam_rad: a float parameter that defines the radius for the sphere on which the camera will be placed
-    @param cam_elev: a float parameter that defines the elevation of the camera
-    @param save_images: a bool parameter that controls whether to save rendered images or not
-    @return a list with float scores per object stored in synapses list
-    """
-
-    def score_responses(
-        self,
-        synapses: list[protocol.TextTo3D],
-        cam_rad=3.0,
-        cam_elev=0,
-        save_images: bool = False,
-    ):
-        bt.logging.info("Start scoring the response.")
-
-        scores = np.zeros(len(synapses), dtype=float)
-
-        # processing input data stored in the format:
-        # protocol.TextTo3D: struct
-        # {
-        #    mesh_out: base64.b64encode buffer with mesh data
-        #    prompt_in: python str object
-        # }
-        for synapse, i in zip(synapses, range(len(synapses))):
+    try:
+        prompt_features = _get_prompt_features(prompt, device, models)
+        for i, synapse in enumerate(synapses):
             if synapse.mesh_out is None:
                 continue
 
-            # decode mesh data and convert it first to trimesh triangle mesh object
-            mesh_bytes = base64.b64decode(synapse.mesh_out)
-            mesh = trimesh.load(io.BytesIO(mesh_bytes), file_type="ply")
+            mesh = base64.b64decode(synapse.mesh_out)
 
-            # normalize the size of the mesh to the specified domain
-            self._normalize(mesh)
+            images = _render_images(mesh, renderer)
+            scores[i] = _score_images(images, device, models, prompt_features)
 
-            # convert trimesh to vedo mesh as we use vedo python library for rendering
-            vedo_mesh = vedo.Mesh((mesh.vertices, mesh.faces))
+            # import matplotlib.pyplot as plt
+            #
+            # for x in range(4):
+            #     plt.imshow(images[x])
+            #     plt.savefig(f'image{x}.png')
+    except Exception as e:
+        bt.logging.exception(f"Error during scroring: {e}")
+        bt.logging.debug(print_exception(type(e), e, e.__traceback__))
+    finally:
+        renderer.r.delete()  # It's important to free the resources
 
-            rendered_images = []
-            step = 360 // self.__views
+    return torch.tensor(scores, dtype=torch.float32)
 
-            # render specified amount of views for the input mesh, where step = 360 // views_number
-            for azimd in range(0, 360, step):
-                # compute current position of the rendering camera
-                azim = azimd / 180 * np.pi
-                x = cam_rad * np.cos(cam_elev) * np.sin(azim)
-                y = cam_rad * np.sin(cam_elev)
-                z = cam_rad * np.cos(cam_elev) * np.cos(azim)
 
-                # update position of the rendering camera, as 'focalPoint' is (0, 0, 0) it will always point to
-                # the coordinate origin where the object is by default
-                self._camera_params["pos"] = (x, y, z)
+def load_models(device: torch.device, cache_dir: str) -> Validate3DModels:
+    download_root = f"{cache_dir}/clip"
+    model, preprocess = clip.load("ViT-B/32", device=device, jit=False, download_root=download_root)
+    return Validate3DModels(model, preprocess)
 
-                # render the image using the current camera view and store the image as a numpy array
-                img = vedo.show(
-                    vedo_mesh,
-                    camera=self._camera_params,
-                    interactive=False,
-                    offscreen=True,
-                ).screenshot(asarray=True)
 
-                # store images in the list that will be evaluated at the next step
-                rendered_images.append(img)
+def _get_prompt_features(prompt: str, device: torch.device, models: Validate3DModels) -> torch.Tensor:
+    text = clip.tokenize([prompt]).to(device)
+    prompt_features = models.model.encode_text(text)
+    return prompt_features
 
-            # for debugging purposes images can be saved to the disk
-            if save_images:
-                for j, im in enumerate(rendered_images):
-                    img = PIL.Image.fromarray(im)
-                    os.makedirs(os.path.curdir + "/images", exist_ok=True)
-                    img.save(os.path.curdir + "/images/img" + str(j) + "_" + str(i) + ".png")
 
-            # score the rendered images
-            scores[i] = self._score_images(rendered_images, synapse.prompt_in)
-
-        bt.logging.info("Scoring completed.")
-        return torch.tensor(scores, dtype=torch.float32)
-
-    """
-    Function for comparing the rendered images with the input prompt and provide a total score for the whole set of input images.
-    @param images: a list with images stored as numpy arrays
-    @param prompt: input prompt that was used for generating the input 3D object
-    @return: averaged total score 
-    """
-
-    def _score_images(self, images: list, prompt: str):
+def _score_images(
+    images: list[Any],
+    device: torch.device,
+    models: Validate3DModels,
+    prompt_features: torch.Tensor,
+) -> float:
+    with torch.no_grad():
         dists = []
-
-        # we add input prompt at the end of the list with prompts that will be always evaluated as negative
-        prompts = self._negative_prompts.copy()
-        prompts.append(prompt)
-
-        # loop through all input images
         for img in images:
-            # preprocess input data (image and prompt) using preloaded open clip preprocessing filters
-            inputs = self._preprocess(text=prompts, images=[img], return_tensors="pt", padding=True)
+            img_tensor = models.preprocess(PIL.Image.fromarray(img)).unsqueeze(0).to(device)
+            image_features = models.model.encode_image(img_tensor)
+            dist = torch.nn.functional.cosine_similarity(prompt_features, image_features, dim=1)
+            dist_norm = dist.item()
+            dists.append(dist_norm)
 
-            # process the inputs using open clip model to get the scores
-            results = self._model(**inputs)
+        # Taking the mean similarity across images
+        return float(np.mean(dists))
 
-            # this is the image-text similarity score
-            logits_per_image = results["logits_per_image"]
 
-            # we can take the softmax to get the label probabilities
-            probs = logits_per_image.softmax(dim=1).detach().numpy()
+def _render_images(mesh_bytes: bytes, renderer: Renderer, views=4) -> list[np.ndarray]:
+    mesh = trimesh.load(io.BytesIO(mesh_bytes), file_type="ply")
+    _normalize(mesh)
 
-            # take the score for the last prompt in the self.__negative_prompts list and store in the list of results
-            dists.append(probs[0][-1])
+    flags = RenderFlags.RGBA | RenderFlags.SHADOWS_DIRECTIONAL
 
-        # filter the outlier views: we want to remove false negative scores from the final score
-        dists = np.sort(dists)
-        count_false_detection = np.sum(dists < self._false_neg_thres)
-        if count_false_detection < len(dists):
-            dists = dists[dists > self._false_neg_thres]
+    images = []
+    frame = 0
+    step = 360 // views
+    for azimd in range(0, 360, step):
+        if isinstance(mesh, trimesh.Trimesh):
+            scene = trimesh.Scene()
+            scene.add_geometry(mesh)
+            scene = pyrender.Scene.from_trimesh_scene(scene)
+        else:
+            # trimeshScene = fuze_trimesh
+            scene = pyrender.Scene.from_trimesh_scene(mesh)
 
-        # return average score
-        return np.mean(dists)
+        camera_matrix = np.eye(4)
 
-    """
-    Function that normalizing the size of the mesh
-    @param tri_mesh: a trimesh object that represents a triangular mesh
-    """
+        dist = 1.0
+        elev = 0
+        azim = azimd / 180 * np.pi
+        # azim = 0
+        x = dist * np.cos(elev) * np.sin(azim)
+        y = dist * np.sin(elev)
+        z = dist * np.cos(elev) * np.cos(azim)
 
-    def _normalize(self, tri_mesh: trimesh.base.Trimesh):
-        vert_np = np.asarray(tri_mesh.vertices)
-        minv = vert_np.min(0)
-        maxv = vert_np.max(0)
+        camera_matrix[0, 3] = x
+        camera_matrix[1, 3] = y
+        camera_matrix[2, 3] = z
 
-        half = (minv + maxv) / 2
+        camera_matrix_out = np.eye(4)
+        camera_matrix_out[0, 3] = x
+        camera_matrix_out[1, 3] = z
+        camera_matrix_out[2, 3] = y
 
-        scale = maxv - minv
-        scale = scale.max()
-        scale = 1 / scale
+        camera_matrix[0, 0] = np.cos(azim)
+        camera_matrix[2, 2] = np.cos(azim)
+        camera_matrix[0, 2] = np.sin(azim)
+        camera_matrix[2, 0] = -np.sin(azim)
 
-        vert_np = vert_np - half
-        vert_np = vert_np * scale
-        np.copyto(tri_mesh.vertices, vert_np)
+        camera_matrix_out[0, 0] = np.cos(azim)
+        camera_matrix_out[1, 1] = np.cos(azim)
+        camera_matrix_out[0, 1] = np.sin(azim)
+        camera_matrix_out[1, 0] = -np.sin(azim)
+
+        point_l = pyrender.PointLight(color=np.ones(3), intensity=3.0)
+
+        nc = pyrender.Node(camera=renderer.pc, matrix=camera_matrix)
+        scene.add_node(nc)
+        ncl = pyrender.Node(light=point_l, matrix=camera_matrix)
+        scene.add_node(ncl)
+
+        color, depth = renderer.r.render(scene, flags=flags)
+
+        images.append(color)
+
+        frame += 1
+
+    return images
+
+
+def _normalize(tri_mesh: trimesh.base.Trimesh):
+    vert_np = np.asarray(tri_mesh.vertices)
+    minv = vert_np.min(0)
+    maxv = vert_np.max(0)
+
+    half = (minv + maxv) / 2
+
+    scale = maxv - minv
+    scale = scale.max()
+    scale = 1 / scale
+
+    vert_np = vert_np - half
+    vert_np = vert_np * scale
+    np.copyto(tri_mesh.vertices, vert_np)
