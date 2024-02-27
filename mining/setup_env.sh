@@ -15,7 +15,7 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 # Create environment and activate it
 conda env create -f conda_env_mining.yml
-conda activate three_gen_mining
+conda activate three-gen-mining
 conda info --env
 
 echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
