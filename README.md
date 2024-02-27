@@ -31,43 +31,76 @@ Expectations under continuous operation include about 500GB/month in network tra
 
 ## OS Requirements
 
-Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11 and Ubuntu 20. The most rigorous testing environment used is the Deep Learning VM Image, which includes pre-installed ML frameworks and tools essential for development.  
+Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11, Ubuntu 20 and Arch Linux. The most rigorous testing environment used is the Deep Learning VM Image, which includes pre-installed ML frameworks and tools essential for development.
 
-## Running the miner
-### Setting up the miner
+## Setup Guidelines for Miners and Validators
 
-To initialize the miner node, leverage [Conda](https://docs.conda.io/en/latest/) for a straightforward setup process:
+### Environment Management With Conda
+
+For optimal environment setup:
+- Prefer [Conda](https://docs.conda.io/en/latest/) for handling dependencies and isolating environments. It’s straightforward and efficient for project setup.
+- If Conda isn’t viable, fallback to manual installations guided by `conda_env_*.yml` files for package details, and use `requirements.txt`. Utilizing a virtual environment is highly advised for dependency management.
+
+### Process Supervision With PM2
+
+To manage application processes:
+- Adopt [PM2](https://pm2.io) for benefits like auto-restarts, load balancing, and detailed monitoring. Setup scripts provide PM2 configuration templates for initial use. Modify these templates according to your setup needs before starting your processes.
+- If PM2 is incompatible with your setup, but you're using [Conda](https://docs.conda.io/en/latest/), remember to activate the Conda environment first or specify the correct Python interpreter before executing any scripts.
+
+## Running the Miner
+
+To operate the miner, the miner neuron and generation endpoints must be initiated. While currently supporting a single generation endpoint, future updates are intended to allow a miner to utilize multiple generation endpoints simultaneously.
+
+### Generation Endpoints
+
+#### Setup
+Set up the environment by navigating to the directory and running the setup script:
 ```commandline
-git clone git@github.com:404-Repo/three-gen-subnet.git
 cd three-gen-subnet/mining
 chmod +x setup_env.sh
 ./setup_env.sh
 ```
-This script clones the repository, creates a Conda environment named three-gen-mining, installs all necessary dependencies, and prepares a PM2 configuration files.
+This script creates a Conda environment `three-gen-mining`, installs dependencies, and sets up a PM2 configuration file (`generation.config.js`).
 
-### Running the miner
-
-For running services, [PM2](https://pm2.io) is recommended. Ensure it's installed and update configuration files as needed for customization.
-If not using PM2, activate the Conda environment with:
-```commandline
-conda activate three_gen_mining
-```
-**Note:** Avoid activating Conda when running services with PM2.
-
-#### Generation endpoint
-Start the generation service:
+#### Running
+After optional modifications to generation.config.js, initiate it using [PM2](https://pm2.io):
 ```commandline
 pm2 start generation.config.js
 ```
-Validate functionality by requesting video generation:
+
+#### Validation
+To verify the endpoint's functionality for video generation:
 ```commandline
 curl -d "prompt=pink bicycle" -X POST http://127.0.0.1:8093/generate_video/ > video.mp4
 ```
-This endpoint offers a visual output for experimentation. For 3D object generation, use a different endpoint (http://127.0.0.1:8093/generate).
+For testing 3D object generation: http://127.0.0.1:8093/generate.
 
-#### Miner neuron
-... to be updated ...
+#### Miner Neuron
 
+#### Prerequisites
+
+Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
+
+#### Setup
+Prepare the neuron by executing the setup script in the `neurons` directory:
+```commandline
+cd three-gen-subnet/neurons
+chmod +x setup_env.sh
+./setup_env.sh
+```
+This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `miner.config.js` for PM2 configuration.
+
+#### Running
+Customize `miner.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
+```commandline
+pm2 start miner.config.js
+```
+
+#### Monitoring Miner Activity
+Validators update the miner list hourly. It's normal not to observe requests in the initial 1.5 hours. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
+```commandline
+nc -vz [Your Miner IP] [Port]
+```
 
 # ... to be updated ...
 

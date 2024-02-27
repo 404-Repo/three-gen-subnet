@@ -7,11 +7,11 @@ import time
 import random
 
 import bittensor as bt
-from config import read_config
+from old.config import read_config
 from validating import Validate3DModels, load_models, score_responses
 from protocol import TextTo3D
 
-from base_validator import BaseValidatorNeuron
+from old.base_validator import BaseValidatorNeuron
 
 
 class Validator(BaseValidatorNeuron):
@@ -73,9 +73,9 @@ class Validator(BaseValidatorNeuron):
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
 
-            bt.logging.info(f"Dataset downloaded successfully")
+            bt.logging.info("Dataset downloaded successfully")
 
-        bt.logging.info(f"Loading the dataset")
+        bt.logging.info("Loading the dataset")
         dt = pandas.read_csv(dataset_path, header=None, usecols=[1])
         return dt[1].to_list()
 
