@@ -357,8 +357,8 @@ class BaseValidatorNeuron(ABC):
 
         if torch.isnan(self.scores).any():
             bt.logging.error(
-                f"Scores contain NaN values. This may be due to a lack of responses from miners, "
-                f"or a bug in your reward functions."
+                "Scores contain NaN values. This may be due to a lack of responses from miners, "
+                "or a bug in your reward functions."
             )
             return
 
