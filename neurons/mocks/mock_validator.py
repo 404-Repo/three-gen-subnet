@@ -12,6 +12,8 @@ from common import synapses
 
 async def main():
     config = await get_config()
+    bt.logging(config=config)
+
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)
     metagraph = bt.metagraph(netuid=config.netuid, network=subtensor.network, sync=False)
@@ -61,7 +63,7 @@ async def main():
                     f.write(base64.b64decode(r.results))
                 bt.logging.info("Result save to `content_pcl.h5`")
                 return
-        time.sleep(10)
+        await asyncio.sleep(10)
 
 
 async def get_config() -> bt.config:
