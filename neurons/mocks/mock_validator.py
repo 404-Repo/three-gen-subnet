@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import base64
+import time
 import typing
 import uuid
 
@@ -33,42 +35,33 @@ async def main():
 
     bt.logging.info(f"Handshakes: {handshakes}")
 
-    coros = [send_task(prompt, dendrite, axons) for prompt in ("House", "Dog")]
+    task = synapses.TGTaskV1(prompt="Dog", task_id=str(uuid.uuid4()))
 
-    await asyncio.gather(*coros)
-
-
-async def send_task(prompt: str, dendrite: bt.dendrite, axons: list[bt.axon]) -> None:
-    rs = typing.cast(
-        list[synapses.TGTaskV1],
-        await dendrite.forward(
-            axons=axons,
-            synapse=synapses.TGTaskV1(task_id=str(uuid.uuid4()), prompt=prompt),
-            deserialize=False,
-            timeout=60,
-        ),
+    await dendrite.forward(
+        axons=axons,
+        synapse=task,
+        deserialize=False,
+        timeout=60,
     )
 
-    tasks = {r.task_id: axon for axon, r in zip(axons, rs)}
-    bt.logging.info(f"IDs received: {tasks}")
+    bt.logging.info("Task sent")
 
-    await asyncio.sleep(5.0)
-
-    while tasks:
-        for task_id, axon in list(tasks.items()):
-            poll = typing.cast(
-                synapses.TGPollV1,
-                await dendrite.call(
-                    target_axon=axon,
-                    synapse=synapses.TGPollV1(task_id=task_id),
-                    deserialize=False,
-                    timeout=60,
-                ),
-            )
-            bt.logging.info(poll)
-            if poll.status not in {None, "IN QUEUE", "IN PROGRESS"}:
-                tasks.pop(task_id)
-        await asyncio.sleep(10.0)
+    poll = synapses.TGPollV1(task_id=task.task_id)
+    while True:
+        rs = typing.cast(list[synapses.TGPollV1], await dendrite.forward(
+            axons=axons,
+            synapse=poll,
+            deserialize=False,
+            timeout=60,
+        ))
+        bt.logging.info({a.hotkey: r.status for r, a in zip(rs, axons)})
+        for r in rs:
+            if r.status == "DONE":
+                with open("content_pcl.h5", "wb") as f:
+                    f.write(base64.b64decode(r.results))
+                bt.logging.info("Result save to `content_pcl.h5`")
+                return
+        time.sleep(10)
 
 
 async def get_config() -> bt.config:
