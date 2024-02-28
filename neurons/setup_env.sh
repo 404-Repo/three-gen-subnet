@@ -21,7 +21,7 @@ conda info --env
 # Store the path of the Conda interpreter
 CONDA_INTERPRETER_PATH=$(which python)
 
-# Generate the ecosystem.config.js file for PM2 with specified configurations
+# Generate the miner.config.js file for PM2 with specified configurations
 cat <<EOF > miner.config.js
 module.exports = {
   apps : [{
