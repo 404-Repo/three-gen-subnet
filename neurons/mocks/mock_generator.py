@@ -1,4 +1,5 @@
 import argparse
+import base64
 import time
 
 import uvicorn
@@ -22,7 +23,7 @@ async def generate(
 ):
     print(f"INFO: Task received - {prompt}")
     time.sleep(30.0)
-    buffer = b"MOCK DATA"
+    buffer = base64.b64encode(b"MOCK DATA").decode("utf-8")
     return Response(content=buffer, media_type="application/octet-stream")
 
 
