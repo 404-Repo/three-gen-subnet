@@ -146,11 +146,12 @@ class Miner:
         task = self.task_registry.get_task(synapse.task_id)
         if task is None:
             synapse.status = "NOT FOUND"
-        if task.validator_hotkey != synapse.dendrite.hotkey:
+        elif task.validator_hotkey != synapse.dendrite.hotkey:
             synapse.status = "FORBIDDEN"
         elif task.results is not None:
             synapse.status = "DONE"
             synapse.results = task.results
+            self.task_registry.remove_task(synapse.task_id)
         elif task.failed:
             synapse.status = "FAILED"
         elif task.in_progress:
