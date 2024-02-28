@@ -16,6 +16,5 @@ accelerate==0.24.1
 transformers==4.36.2
 rembg[gpu,cli]==2.0.49
 xformers==0.0.23
-bittensor==6.7.0
 gradio==4.19.2
 open-clip-torch==2.24.0
