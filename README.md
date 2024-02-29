@@ -7,78 +7,72 @@
 
 </div>
 
-Subnet 29 provides a platform to democratize 3D content creation, ultimately allowing anyone to create virtual worlds, games and AR/VR/XR experiences. This subnet leverages the existing fragmented and diverse landscape of Open Source 3D generative models ranging from Gaussian Splatting, Neural Radiance Fields, 3D Diffusion Models and Point-Cloud approaches to facilitate innovation - ideal for decentralized incentive-based networks via Bittensor. This subnet aims to kickstart the next revolution in gaming around AI native games, ultimately leveraging the broader Bittensor ecosystem to facilitate experiences in which assets, voice and sound are all generated at runtime. This would effectively allow a creative individual without any coding or game-dev experience to simply describe the game they want to create and have it manifested before them in real time.
-
-🚧 This project is a work in progress! Please excuse the dust 🚧
+3D generation subnet provides a platform to democratize 3D content creation, ultimately allowing anyone to create virtual worlds, games and AR/VR/XR experiences. This subnet leverages the existing fragmented and diverse landscape of Open Source 3D generative models ranging from Gaussian Splatting, Neural Radiance Fields, 3D Diffusion Models and Point-Cloud approaches to facilitate innovation - ideal for decentralized incentive-based networks via Bittensor. This subnet aims to kickstart the next revolution in gaming around AI native games, ultimately leveraging the broader Bittensor ecosystem to facilitate experiences in which assets, voice and sound are all generated at runtime. This would effectively allow a creative individual without any coding or game-dev experience to simply describe the game they want to create and have it manifested before them in real time.
 
 ---
 
-## Setup
+## Hardware Requirements
 
-To run the project, first create and activate a Python virtual environment:
+Pending detailed benchmark results, our recommended setup aligns with Google Cloud's a2-highgpu-1g specs:
+- GPU: NVIDIA A100 40GB
+- CPU: 12 vCPUs
+- RAM: 85GB
+- Storage: 200GB SSD
+
+Expectations under continuous operation include about 500GB/month in network traffic and 0.2MB/s throughput.
+
+## OS Requirements
+
+Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11, Ubuntu 20 and Arch Linux. The most rigorous testing environment used is the Deep Learning VM Image, which includes pre-installed ML frameworks and tools essential for development.
+
+## Setup Instructions for Miners and Validators
+
+### Environment Preparation
+
+* *Virtual Environment:* For a clean and isolated setup, use a Python virtual environment. To set up one, execute:
 ```commandline
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install the required Python packages:
+* *Process Management:* Utilize PM2 for managing application processes. It offers advantages such as automatic restarts, load balancing, and comprehensive monitoring.
+* *Dependencies:* Install all necessary Python packages:
 ```commandline
 pip install -r requirements.txt
 ```
 
-## Running the Miner 
+### Miner Configuration
 
-To start the miner:
+#### Starting the Miner
+
+To initialize the miner, use:
 ```commandline
-python neurons/miner.py --netuid 29 --subtensor.network finney --wallet.name <miner-cold-wallet> --wallet.hotkey <miner-hot-wallet> --logging.debug --neuron.device cuda:0
+python neurons/miner.py --netuid 29 --subtensor.network finney --wallet.name YOUR_MINER_COLD_WALLET --wallet.hotkey YOUR_MINER_HOT_WALLET --logging.debug --neuron.device cuda:0
 ```
+Ensure to replace `YOUR_MINER_COLD_WALLET` and `YOUR_MINER_HOT_WALLET` with your specific wallet identifiers.
 
-Replace `<miner-cold-wallet>` and `<miner-hot-wallet>` with your actual wallet names.
+### Validator Setup
 
-## Running the Validator
+#### Additional Dependencies
 
-The procedure to start the validator depends on your hardware setup. Follow the instructions corresponding to your system's capabilities:
-
-### CUDA-enabled GPU Systems
-
-For systems equipped with CUDA-enabled GPUs, execute the following command:
+Before running the validator, ensure to install:
 ```commandline
-python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name <validator-cold-wallet> --wallet.hotkey <validator-hot-wallet> --logging.debug --neuron.device cuda:0
+apt-get install libglfw3-dev libgles2-mesa-dev
 ```
-This will utilize the GPU to run the validator, which is typically more performant.
 
-### GPU Systems (Using CPU Instead)
+#### Launching the Validator
 
-If your system has a GPU, but you prefer to use the CPU, use this command:
+Activate the validator with the following command:
 ```commandline
-python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name <validator-cold-wallet> --wallet.hotkey <validator-hot-wallet> --logging.debug --neuron.device cpu
+python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name YOUR_VALIDATOR_COLD_WALLET --wallet.hotkey YOUR_VALIDATOR_HOT_WALLET --logging.debug --neuron.device cuda:0
 ```
-This option forces the validator to use the CPU resources instead of the GPU.
+Similarly, substitute `YOUR_VALIDATOR_COLD_WALLET` and `YOUR_VALIDATOR_HOT_WALLET` with the actual wallet names. This setup prioritizes GPU utilization for enhanced performance.
 
-### Systems Without a GPU (But with a Display)
+## Persistent Process Management
 
-For systems without a dedicated GPU, but with display capabilities, run:
+For sustained operation of the miner and validator, we advise employing PM2 or an equivalent process manager:
 ```commandline
-python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name <validator-cold-wallet> --wallet.hotkey <validator-hot-wallet> --logging.debug --neuron.device cpu --neuron.opengl_platform pyglet
-```
-This configuration is suitable for running the validator using CPU rendering with an available display environment.
-
-### Systems With No GPU or Display
-
-For headless systems without a GPU or display (work in progress and may not function correctly):
-```commandline
-python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name <validator-cold-wallet> --wallet.hotkey <validator-hot-wallet> --logging.debug --neuron.device cpu --neuron.opengl_platform osmesa
-```
-Note: This option is currently under development and may encounter issues during execution.
-
-### Important: 
-Replace <validator-cold-wallet> and <validator-hot-wallet> with the actual names of your wallets before running the commands.
-
-## Process Management
-
-We recommend using PM2 or similar process manager to run the miner and validator persistently:
-
-```
 pm2 start --name miner neurons/miner.py -- [OPTIONS] 
 pm2 start --name validator neurons/validator.py -- [OPTIONS]
 ```
+Adjust the [OPTIONS] placeholder with respective command-line options as needed.
