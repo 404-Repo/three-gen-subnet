@@ -45,6 +45,8 @@ class BaseMinerNeuron(ABC):
     _cached_block_ttl: float = 12.0
     """Not to request the current block on each validator tick, it's value is cached for the next `ttl` seconds."""
 
+    _last_resync_block: int = 0
+
     def __init__(self, config: bt.config):
         self.config: bt.config = copy.deepcopy(config)
         check_config(config)
@@ -52,8 +54,8 @@ class BaseMinerNeuron(ABC):
 
         self.device = torch.device(self.config.neuron.device)
         if (
-            self.device.type.lower().startswith("cuda")
-            and not torch.cuda.is_available()
+                self.device.type.lower().startswith("cuda")
+                and not torch.cuda.is_available()
         ):
             raise RuntimeError(
                 f"{self.device.type} device is selected while CUDA is not available"
@@ -212,8 +214,8 @@ class BaseMinerNeuron(ABC):
 
     def _check_for_registration(self):
         if not self.subtensor.is_hotkey_registered(
-            netuid=self.config.netuid,
-            hotkey_ss58=self.wallet.hotkey.ss58_address,
+                netuid=self.config.netuid,
+                hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
             raise RuntimeError(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
@@ -235,7 +237,7 @@ class BaseMinerNeuron(ABC):
         Check if enough epoch blocks have elapsed since the last checkpoint to sync.
         """
         return (
-            self.block() - self.metagraph.last_update[self.uid]
+                self.block() - self._last_resync_block
         ) > self.config.neuron.epoch_length
 
     def _resync_metagraph(self):
@@ -244,6 +246,7 @@ class BaseMinerNeuron(ABC):
         bt.logging.info("Resyncing metagraph")
 
         self.metagraph.sync(subtensor=self.subtensor)
+        self._last_resync_block = self.block()
 
     def _should_set_weights(self) -> bool:
         return False
