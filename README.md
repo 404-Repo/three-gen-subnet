@@ -1,6 +1,6 @@
 <div align="center">
 
-# **THREE GEN | SUBNET 29**
+# **THREE GEN | SUBNET 24**
 
 [![Discord Chat](https://img.shields.io/discord/308323056592486420.svg)](https://discord.gg/bittensor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 
 To initialize the miner, use:
 ```commandline
-python neurons/miner.py --netuid 29 --subtensor.network finney --wallet.name YOUR_MINER_COLD_WALLET --wallet.hotkey YOUR_MINER_HOT_WALLET --logging.debug --neuron.device cuda:0
+python neurons/miner.py --netuid 24 --subtensor.network finney --wallet.name YOUR_MINER_COLD_WALLET --wallet.hotkey YOUR_MINER_HOT_WALLET --logging.debug --neuron.device cuda:0
 ```
 Ensure to replace `YOUR_MINER_COLD_WALLET` and `YOUR_MINER_HOT_WALLET` with your specific wallet identifiers.
 
@@ -64,7 +64,7 @@ apt-get install libglfw3-dev libgles2-mesa-dev
 
 Activate the validator with the following command:
 ```commandline
-python neurons/validator.py --netuid 29 --subtensor.network finney --wallet.name YOUR_VALIDATOR_COLD_WALLET --wallet.hotkey YOUR_VALIDATOR_HOT_WALLET --logging.debug --neuron.device cuda:0
+python neurons/validator.py --netuid 24 --subtensor.network finney --wallet.name YOUR_VALIDATOR_COLD_WALLET --wallet.hotkey YOUR_VALIDATOR_HOT_WALLET --logging.debug --neuron.device cuda:0
 ```
 Similarly, substitute `YOUR_VALIDATOR_COLD_WALLET` and `YOUR_VALIDATOR_HOT_WALLET` with the actual wallet names. This setup prioritizes GPU utilization for enhanced performance.
 
