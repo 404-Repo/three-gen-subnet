@@ -92,7 +92,7 @@ class BaseMinerNeuron(ABC):
                 "You are allowing non-registered entities to send requests to your miner. This is a security risk."
             )
 
-        self.axon = bt.axon(wallet=self.wallet, port=self.config.axon.port)
+        self.axon = bt.axon(wallet=self.wallet, config=self.config)
 
         bt.logging.info(f"Attaching forward function to the miner axon.")
 
