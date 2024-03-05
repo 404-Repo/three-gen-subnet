@@ -143,7 +143,7 @@ class BaseValidatorNeuron(ABC):
         return self._cached_block
 
     def get_random_miners_uids(self, sample_size=None) -> List[int]:
-        miners = [uid for uid, stake in enumerate(self.metagraph.S) if stake < 1.0]
+        miners = [uid for uid, stake in enumerate(self.metagraph.S) if stake < 1000.0]
         random.shuffle(miners)
         return miners if sample_size is None else miners[:sample_size]
 
