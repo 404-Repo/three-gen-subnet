@@ -1,21 +1,21 @@
 import argparse
 import os
 import os.path
-import pandas
-import requests
-import time
 import random
+import time
+import typing
 
 import bittensor as bt
-from config import read_config
-from validating import Validate3DModels, load_models, score_responses
-from protocol import TextTo3D
-
+import pandas
+import requests
 from base_validator import BaseValidatorNeuron
+from config import read_config
+from protocol import TextTo3D
+from validating import ValidateTextTo3DModel
 
 
 class Validator(BaseValidatorNeuron):
-    models: Validate3DModels
+    validator: ValidateTextTo3DModel
     dataset: list[str]
 
     def __init__(self, config: bt.config):
@@ -24,7 +24,7 @@ class Validator(BaseValidatorNeuron):
         if self.config.neuron.opengl_platform in ("egl", "osmesa"):
             os.environ["PYOPENGL_PLATFORM"] = self.config.neuron.opengl_platform
 
-        self.models = load_models(self.device, config.neuron.full_path)
+        self.validator = ValidateTextTo3DModel(512, 512, 10, self.device)
         self.dataset = self.load_dataset()
 
     async def forward(self):
@@ -42,11 +42,14 @@ class Validator(BaseValidatorNeuron):
 
         bt.logging.debug(f"Sending prompt: {prompt}")
 
-        responses = await self.dendrite.forward(
-            axons=[self.metagraph.axons[uid] for uid in miner_uids],
-            synapse=TextTo3D(prompt_in=prompt),
-            deserialize=False,
-            timeout=30,
+        responses = typing.cast(
+            list[TextTo3D],
+            await self.dendrite.forward(
+                axons=[self.metagraph.axons[uid] for uid in miner_uids],
+                synapse=TextTo3D(prompt_in=prompt),
+                deserialize=False,
+                timeout=30,
+            ),
         )
 
         n = len([r for r in responses if r.mesh_out is not None])
@@ -56,7 +59,7 @@ class Validator(BaseValidatorNeuron):
         if n == 0:
             return
 
-        scores = score_responses(prompt, responses, self.device, self.models)
+        scores = self.validator.score_responses(responses)
 
         bt.logging.info(f"Scored responses: {scores}")
 
@@ -65,9 +68,7 @@ class Validator(BaseValidatorNeuron):
     def load_dataset(self) -> list[str]:
         dataset_path = f"{self.config.neuron.full_path}/dataset.csv"
         if not os.path.exists(dataset_path):
-            bt.logging.info(
-                f"Downloading dataset from {self.config.neuron.dataset_url}"
-            )
+            bt.logging.info(f"Downloading dataset from {self.config.neuron.dataset_url}")
 
             with requests.get(self.config.neuron.dataset_url, stream=True) as r:
                 r.raise_for_status()

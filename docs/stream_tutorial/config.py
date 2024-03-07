@@ -22,9 +22,7 @@ def check_config(cls, config: "bt.Config"):
 
 def get_config() -> "bt.Config":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--axon.port", type=int, default=8098, help="Port to run the axon on."
-    )
+    parser.add_argument("--axon.port", type=int, default=8098, help="Port to run the axon on.")
     # Subtensor network to connect to
     parser.add_argument(
         "--subtensor.network",
