@@ -9,3 +9,4 @@ git+https://github.com/openai/shap-e.git
 trimesh==4.1.0
 transformers==4.38.2
 vedo==2024.5.1
+pandas==2.2.0
