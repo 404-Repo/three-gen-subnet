@@ -11,8 +11,7 @@ import trimesh
 import vedo
 from transformers import CLIPModel, CLIPProcessor
 
-
-'''
+"""
 Validation mechanism (general overview).
 
 Input: generated mesh by the ML project (in our case Shap-E);
@@ -32,7 +31,7 @@ The algorithm for validation is as follows (general overview):
 - We render several views of the input mesh and store rendered images in the array for further processing using open clip.
 - We embed both prompts array and rendred images to the same high dimensional space. Only in this case open clip will be able to figure out similarities and assign corresponding scores.
 - After scoring the input we will store the score for our input prompt per rendered view and output the average score to the user.
-'''
+"""
 
 
 class ValidateTextTo3DModel:
@@ -64,10 +63,11 @@ class ValidateTextTo3DModel:
 
         self._preload_clip_model()
 
-    '''
+    """
     Function for preloading open clip model from transformers package. 
     It preloads model and preprocessing functions for both input prompts and images
-    '''
+    """
+
     def _preload_clip_model(self):
         bt.logging.info("Preloading CLIP model for validation.")
 
@@ -76,14 +76,15 @@ class ValidateTextTo3DModel:
 
         bt.logging.info("CLIP models preloaded.")
 
-    '''
+    """
     Function that calls the validation pipeline
     @param synapses: struct like data type that contains mesh to evaluate and prompt that was used for creating the mesh
     @param cam_rad: a float parameter that defines the radius for the sphere on which the camera will be placed
     @param cam_elev: a float parameter that defines the elevation of the camera
     @param save_images: a bool parameter that controls whether to save rendered images or not
     @return a list with float scores per object stored in synapses list
-    '''
+    """
+
     def score_responses(
         self,
         synapses: list[protocol.TextTo3D],
@@ -94,6 +95,7 @@ class ValidateTextTo3DModel:
         bt.logging.info("Start scoring the response.")
 
         scores = np.zeros(len(synapses), dtype=float)
+        scores = torch.zeros(self.metagraph.n)
 
         # processing input data stored in the format:
         # protocol.TextTo3D: struct
@@ -152,14 +154,15 @@ class ValidateTextTo3DModel:
             scores[i] = self._score_images(rendered_images, synapse.prompt_in)
 
         bt.logging.info("Scoring completed.")
-        return scores
+        return torch.tensor(scores, dtype=torch.float32)
 
-    '''
+    """
     Function for comparing the rendered images with the input prompt and provide a total score for the whole set of input images.
     @param images: a list with images stored as numpy arrays
     @param prompt: input prompt that was used for generating the input 3D object
     @return: averaged total score 
-    '''
+    """
+
     def _score_images(self, images: list, prompt: str):
         dists = []
 
@@ -193,10 +196,11 @@ class ValidateTextTo3DModel:
         # return average score
         return np.mean(dists)
 
-    '''
+    """
     Function that normalizing the size of the mesh
     @param tri_mesh: a trimesh object that represents a triangular mesh
-    '''
+    """
+
     def _normalize(self, tri_mesh: trimesh.base.Trimesh):
         vert_np = np.asarray(tri_mesh.vertices)
         minv = vert_np.min(0)

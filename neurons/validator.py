@@ -25,7 +25,7 @@ class Validator(BaseValidatorNeuron):
         if self.config.neuron.opengl_platform in ("egl", "osmesa"):
             os.environ["PYOPENGL_PLATFORM"] = self.config.neuron.opengl_platform
 
-        self.validator = ValidateTextTo3DModel(512, 512, 10, self.device)
+        self.validator = ValidateTextTo3DModel(512, 512, 5, self.device)
         self.dataset = self.load_dataset()
 
     async def forward(self):
