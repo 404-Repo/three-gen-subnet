@@ -95,7 +95,6 @@ class ValidateTextTo3DModel:
         bt.logging.info("Start scoring the response.")
 
         scores = np.zeros(len(synapses), dtype=float)
-        scores = torch.zeros(self.metagraph.n)
 
         # processing input data stored in the format:
         # protocol.TextTo3D: struct
