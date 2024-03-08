@@ -4,6 +4,7 @@ import os.path
 import random
 import time
 import typing
+from traceback import print_exception
 
 import bittensor as bt
 import pandas
@@ -59,11 +60,15 @@ class Validator(BaseValidatorNeuron):
         if n == 0:
             return
 
-        scores = self.validator.score_responses(responses)
+        try:
+            scores = self.validator.score_responses(responses)
 
-        bt.logging.info(f"Scored responses: {scores}")
+            bt.logging.info(f"Scored responses: {scores}")
 
-        self.update_scores(scores, miner_uids)
+            self.update_scores(scores, miner_uids)
+        except Exception as e:
+            bt.logging.info(f"Validation failed with: {e}")
+            bt.logging.debug(print_exception(type(e), e, e.__traceback__))
 
     def load_dataset(self) -> list[str]:
         dataset_path = f"{self.config.neuron.full_path}/dataset.csv"
