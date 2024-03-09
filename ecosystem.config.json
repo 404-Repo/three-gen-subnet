@@ -1,0 +1,14 @@
+{
+  "apps": [
+    {
+      "name": "validator-app",
+      "script": "./start-validator.sh",
+      "exec_mode": "fork",
+      "instances": 1,
+      "watch": false,
+      "env": {
+        "DISPLAY": ":99"
+      }
+    }
+  ]
+}
