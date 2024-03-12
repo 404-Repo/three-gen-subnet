@@ -6,10 +6,13 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from diff_gaussian_rasterization import (GaussianRasterizationSettings, GaussianRasterizer)
+from diff_gaussian_rasterization import (
+    GaussianRasterizationSettings,
+    GaussianRasterizer,
+)
 from simple_knn._C import distCUDA2
 
-from SphericalHarmonics import eval_sh, SH2RGB, RGB2SH
+from validation.lib.spherical_harmonics import eval_sh, SH2RGB, RGB2SH
 
 
 class GSUtils:
@@ -17,10 +20,15 @@ class GSUtils:
         pass
 
     def build_rotation(self, r: torch.Tensor):
-        norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
+        norm = torch.sqrt(
+            r[:, 0] * r[:, 0]
+            + r[:, 1] * r[:, 1]
+            + r[:, 2] * r[:, 2]
+            + r[:, 3] * r[:, 3]
+        )
 
         q = r / norm[:, None]
-        R = torch.zeros((q.size(0), 3, 3), device='cuda')
+        R = torch.zeros((q.size(0), 3, 3), device="cuda")
 
         r = q[:, 0]
         x = q[:, 1]
@@ -60,7 +68,9 @@ class GSUtils:
         uncertainty[:, 5] = L[:, 2, 2]
         return uncertainty
 
-    def build_covariance_from_scaling_rotation(self, scaling: torch.Tensor, scaling_modifier: float, rotation: torch.Tensor):
+    def build_covariance_from_scaling_rotation(
+        self, scaling: torch.Tensor, scaling_modifier: float, rotation: torch.Tensor
+    ):
         L = self.build_scaling_rotation(scaling_modifier * scaling, rotation)
         actual_covariance = L @ L.transpose(1, 2)
         symm = self.strip_tensot_lowerdiag(actual_covariance)
@@ -103,7 +113,9 @@ class BasicGSModel:
         # setting up function calls (shortcuts)
         self._scaling_activation = torch.exp
         self._scaling_inv_activation = torch.log
-        self._covariance_activation = self.__gs_utils.build_covariance_from_scaling_rotation
+        self._covariance_activation = (
+            self.__gs_utils.build_covariance_from_scaling_rotation
+        )
         self._opacity_activation = torch.sigmoid
         self._inv_opacity_activation = self.__gs_utils.inverse_sigmoid
         self._rotation_activation = torch.nn.functional.normalize
@@ -138,58 +150,109 @@ class BasicGSModel:
     def get_max_sh_degree(self):
         return self.__max_sh_degree
 
-    def create_from_point_cloud(self, pcd: BasicPointCloud, spatial_lr_scale: float = 1.0):
+    def create_from_point_cloud(
+        self, pcd: BasicPointCloud, spatial_lr_scale: float = 1.0
+    ):
         self.__spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
-        features = torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2)).float().cuda()
-        features[:, :3, 0 ] = fused_color
+        features = (
+            torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2))
+            .float()
+            .cuda()
+        )
+        features[:, :3, 0] = fused_color
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        dist2 = torch.clamp_min(
+            distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()),
+            0.0000001,
+        )
         scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
 
-        opacities = self.__gs_utils.inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
+        opacities = self.__gs_utils.inverse_sigmoid(
+            0.1
+            * torch.ones(
+                (fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"
+            )
+        )
 
         self.__xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
-        self.__features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
-        self.__features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
+        self.__features_dc = nn.Parameter(
+            features[:, :, 0:1].transpose(1, 2).contiguous().requires_grad_(True)
+        )
+        self.__features_rest = nn.Parameter(
+            features[:, :, 1:].transpose(1, 2).contiguous().requires_grad_(True)
+        )
         self.__scaling = nn.Parameter(scales.requires_grad_(True))
         self.__rotation = nn.Parameter(rots.requires_grad_(True))
         self.__opacity = nn.Parameter(opacities.requires_grad_(True))
         self.__max_radii2D = torch.zeros((self.__xyz.shape[0]), device="cuda")
 
     def create_from_dictionary(self, data_dict: dict):
-        xyz = data_dict['points']
-        opacities = data_dict['opacities']
-        features_dc = data_dict['features_dc']
-        features_rest = data_dict['features_rest']
-        scaling = data_dict['scale']
-        rotation = data_dict['rotation']
-        sh_degree = data_dict['sh_degree']
+        xyz = data_dict["points"]
+        opacities = data_dict["opacities"]
+        features_dc = data_dict["features_dc"]
+        features_rest = data_dict["features_rest"]
+        scaling = data_dict["scale"]
+        rotation = data_dict["rotation"]
+        sh_degree = data_dict["sh_degree"]
 
-        self.__xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__features_dc = nn.Parameter(torch.tensor(features_dc, dtype=torch.float, device="cuda").contiguous().requires_grad_(True))
-        self.__features_rest = nn.Parameter(torch.tensor(features_rest, dtype=torch.float, device="cuda").contiguous().requires_grad_(True))
-        self.__opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__scaling = nn.Parameter(torch.tensor(scaling, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__rotation = nn.Parameter(torch.tensor(rotation, dtype=torch.float, device="cuda").requires_grad_(True))
+        self.__xyz = nn.Parameter(
+            torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True)
+        )
+        self.__features_dc = nn.Parameter(
+            torch.tensor(features_dc, dtype=torch.float, device="cuda")
+            .contiguous()
+            .requires_grad_(True)
+        )
+        self.__features_rest = nn.Parameter(
+            torch.tensor(features_rest, dtype=torch.float, device="cuda")
+            .contiguous()
+            .requires_grad_(True)
+        )
+        self.__opacity = nn.Parameter(
+            torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(
+                True
+            )
+        )
+        self.__scaling = nn.Parameter(
+            torch.tensor(scaling, dtype=torch.float, device="cuda").requires_grad_(True)
+        )
+        self.__rotation = nn.Parameter(
+            torch.tensor(rotation, dtype=torch.float, device="cuda").requires_grad_(
+                True
+            )
+        )
         self.__active_sh_degree = sh_degree
 
     def get_covariance(self, scaling_modifier: float = 1.0):
-        return self._covariance_activation(self.__scaling, scaling_modifier, self.__rotation)
+        return self._covariance_activation(
+            self.__scaling, scaling_modifier, self.__rotation
+        )
 
 
 ########################################################################################################################################################################
 
-'''
-'''
+"""
+"""
+
+
 class BasicCamera:
-    def __init__(self, cam2world, width: int, height: int, fovy: float, fovx: float, znear: float, zfar: float):
+    def __init__(
+        self,
+        cam2world,
+        width: int,
+        height: int,
+        fovy: float,
+        fovx: float,
+        znear: float,
+        zfar: float,
+    ):
 
         self.__image_width = width
         self.__image_height = height
@@ -205,9 +268,17 @@ class BasicCamera:
         world2cam[:3, 3] *= -1
 
         self.__world_view_transform = torch.tensor(world2cam).transpose(0, 1).cuda()
-        self.__projection_matrix = self._get_projection_matrix(znear=self.__znear, zfar=self.__zfar, fovX=self.__FoVx, fovY=self.__FoVy).transpose(0, 1).cuda()
+        self.__projection_matrix = (
+            self._get_projection_matrix(
+                znear=self.__znear, zfar=self.__zfar, fovX=self.__FoVx, fovY=self.__FoVy
+            )
+            .transpose(0, 1)
+            .cuda()
+        )
 
-        self.__full_proj_transform = self.__world_view_transform @ self.__projection_matrix
+        self.__full_proj_transform = (
+            self.__world_view_transform @ self.__projection_matrix
+        )
         self.__camera_center = -torch.tensor(cam2world[:3, 3]).cuda()
 
     @staticmethod
@@ -260,10 +331,14 @@ class BasicCamera:
 
 ########################################################################################################################################################################
 
-'''
-'''
+"""
+"""
+
+
 class GSRenderer:
-    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
+    def __init__(
+        self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0
+    ):
 
         self.__sh_degree = sh_degree
         self.__white_background = white_background
@@ -271,7 +346,11 @@ class GSRenderer:
 
         self.__gs_model = BasicGSModel(sh_degree)
 
-        self.__bg_color = torch.tensor([1, 1, 1] if white_background else [0, 0, 0], dtype=torch.float32, device="cuda")
+        self.__bg_color = torch.tensor(
+            [1, 1, 1] if white_background else [0, 0, 0],
+            dtype=torch.float32,
+            device="cuda",
+        )
 
     def initialize(self, input=None, num_pts: int = 5000, radius: float = 0.5):
         # load checkpoint
@@ -289,7 +368,9 @@ class GSRenderer:
             xyz = np.stack((x, y, z), axis=1)
 
             shs = np.random.random((num_pts, 3)) / 255.0
-            pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+            pcd = BasicPointCloud(
+                points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3))
+            )
             self.__gs_model.create_from_point_cloud(pcd, 10)
 
         elif isinstance(input, BasicPointCloud):
@@ -298,11 +379,26 @@ class GSRenderer:
         else:
             self.__gs_model.create_from_dictionary(input)
 
-    def render(self, viewpoint_camera: BasicCamera, scaling_modifier:float = 1.0, bg_color: torch.Tensor = None, override_color: torch.Tensor = None,
-               compute_cov3d_python: bool = False, convert_shs_python: bool = False):
+    def render(
+        self,
+        viewpoint_camera: BasicCamera,
+        scaling_modifier: float = 1.0,
+        bg_color: torch.Tensor = None,
+        override_color: torch.Tensor = None,
+        compute_cov3d_python: bool = False,
+        convert_shs_python: bool = False,
+    ):
 
         # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
-        screenspace_points = (torch.zeros_like(self.__gs_model.get_xyz, dtype=self.__gs_model.get_xyz.dtype, requires_grad=True, device="cuda") + 0)
+        screenspace_points = (
+            torch.zeros_like(
+                self.__gs_model.get_xyz,
+                dtype=self.__gs_model.get_xyz.dtype,
+                requires_grad=True,
+                device="cuda",
+            )
+            + 0
+        )
         try:
             screenspace_points.retain_grad()
         except:
@@ -312,16 +408,20 @@ class GSRenderer:
         tanfovx = math.tan(viewpoint_camera.get_fov_x * 0.5)
         tanfovy = math.tan(viewpoint_camera.get_fov_y * 0.5)
 
-        raster_settings = GaussianRasterizationSettings(image_height=int(viewpoint_camera.get_image_height), image_width=int(viewpoint_camera.get_image_width),
-                                                        tanfovx=tanfovx, tanfovy=tanfovy,
-                                                        bg=self.__bg_color if bg_color is None else bg_color,
-                                                        scale_modifier=scaling_modifier,
-                                                        viewmatrix=viewpoint_camera.get_world_view_transform,
-                                                        projmatrix=viewpoint_camera.get_full_proj_transform,
-                                                        sh_degree=self.__gs_model.get_active_sh_degree,
-                                                        campos=viewpoint_camera.get_center,
-                                                        prefiltered=False,
-                                                        debug=False)
+        raster_settings = GaussianRasterizationSettings(
+            image_height=int(viewpoint_camera.get_image_height),
+            image_width=int(viewpoint_camera.get_image_width),
+            tanfovx=tanfovx,
+            tanfovy=tanfovy,
+            bg=self.__bg_color if bg_color is None else bg_color,
+            scale_modifier=scaling_modifier,
+            viewmatrix=viewpoint_camera.get_world_view_transform,
+            projmatrix=viewpoint_camera.get_full_proj_transform,
+            sh_degree=self.__gs_model.get_active_sh_degree,
+            campos=viewpoint_camera.get_center,
+            prefiltered=False,
+            debug=False,
+        )
 
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
@@ -346,11 +446,17 @@ class GSRenderer:
         colors_precomp = None
         if colors_precomp is None:
             if convert_shs_python:
-                shs_view = self.__gs_model.get_features.transpose(1, 2).view(-1, 3, (self.__gs_model.get_max_sh_degree + 1) ** 2)
-                dir_pp = self.__gs_model.get_xyz - viewpoint_camera.get_center.repeat(self.__gs_model.get_features.shape[0], 1)
+                shs_view = self.__gs_model.get_features.transpose(1, 2).view(
+                    -1, 3, (self.__gs_model.get_max_sh_degree + 1) ** 2
+                )
+                dir_pp = self.__gs_model.get_xyz - viewpoint_camera.get_center.repeat(
+                    self.__gs_model.get_features.shape[0], 1
+                )
                 dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
 
-                sh2rgb = eval_sh(self.__gs_model.get_active_sh_degree, shs_view, dir_pp_normalized)
+                sh2rgb = eval_sh(
+                    self.__gs_model.get_active_sh_degree, shs_view, dir_pp_normalized
+                )
                 colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
             else:
                 shs = self.__gs_model.get_features
@@ -358,16 +464,25 @@ class GSRenderer:
             colors_precomp = override_color
 
         # Rasterize visible Gaussians to image, obtain their radii (on screen).
-        rendered_image, radii, rendered_depth, rendered_alpha = rasterizer(means3D=means3D, means2D=means2D, shs=shs,
-                                                                           colors_precomp=colors_precomp, opacities=opacity,
-                                                                           scales=scales, rotations=rotations, cov3D_precomp=cov3D_precomp)
+        rendered_image, radii, rendered_depth, rendered_alpha = rasterizer(
+            means3D=means3D,
+            means2D=means2D,
+            shs=shs,
+            colors_precomp=colors_precomp,
+            opacities=opacity,
+            scales=scales,
+            rotations=rotations,
+            cov3D_precomp=cov3D_precomp,
+        )
         rendered_image = rendered_image.clamp(0, 1)
 
         # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
         # They will be excluded from value updates used in the splitting criteria.
-        return {"image": rendered_image,
-                "depth": rendered_depth,
-                "alpha": rendered_alpha,
-                "viewspace_points": screenspace_points,
-                "visibility_filter": radii > 0,
-                "radii": radii}
+        return {
+            "image": rendered_image,
+            "depth": rendered_depth,
+            "alpha": rendered_alpha,
+            "viewspace_points": screenspace_points,
+            "visibility_filter": radii > 0,
+            "radii": radii,
+        }
