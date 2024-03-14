@@ -9,4 +9,4 @@ clean:
 	./validator/cleanup_env.sh
 
 test:
-	python -m pytest
+	python -m pytest --full-trace
