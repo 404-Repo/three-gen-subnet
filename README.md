@@ -102,7 +102,30 @@ Validators update the miner list hourly. It's normal not to observe requests in 
 nc -vz [Your Miner IP] [Port]
 ```
 
-# ... to be updated ...
+## Validation
+
+### Setup
+To install all dependencies and generate the run configuration execute the following command in the project base directory:
+```
+make validator
+```
+
+### Startup
+To start the validator service execute the following command in the project base directory:
+```
+make start_validator
+```
+If you want to run the validator for testing purposes
+
+### Cleanup
+To remove all dependencies execute the following command in the project base directory:
+
+```
+make clean_validator
+```
+
+
+
 
 [//]: # (## TODO:)
 [//]: # (- tests and benchmarking on different setups)
