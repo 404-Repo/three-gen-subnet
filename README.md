@@ -115,7 +115,6 @@ To start the validator service execute the following command in the project base
 ```
 make start_validator
 ```
-If you want to run the validator for testing purposes
 
 ### Cleanup
 To remove all dependencies execute the following command in the project base directory:
