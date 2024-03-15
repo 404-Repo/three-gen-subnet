@@ -10,7 +10,7 @@ import torch
 from neurons.old import protocol
 from validation.lib.camera_utils import orbit_camera, OrbitCamera
 from validation.lib.hdf5_loader import HDF5Loader
-from validation.lib.gaussian_splatting_renderer import GSRenderer
+from validation.lib.gaussian_splatting_renderer import GSRenderer, BasicCamera
 
 
 class TextTo3DModelValidator:
@@ -76,7 +76,7 @@ class TextTo3DModelValidator:
                 ver = np.random.randint(min_ver, max_ver)
 
                 pose = orbit_camera(cam_elev + ver, azimd, cam_rad)
-                camera = GSRenderer.BasicCamera(
+                camera = BasicCamera(
                     pose,
                     self.__img_width,
                     self.__img_height,
