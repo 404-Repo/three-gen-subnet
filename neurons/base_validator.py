@@ -7,8 +7,8 @@ import random
 import threading
 import time
 from abc import ABC
-from typing import List
 from traceback import print_exception
+from typing import List
 
 import bittensor as bt
 import torch
@@ -70,13 +70,8 @@ class BaseValidatorNeuron(ABC):
         bt.logging(config=config, logging_dir=config.full_path)
 
         self.device = torch.device(self.config.neuron.device)
-        if (
-            self.device.type.lower().startswith("cuda")
-            and not torch.cuda.is_available()
-        ):
-            raise RuntimeError(
-                f"{self.device.type} device is selected while CUDA is not available"
-            )
+        if self.device.type.lower().startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(f"{self.device.type} device is selected while CUDA is not available")
 
         self.wallet = bt.wallet(config=self.config)
         bt.logging.info(f"Wallet: {self.wallet}")
@@ -166,9 +161,7 @@ class BaseValidatorNeuron(ABC):
         # Update scores with rewards produced by this step.
         # shape: [ metagraph.n ]
         alpha: float = self.config.neuron.moving_average_alpha
-        self.scores = alpha * scattered_scores + (1 - alpha) * self.scores.to(
-            self.device
-        )
+        self.scores = alpha * scattered_scores + (1 - alpha) * self.scores.to(self.device)
         bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def _save_state(self):
@@ -293,9 +286,7 @@ class BaseValidatorNeuron(ABC):
             bt.logging.debug(print_exception(type(e), e, e.__traceback__))
 
     async def _concurrent_forward(self):
-        coroutines = [
-            self.forward() for _ in range(self.config.neuron.num_concurrent_forwards)
-        ]
+        coroutines = [self.forward() for _ in range(self.config.neuron.num_concurrent_forwards)]
         await asyncio.gather(*coroutines)
 
     def _sync(self):
@@ -315,9 +306,7 @@ class BaseValidatorNeuron(ABC):
         """
         Check if enough epoch blocks have elapsed since the last checkpoint to sync.
         """
-        return (
-            self.block() - self.metagraph.last_update[self.uid]
-        ) > self.config.neuron.epoch_length
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _resync_metagraph(self):
         """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""
@@ -332,9 +321,7 @@ class BaseValidatorNeuron(ABC):
 
         self.uid = self.metagraph.hotkeys.index(self.wallet.hotkey.ss58_address)
 
-        prev_hotkey_to_score = {
-            hotkey: self.scores[uid] for uid, hotkey in enumerate(self.hotkeys)
-        }
+        prev_hotkey_to_score = {hotkey: self.scores[uid] for uid, hotkey in enumerate(self.hotkeys)}
         bt.logging.debug(f"Prev scores {prev_hotkey_to_score}")
 
         new_scores = torch.zeros(self.metagraph.n).to(self.device)
@@ -358,9 +345,7 @@ class BaseValidatorNeuron(ABC):
             return False
 
         # Define appropriate logic for when set weights.
-        return (
-            self.block() - self.metagraph.last_update[self.uid]
-        ) > self.config.neuron.epoch_length
+        return (self.block() - self.metagraph.last_update[self.uid]) > self.config.neuron.epoch_length
 
     def _set_weights(self):
         """

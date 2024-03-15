@@ -53,9 +53,7 @@ class StreamMiner(ABC):
             exit()
         else:
             # Each miner gets a unique identity (UID) in the network for differentiation.
-            self.my_subnet_uid = self.metagraph.hotkeys.index(
-                self.wallet.hotkey.ss58_address
-            )
+            self.my_subnet_uid = self.metagraph.hotkeys.index(self.wallet.hotkey.ss58_address)
             bt.logging.info(f"Running miner on uid: {self.my_subnet_uid}")
 
         # The axon handles request processing, allowing validators to send this process requests.
@@ -175,10 +173,7 @@ class StreamMiner(ABC):
 
                 # --- Wait until next epoch.
                 current_block = self.subtensor.get_current_block()
-                while (
-                    current_block - self.last_epoch_block
-                    < self.config.miner.blocks_per_epoch
-                ):
+                while current_block - self.last_epoch_block < self.config.miner.blocks_per_epoch:
                     # --- Wait for next bloc.
                     time.sleep(1)
                     current_block = self.subtensor.get_current_block()

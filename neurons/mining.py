@@ -1,17 +1,16 @@
 import base64
 import io
 import typing
-import torch
 from traceback import print_exception
 
 import bittensor as bt
+import protocol
+import torch
+from shap_e.diffusion.gaussian_diffusion import GaussianDiffusion, diffusion_from_config
 from shap_e.diffusion.sample import sample_latents
-from shap_e.models.download import load_model, load_config
-from shap_e.diffusion.gaussian_diffusion import diffusion_from_config, GaussianDiffusion
+from shap_e.models.download import load_config, load_model
 from shap_e.models.transmitter.base import Transmitter
 from shap_e.util.notebooks import decode_latent_mesh
-
-import protocol
 
 
 class TextTo3DModels:
@@ -67,9 +66,7 @@ def load_models(device: torch.device, cache_dir: str) -> TextTo3DModels:
     """
     model_cache_dir = f"{cache_dir}/shap_e_model_cache"
 
-    transmitter_instance = load_model(
-        "transmitter", device=device, cache_dir=model_cache_dir
-    )
+    transmitter_instance = load_model("transmitter", device=device, cache_dir=model_cache_dir)
     text_to_3d_model = load_model("text300M", device=device, cache_dir=model_cache_dir)
     config = load_config("diffusion", cache_dir=model_cache_dir)
     diffusion_instance = diffusion_from_config(config)

@@ -57,22 +57,24 @@ Ensure to replace `YOUR_MINER_COLD_WALLET` and `YOUR_MINER_HOT_WALLET` with your
 
 Before running the validator, ensure to install:
 ```commandline
-apt-get install libglfw3-dev libgles2-mesa-dev
+sudo apt update
+sudo apt install -y libglfw3-dev libgles2-mesa-dev libgl1-mesa-dev libgl1-mesa-glx xvfb
+```
+or use `setup-validator.sh`
+```commandline
+chmod +x setup-validator.sh
+./setup-validator.sh
 ```
 
 #### Launching the Validator
 
-Activate the validator with the following command:
+Edit `start-validator.sh` to set cold and hot wallet names and run it with
 ```commandline
-python neurons/validator.py --netuid 24 --subtensor.network finney --wallet.name YOUR_VALIDATOR_COLD_WALLET --wallet.hotkey YOUR_VALIDATOR_HOT_WALLET --logging.debug --neuron.device cuda:0
+chmod +x start-validator.sh
+./start-validator.sh
 ```
-Similarly, substitute `YOUR_VALIDATOR_COLD_WALLET` and `YOUR_VALIDATOR_HOT_WALLET` with the actual wallet names. This setup prioritizes GPU utilization for enhanced performance.
 
-## Persistent Process Management
-
-For sustained operation of the miner and validator, we advise employing PM2 or an equivalent process manager:
+You can use `ecosystem.config.json` to use run with PM2 if needed:
 ```commandline
-pm2 start --name miner neurons/miner.py -- [OPTIONS] 
-pm2 start --name validator neurons/validator.py -- [OPTIONS]
+pm2 start ecosystem.config.json
 ```
-Adjust the [OPTIONS] placeholder with respective command-line options as needed.

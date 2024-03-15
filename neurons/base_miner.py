@@ -8,11 +8,10 @@ from abc import ABC
 
 import bittensor as bt
 import bittensor.utils.weight_utils
+import protocol
 import torch
 from config import check_config
 from version import __spec_version__
-
-import protocol
 
 
 class BaseMinerNeuron(ABC):
@@ -53,13 +52,8 @@ class BaseMinerNeuron(ABC):
         bt.logging(config=config, logging_dir=config.full_path)
 
         self.device = torch.device(self.config.neuron.device)
-        if (
-                self.device.type.lower().startswith("cuda")
-                and not torch.cuda.is_available()
-        ):
-            raise RuntimeError(
-                f"{self.device.type} device is selected while CUDA is not available"
-            )
+        if self.device.type.lower().startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError(f"{self.device.type} device is selected while CUDA is not available")
 
         self.wallet = bt.wallet(config=self.config)
         bt.logging.info(f"Wallet: {self.wallet}")
@@ -214,8 +208,8 @@ class BaseMinerNeuron(ABC):
 
     def _check_for_registration(self):
         if not self.subtensor.is_hotkey_registered(
-                netuid=self.config.netuid,
-                hotkey_ss58=self.wallet.hotkey.ss58_address,
+            netuid=self.config.netuid,
+            hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
             raise RuntimeError(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
@@ -236,9 +230,7 @@ class BaseMinerNeuron(ABC):
         """
         Check if enough epoch blocks have elapsed since the last checkpoint to sync.
         """
-        return (
-                self.block() - self._last_resync_block
-        ) > self.config.neuron.epoch_length
+        return (self.block() - self._last_resync_block) > self.config.neuron.epoch_length
 
     def _resync_metagraph(self):
         """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""

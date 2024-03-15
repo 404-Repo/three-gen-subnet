@@ -58,9 +58,7 @@ async def query_synapse(my_uid, wallet_name, hotkey, network, netuid):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Query a Bittensor synapse with given parameters."
-    )
+    parser = argparse.ArgumentParser(description="Query a Bittensor synapse with given parameters.")
 
     # Adding arguments
     parser.add_argument(
@@ -70,12 +68,8 @@ if __name__ == "__main__":
         help="Your unique miner ID on the chain",
     )
     parser.add_argument("--netuid", type=int, required=True, help="Network Unique ID")
-    parser.add_argument(
-        "--wallet_name", type=str, default="default", help="Name of the wallet"
-    )
-    parser.add_argument(
-        "--hotkey", type=str, default="default", help="Hotkey for the wallet"
-    )
+    parser.add_argument("--wallet_name", type=str, default="default", help="Name of the wallet")
+    parser.add_argument("--hotkey", type=str, default="default", help="Hotkey for the wallet")
     parser.add_argument(
         "--network",
         type=str,

@@ -2,11 +2,10 @@ import time
 import typing
 
 import bittensor as bt
-
 import protocol
-from mining import load_models, TextTo3DModels, forward
 from base_miner import BaseMinerNeuron
 from config import read_config
+from mining import TextTo3DModels, forward, load_models
 
 
 class Miner(BaseMinerNeuron):
@@ -24,25 +23,17 @@ class Miner(BaseMinerNeuron):
 
     async def blacklist(self, synapse: protocol.TextTo3D) -> typing.Tuple[bool, str]:
         if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
-            bt.logging.trace(
-                f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}"
-            )
+            bt.logging.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
 
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
-        if (
-            self.config.blacklist.force_validator_permit
-            and not self.metagraph.validator_permit[uid]
-        ):
-            bt.logging.debug(
-                f"Blacklisting validator without the permit {synapse.dendrite.hotkey}"
-            )
+        if self.config.blacklist.force_validator_permit and not self.metagraph.validator_permit[uid]:
+            bt.logging.debug(f"Blacklisting validator without the permit {synapse.dendrite.hotkey}")
             return True, "No validator permit"
 
         if self.metagraph.S[uid] < self.config.blacklist.min_stake:
             bt.logging.debug(
-                f"Blacklisting - not enough stake {synapse.dendrite.hotkey} "
-                f"with {self.metagraph.S[uid]} TAO "
+                f"Blacklisting - not enough stake {synapse.dendrite.hotkey} " f"with {self.metagraph.S[uid]} TAO "
             )
             return True, "No validator permit"
 
@@ -52,9 +43,7 @@ class Miner(BaseMinerNeuron):
         try:
             uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
         except ValueError:
-            bt.logging.error(
-                f"Unregistered caller for priority calculation: {synapse.dendrite.hotkey}"
-            )
+            bt.logging.error(f"Unregistered caller for priority calculation: {synapse.dendrite.hotkey}")
             return 0.0
 
         return float(self.metagraph.S[uid])

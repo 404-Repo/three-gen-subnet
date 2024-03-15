@@ -127,17 +127,10 @@ class StreamPrompting(bt.StreamingSynapse):
                 - Roles and Messages pertaining to the current StreamPrompting instance.
                 - The accumulated completion.
         """
-        headers = {
-            k.decode("utf-8"): v.decode("utf-8")
-            for k, v in response.__dict__["_raw_headers"]
-        }
+        headers = {k.decode("utf-8"): v.decode("utf-8") for k, v in response.__dict__["_raw_headers"]}
 
         def extract_info(prefix):
-            return {
-                key.split("_")[-1]: value
-                for key, value in headers.items()
-                if key.startswith(prefix)
-            }
+            return {key.split("_")[-1]: value for key, value in headers.items() if key.startswith(prefix)}
 
         return {
             "name": headers.get("name", ""),
