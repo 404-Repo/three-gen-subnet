@@ -24,3 +24,5 @@ dependencies:
     - transformers==4.36.2
     - open-clip-torch==2.24.0
     - pytest==8.1.1
+    - bittensor==6.9.3
+
