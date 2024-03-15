@@ -34,7 +34,7 @@ cat <<EOF > validation.config.js
 module.exports = {
   apps : [{
     name: 'validation',
-    script: '-m validation.serve',
+    script: 'validation/serve.py',
     interpreter: '${CONDA_INTERPRETER_PATH}',
     args: '--port 8094'
   }]

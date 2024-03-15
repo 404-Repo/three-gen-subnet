@@ -1,3 +1,5 @@
+.ONESHELL:
+
 # Define the default target
 .DEFAULT_GOAL := help
 
@@ -15,28 +17,28 @@ else
 	SHELL := sh
 endif
 
-
 miner:
 	cd mining && \
-	$(SHELL) setup_env.sh && \
-	cd -
+	$(SHELL) setup_env.sh
+
 
 validator:
 	cd validation && \
-	$(SHELL) setup_env.sh && \
-	cd -
+	$(SHELL) setup_env.sh
 
 all: miner validator
 
+start_validator:
+	PYTHONPATH=. 
+	pm2 start validation/validation.config.js
+
 clean_miner:
 	cd mining && \
-	$(SHELL) cleanup_env.sh && \
-	cd -
+	$(SHELL) cleanup_env.sh
 
 clean_validator:
 	cd validation && \
-	$(SHELL) cleanup_env.sh && \
-	cd -
+	$(SHELL) cleanup_env.sh
 
 clean: clean_miner clean_validator
 
@@ -48,7 +50,8 @@ help:
 	@echo "Available targets:"
 	@echo "  miner                 - Run miner setup script"
 	@echo "  validator             - Run validator setup script"
-	@echo "  all                   - Run miner and validator setup scripts"	
+	@echo "  all                   - Run miner and validator setup scripts"
+	@echo "  start_validator       - Run validator startup script"	
 	@echo "  test                  - Run tests"
 	@echo "  clean_miner           - Run miner cleanup script"
 	@echo "  clean_validator       - Run validator cleanup script"
