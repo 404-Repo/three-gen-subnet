@@ -1,19 +1,56 @@
+# Define the default target
+.DEFAULT_GOAL := help
+
+# Define commands for Linux and macOS
+ifeq ($(shell uname -s),Linux)
+	PYTHON := python
+	SHELL := bash
+else ifeq ($(shell uname -s),Darwin)
+	PYTHON := python
+	SHELL := sh
+else
+# Define commands for Windows
+	PYTHON := python.exe
+# No idea how this works on Windows. Maybe Powershell or WSL ?
+	SHELL := sh
+endif
+
+
 miner:
-    ./miner/setup_env.sh
+	cd mining && \
+	$(SHELL) setup_env.sh && \
+	cd -
 
 validator:
-    ./validator/setup_env.sh
+	cd validation && \
+	$(SHELL) setup_env.sh && \
+	cd -
 
 all: miner validator
 
 clean_miner:
-    ./miner/cleanup_env.sh
+	cd mining && \
+	$(SHELL) cleanup_env.sh && \
+	cd -
 
 clean_validator:
-    ./validator/cleanup_env.sh
+	cd validation && \
+	$(SHELL) cleanup_env.sh && \
+	cd -
 
 clean: clean_miner clean_validator
 
 test:
-    python -m pytest --full-trace
+	python -m pytest --full-trace
 
+# Target: help
+help:
+	@echo "Available targets:"
+	@echo "  miner                 - Run miner setup script"
+	@echo "  validator             - Run validator setup script"
+	@echo "  all                   - Run miner and validator setup scripts"	
+	@echo "  test                  - Run tests"
+	@echo "  clean_miner           - Run miner cleanup script"
+	@echo "  clean_validator       - Run validator cleanup script"
+	@echo "  clean                 - Run miner and validator cleanup scripts"	
+	@echo "  help                  - Display this help message"
