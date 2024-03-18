@@ -27,7 +27,7 @@ class RequestData(BaseModel):
 
 
 class ResponseData(BaseModel):
-    scores: List[float]
+    score: float
 
 
 @app.post("/validate/", response_model=ResponseData)
@@ -49,13 +49,13 @@ async def validate(request: RequestData) -> ResponseData:
     t23D = protocol.TextTo3D(prompt_in=request.prompt, mesh_out=request.data)
     validator = TextTo3DModelValidator(512, 512, 10)
     validator.init_gaussian_splatting_renderer()
-    scores = validator.score_response_gs_input([t23D], save_images=False, cam_rad=4)
+    score = validator.score_response_gs_input([t23D], save_images=False, cam_rad=4)[0]
 
     t2 = time()
-    print("[INFO] Score: ", scores)
+    print("[INFO] Score: ", score)
     print("[INFO] Validation took: ", t2 - t1, " sec")
 
-    return {"score": scores.tolist()}
+    return {"score": score}
 
 
 if __name__ == "__main__":
