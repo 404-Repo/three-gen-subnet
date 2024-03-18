@@ -43,7 +43,7 @@ async def validate(request: RequestData) -> ResponseData:
 
     """
     print("[INFO] Start validating the input 3D data.")
-    print("[INFO] Input prompt: ", request.prompt)
+    print(f"[INFO] Input prompt: {request.prompt}")
     t1 = time()
 
     t23D = protocol.TextTo3D(prompt_in=request.prompt, mesh_out=request.data)
@@ -52,8 +52,8 @@ async def validate(request: RequestData) -> ResponseData:
     score = validator.score_response_gs_input([t23D], save_images=False, cam_rad=4)[0]
 
     t2 = time()
-    print("[INFO] Score: ", score)
-    print("[INFO] Validation took: ", t2 - t1, " sec")
+    print(f"[INFO] Score: {score}")
+    print(f"[INFO] Validation took: {t2 - t1} sec")
 
     return {"score": score}
 
