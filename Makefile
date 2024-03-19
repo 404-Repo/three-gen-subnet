@@ -17,7 +17,7 @@ else
 	SHELL := sh
 endif
 
-miner:
+mining:
 	cd mining && \
 	$(SHELL) setup_env.sh
 
@@ -29,8 +29,8 @@ validator:
 all: miner validator
 
 start_validator:
-	PYTHONPATH=. 
-	pm2 start validation/validation.config.js
+	cd validation && \
+	pm2 start validation.config.js
 
 clean_miner:
 	cd mining && \
@@ -48,8 +48,8 @@ test:
 # Target: help
 help:
 	@echo "Available targets:"
-	@echo "  miner                 - Run miner setup script"
-	@echo "  validator             - Run validator setup script"
+	@echo "  mining                - Run miner setup script"
+	@echo "  validation            - Run validator setup script"
 	@echo "  all                   - Run miner and validator setup scripts"
 	@echo "  start_validator       - Run validator startup script"	
 	@echo "  test                  - Run tests"

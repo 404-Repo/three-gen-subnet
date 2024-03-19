@@ -7,10 +7,9 @@ from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
 
-from neurons.old import protocol
-from validation.lib.camera_utils import orbit_camera, OrbitCamera
-from validation.lib.hdf5_loader import HDF5Loader
-from validation.lib.gaussian_splatting_renderer import GSRenderer, BasicCamera
+from lib.camera_utils import orbit_camera, OrbitCamera
+from lib.hdf5_loader import HDF5Loader
+from lib.gaussian_splatting_renderer import GSRenderer, BasicCamera
 
 
 class TextTo3DModelValidator:
@@ -43,68 +42,62 @@ class TextTo3DModelValidator:
 
     def score_response_gs_input(
         self,
-        synapses: list[protocol.TextTo3D],
+        prompt: str,
+        data: str,
         cam_rad=1.5,
         cam_elev=0,
         save_images: bool = False,
     ):
         print("[INFO] Start scoring the response.")
 
-        scores = np.zeros(len(synapses), dtype=float)
         orbitcam = OrbitCamera(
             self.__img_width, self.__img_height, r=cam_rad, fovy=49.1
         )
 
-        for synapse, i in zip(synapses, range(len(synapses))):
-            if synapse.mesh_out is None:
-                continue
+        pcl_raw = base64.b64decode(data)
+        pcl_buffer = io.BytesIO(pcl_raw)
+        data_dict = self.__hdf5_loader.unpack_point_cloud_from_io_buffer(pcl_buffer)
 
-            pcl_raw = base64.b64decode(synapse.mesh_out)
-            pcl_buffer = io.BytesIO(pcl_raw)
-            data_dict = self.__hdf5_loader.unpack_point_cloud_from_io_buffer(pcl_buffer)
+        self.__renderer.initialize(data_dict)
 
-            self.__renderer.initialize(data_dict)
+        rendered_images = []
+        step = 360 // self.__views
 
-            rendered_images = []
-            step = 360 // self.__views
+        # avoid too large elevation (> 80 or < -80), and make sure it always cover [min_ver, max_ver]
+        min_ver = max(min(-20, -20 - cam_elev), -30 - cam_elev)
+        max_ver = min(max(20, 20 - cam_elev), 30 - cam_elev)
 
-            # avoid too large elevation (> 80 or < -80), and make sure it always cover [min_ver, max_ver]
-            min_ver = max(min(-20, -20 - cam_elev), -30 - cam_elev)
-            max_ver = min(max(20, 20 - cam_elev), 30 - cam_elev)
+        for azimd in range(0, 360, step):
+            ver = np.random.randint(min_ver, max_ver)
 
-            for azimd in range(0, 360, step):
-                ver = np.random.randint(min_ver, max_ver)
+            pose = orbit_camera(cam_elev + ver, azimd, cam_rad)
+            camera = BasicCamera(
+                pose,
+                self.__img_width,
+                self.__img_height,
+                orbitcam.fovy,
+                orbitcam.fovx,
+                orbitcam.near,
+                orbitcam.far,
+            )
 
-                pose = orbit_camera(cam_elev + ver, azimd, cam_rad)
-                camera = BasicCamera(
-                    pose,
-                    self.__img_width,
-                    self.__img_height,
-                    orbitcam.fovy,
-                    orbitcam.fovx,
-                    orbitcam.near,
-                    orbitcam.far,
-                )
+            output_dict = self.__renderer.render(camera)
+            img = output_dict["image"].permute(1, 2, 0)
+            img = img.detach().cpu().numpy() * 255
+            img = np.concatenate(
+                (img, 255 * np.ones((img.shape[0], img.shape[1], 1))), axis=2
+            ).astype(np.uint8)
+            img = Image.fromarray(img)
+            rendered_images.append(img)
 
-                output_dict = self.__renderer.render(camera)
-                img = output_dict["image"].permute(1, 2, 0)
-                img = img.detach().cpu().numpy() * 255
-                img = np.concatenate(
-                    (img, 255 * np.ones((img.shape[0], img.shape[1], 1))), axis=2
-                ).astype(np.uint8)
-                img = Image.fromarray(img)
-                rendered_images.append(img)
+        if save_images:
+            for j, im in enumerate(rendered_images):
+                im.save(os.path.curdir + "/images/img" + str(j) + "_" + str(i) + ".png")
 
-            if save_images:
-                for j, im in enumerate(rendered_images):
-                    im.save(
-                        os.path.curdir + "/images/img" + str(j) + "_" + str(i) + ".png"
-                    )
-
-            scores[i] = self._score_images(rendered_images, synapse.prompt_in)
+        score = self._score_images(rendered_images, prompt)
 
         print("[INFO] Done.")
-        return scores
+        return score
 
     def _preload_clip_model(self):
         print("[INFO] Preloading CLIP model for validation.")

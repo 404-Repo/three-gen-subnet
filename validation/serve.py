@@ -6,8 +6,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 
-from neurons.old import protocol
-from validation.lib.validators import TextTo3DModelValidator
+from lib.validators import TextTo3DModelValidator
 
 
 def get_args():
@@ -46,10 +45,11 @@ async def validate(request: RequestData) -> ResponseData:
     print(f"[INFO] Input prompt: {request.prompt}")
     t1 = time()
 
-    t23D = protocol.TextTo3D(prompt_in=request.prompt, mesh_out=request.data)
     validator = TextTo3DModelValidator(512, 512, 10)
     validator.init_gaussian_splatting_renderer()
-    score = validator.score_response_gs_input([t23D], save_images=False, cam_rad=4)[0]
+    score = validator.score_response_gs_input(
+        request.prompt, request.data, save_images=False, cam_rad=4
+    )[0]
 
     t2 = time()
     print(f"[INFO] Score: {score}")
