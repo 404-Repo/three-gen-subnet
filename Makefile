@@ -17,7 +17,7 @@ else
 	SHELL := sh
 endif
 
-mining:
+miner:
 	cd mining && \
 	$(SHELL) setup_env.sh
 
@@ -48,8 +48,8 @@ test:
 # Target: help
 help:
 	@echo "Available targets:"
-	@echo "  mining                - Run miner setup script"
-	@echo "  validation            - Run validator setup script"
+	@echo "  miner               - Run miner setup script"
+	@echo "  validator            - Run validator setup script"
 	@echo "  all                   - Run miner and validator setup scripts"
 	@echo "  start_validator       - Run validator startup script"	
 	@echo "  test                  - Run tests"
