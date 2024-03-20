@@ -28,7 +28,7 @@ async def main():
 
     bt.logging.info(f"Other axons: {axons}")
 
-    task = synapses.TGTask(prompt="Dog", task_id=str(uuid.uuid4()))
+    task = protocol.TGTask(prompt="Dog", task_id=str(uuid.uuid4()))
 
     await dendrite.forward(
         axons=axons,
@@ -39,10 +39,10 @@ async def main():
 
     bt.logging.info("Task sent")
 
-    poll = synapses.TGPoll(task_id=task.task_id)
+    poll = protocol.TGPoll(task_id=task.task_id)
     while True:
         rs = typing.cast(
-            list[synapses.TGPoll],
+            list[protocol.TGPoll],
             await dendrite.forward(
                 axons=axons,
                 synapse=poll,

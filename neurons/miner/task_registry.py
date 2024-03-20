@@ -44,13 +44,13 @@ class TaskRegistry:
         """Returns True if the task queue is full, otherwise False."""
         return self._queue.full()
 
-    def add_task(self, syn: synapses.TGTask, validator_stake: float):
+    def add_task(self, syn: protocol.TGTask, validator_stake: float):
         """
         Asynchronously registers a new task in the system with given parameters, using the validator's stake
         as a priority indicator, and enqueues it for execution.
 
         Args:
-        - syn (synapses.TGTaskV1): synapse received from the validator
+        - syn (protocol.TGTaskV1): synapse received from the validator
         - validator_stake (float): The validator's stake, used to prioritize the task in the queue.
         """
 
