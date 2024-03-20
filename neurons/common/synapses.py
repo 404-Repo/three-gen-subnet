@@ -3,17 +3,6 @@ from typing import Literal
 import bittensor as bt
 
 
-class TGHandshakeV1(bt.Synapse):
-    """
-    Serves as both the initial and periodic communication between a Miner and a Validator.
-    Facilitates the discovery of active neurons within the subnet and assesses the operational
-    capacity concerning the number of generation endpoints maintained by the miner.
-    Note: Only a single generation endpoint is supported in the current implementation.
-    """
-
-    active_generation_endpoints: int | None = None  # The number of active generation endpoints managed by the miner.
-
-
 class TGTaskV1(bt.Synapse):
     """
     Represents a task for generating 3D content, assigned from a validator to a miner.
@@ -21,7 +10,7 @@ class TGTaskV1(bt.Synapse):
 
     prompt: str  # Prompt to use for 3D generation
     task_id: str  # Task identifier for tracking and status updates.
-    error: Literal["QUEUE_FULL"] | None = None
+    status: Literal["IN QUEUE", "ERROR_QUEUE_FULL"] | None = None
 
 
 class TGPollV1(bt.Synapse):
