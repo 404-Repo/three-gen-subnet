@@ -16,19 +16,16 @@ def h5_to_base64():
 
 async def send_json_request(url, json_body):
     async with aiohttp.ClientSession() as session:
-        headers = {'Content-Type': 'application/json'}
+        headers = {"Content-Type": "application/json"}
         async with session.post(url, data=json.dumps(json_body), headers=headers) as response:
             response_json = await response.json()
             return response_json
 
 
 async def main():
-    url = 'http://34.123.125.222:8094/validate/'
+    url = "http://34.123.125.222:8094/validate/"
 
-    json_body = {
-        "prompt": "A tiger",
-        "data": h5_to_base64()
-    }
+    json_body = {"prompt": "A tiger", "data": h5_to_base64()}
 
     # Send the JSON request
     r = await asyncio.gather(send_json_request(url, json_body), send_json_request(url, json_body))

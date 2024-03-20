@@ -3,7 +3,7 @@ from typing import Literal
 import bittensor as bt
 
 
-class TGTaskV1(bt.Synapse):
+class TGTask(bt.Synapse):
     """
     Represents a task for generating 3D content, assigned from a validator to a miner.
     """
@@ -13,7 +13,7 @@ class TGTaskV1(bt.Synapse):
     status: Literal["IN QUEUE", "ERROR_QUEUE_FULL"] | None = None
 
 
-class TGPollV1(bt.Synapse):
+class TGPoll(bt.Synapse):
     """
     Used for querying the current status of a 3D generation task.
     This request facilitates periodic checking by the validator to monitor task progression.
@@ -24,7 +24,7 @@ class TGPollV1(bt.Synapse):
     results: bytes | None = None  # Binary content of the generated 3D model, provided when task is "DONE".
 
 
-class TGJobDoneCallbackV1(bt.Synapse):
+class TGJobDoneCallback(bt.Synapse):
     """
     Notification sent from a miner to a validator to signal the completion of a 3D generation task.
     This callback mechanism allows for asynchronous alerting upon task finalization.

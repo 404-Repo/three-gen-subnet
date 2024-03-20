@@ -7,7 +7,7 @@ import uuid
 
 import bittensor as bt
 
-from common import synapses
+from common import protocol
 
 
 async def main():
@@ -28,7 +28,7 @@ async def main():
 
     bt.logging.info(f"Other axons: {axons}")
 
-    task = synapses.TGTaskV1(prompt="Dog", task_id=str(uuid.uuid4()))
+    task = synapses.TGTask(prompt="Dog", task_id=str(uuid.uuid4()))
 
     await dendrite.forward(
         axons=axons,
@@ -39,10 +39,10 @@ async def main():
 
     bt.logging.info("Task sent")
 
-    poll = synapses.TGPollV1(task_id=task.task_id)
+    poll = synapses.TGPoll(task_id=task.task_id)
     while True:
         rs = typing.cast(
-            list[synapses.TGPollV1],
+            list[synapses.TGPoll],
             await dendrite.forward(
                 axons=axons,
                 synapse=poll,

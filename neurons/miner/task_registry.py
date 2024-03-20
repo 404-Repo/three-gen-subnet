@@ -4,7 +4,7 @@ from queue import PriorityQueue
 import bittensor as bt
 from pydantic import BaseModel, Field
 
-from common import synapses
+from common import protocol
 
 
 class Task(BaseModel):
@@ -44,7 +44,7 @@ class TaskRegistry:
         """Returns True if the task queue is full, otherwise False."""
         return self._queue.full()
 
-    def add_task(self, syn: synapses.TGTaskV1, validator_stake: float):
+    def add_task(self, syn: synapses.TGTask, validator_stake: float):
         """
         Asynchronously registers a new task in the system with given parameters, using the validator's stake
         as a priority indicator, and enqueues it for execution.

@@ -1,15 +1,20 @@
 import argparse
 import asyncio
 import copy
+import os
+import random
 import time
+import uuid
+from typing import cast
 
 import bittensor as bt
 import torch
 from bittensor.utils import weight_utils
 
 from common import create_neuron_dir
+from common.protocol import TGTask, TGPoll
 
-# TODO: support dynaic neurons number increase
+# TODO: support dynamic neurons number increase
 NEURONS_LIMIT = 256
 
 
@@ -28,10 +33,14 @@ class Validator:
     """Dendrite to access other neurons."""
     scores: torch.Tensor
     """Miners' current scores. On a scale from 0 to 1"""
+    active_miners: set[int]
+    """Miners that were active during the last loads."""
     last_sync_time = 0.0
     """Last metagraph sync time."""
     last_info_time = 0.0
     """Last time neuron info was logged."""
+    last_load_time = 0.0
+    """Last time miners were loaded."""
 
     def __init__(self, config: bt.config):
         self.config: bt.config = copy.deepcopy(config)
@@ -65,35 +74,33 @@ class Validator:
         )
 
         self.scores = torch.zeros(NEURONS_LIMIT, dtype=torch.float32)
+        for i in range(14):
+            self.scores[i] = 0.5
 
-        # TODO: load/save state
-        # TODO: weights update
+        self.active_miners = set()
 
-    def _check_for_registration(self):
+        self._load_state()
+
+    def _check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
-                netuid=self.config.netuid,
-                hotkey_ss58=self.wallet.hotkey.ss58_address,
+            netuid=self.config.netuid,
+            hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
             raise RuntimeError(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
                 f" Please register the hotkey using `btcli subnets register` before trying again."
             )
 
-    async def run(self):
-        # bt.logging.debug("Starting the workers.")
-
-        # for endpoint in [self.config.generation.endpoint]:
-        #     thread = threading.Thread(target=partial(worker_task, endpoint, self.task_registry))
-        #     thread.start()
-
+    async def run(self) -> None:
         bt.logging.debug("Starting the validator.")
 
         while True:
             await asyncio.sleep(5)
             self._log_info()
-            self._set_weights()
+            self._sync_and_set_weights()
+            await self._load_miners()
 
-    def _log_info(self):
+    def _log_info(self) -> None:
         if self.last_info_time + self.config.neuron.log_info_interval > time.time():
             return
 
@@ -112,7 +119,7 @@ class Validator:
         )
         bt.logging.info(log)
 
-    def _set_weights(self):
+    def _sync_and_set_weights(self) -> None:
         if self.last_sync_time + self.config.neuron.sync_interval > time.time():
             return
 
@@ -123,9 +130,6 @@ class Validator:
         bt.logging.info("Metagraph synchronized")
 
         # Scores are not reset deliberately, so that new miners can start from the lowest emission but not from zero.
-
-        bt.logging.info(f"!!!!!!!!!!!!!!!! {len(self.metagraph.axons)}")
-        bt.logging.info(f"!!!!!!!!!!!!!!!! {self.metagraph.W}")
 
         if self.metagraph.last_update[self.uid] + self.config.neuron.epoch_length > self.metagraph.block:
             return
@@ -152,27 +156,135 @@ class Validator:
             uids=processed_weight_uids, weights=processed_weights
         )
 
-        result = self.subtensor.set_weights(
+        self.subtensor.set_weights(
             wallet=self.wallet,
             netuid=self.config.netuid,
             uids=converted_uids,
             weights=converted_weights,
-            wait_for_finalization=True,
-            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            wait_for_inclusion=False,
             version_key=1,
         )
-        if not result:
-            bt.logging.error("WAAAGH!")
 
-    def probe_or_better_name(self):
-        # get random neurons with endpoints (passed handshake)
-        # create task
-        # send task to random
-        # for now, task timeout should be equal to delay
-        # ? Synthetic vs organic ?
-        # Delay next synthetic if organic (enough organic) received?
-        # repeat polling, removing completed/failed
-        pass
+        self._save_state()
+
+    async def _load_miners(self) -> None:
+        if self.last_load_time + self.config.neuron.sample_interval > time.time():
+            return
+
+        self.last_load_time = time.time()
+
+        cavies = self._get_random_miners(self.config.neuron.sample_size)
+        prompt = self._get_next_task()
+        task = TGTask(prompt=prompt, task_id=str(uuid.uuid4()))
+
+        bt.logging.debug(f"Loading miners: {cavies}. Task_id: {task.task_id}. Prompt: {task.prompt}")
+
+        synapses = cast(
+            list[TGTask],
+            await self.dendrite.forward(
+                axons=[self.metagraph.axons[uid] for uid in cavies],
+                synapse=task,
+                deserialize=False,
+            ),
+        )
+
+        strong = {uid for uid, s in zip(cavies, synapses) if s.status == "IN QUEUE"}
+        weak = [uid for uid, s in zip(cavies, synapses) if s.status != "IN QUEUE"]
+
+        bt.logging.debug(f"Registered task with {strong}. Failed with {weak}")
+
+        if strong:
+            self.active_miners.update(strong)
+            asyncio.create_task(self._concurrent_poll(prompt, task.task_id, strong))
+
+        for uid in weak:
+            self._update_miner_score(uid, 0.0)
+
+    def _get_random_miners(self, sample_size: int) -> list[int]:
+        all_uids = list(range(self.metagraph.n))
+        del all_uids[self.uid]
+        random.shuffle(all_uids)
+        return all_uids[:sample_size]
+
+    def _get_next_task(self) -> str:
+        return "A Tiger"
+
+    def _update_miner_score(self, uid: int, observation: float) -> None:
+        alpha = self.config.neuron.moving_average_alpha
+        prev = self.scores[uid].item()
+        new = prev * (1 - alpha) + alpha * observation
+        self.scores[uid] = new
+
+        bt.logging.debug(f"Miner {uid} score update: {prev} -> {new}")
+
+    async def _concurrent_poll(self, prompt: str, task_id: str, miners: set[int]) -> None:
+        # TODO: implement registry and callback
+        current_time = time.time()
+        start_time = current_time
+        poll_time = current_time
+        while bool(miners) and start_time + self.config.neuron.task_timeout > current_time:
+            await asyncio.sleep(max(0.1, poll_time + self.config.neuron.task_poll_interval - current_time))
+            poll_time = current_time
+
+            bt.logging.info(f"------- {start_time} -- {current_time} -- {miners}")
+
+            poll = TGPoll(task_id=task_id)
+
+            synapses = cast(
+                list[TGPoll],
+                await self.dendrite.forward(
+                    axons=[self.metagraph.axons[uid] for uid in miners],
+                    synapse=poll,
+                    deserialize=False,
+                ),
+            )
+
+            bt.logging.debug(f"Task {task_id} statuses: {', '.join(s.status or 'None' for s in synapses)}")
+
+            for uid, s in zip(set(miners), synapses):
+                if s.status in {None, "IN QUEUE", "IN PROGRESS"}:
+                    continue
+                if s.status == "DONE":
+                    # TODO: verify results
+                    quality_factor = 1.0
+                    time_factor = 1 - (poll_time - start_time) / self.config.neuron.task_timeout
+                    bt.logging.debug(
+                        f"Miner {uid} completed task in {poll_time - start_time} seconds. "
+                        f"Task size: {len(s.results or b'')}"
+                    )
+                    self._update_miner_score(uid, quality_factor * time_factor)
+                miners.remove(uid)
+
+            current_time = time.time()
+
+        if bool(miners):
+            bt.logging.info(f"Task {task_id} time out for {miners}")
+            for uid in miners:
+                self._update_miner_score(uid, 0)
+
+    def _save_state(self):
+        bt.logging.info("Saving validator state.")
+
+        torch.save(
+            {
+                "scores": self.scores,
+            },
+            self.config.neuron.full_path + "/state.pt",
+        )
+
+    def _load_state(self):
+        bt.logging.info("Loading validator state.")
+
+        if not os.path.exists(self.config.neuron.full_path + "/state.pt"):
+            bt.logging.warning("No saved state found")
+            return
+
+        try:
+            state = torch.load(self.config.neuron.full_path + "/state.pt")
+            self.scores = state["scores"]
+        except Exception as e:
+            bt.logging.exception(f"Failed to load the state: {e}")
 
 
 def read_config() -> bt.config:
@@ -224,6 +336,13 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
+        "--neuron.moving_average_alpha",
+        type=float,
+        help="Moving average alpha parameter for the score updating.",
+        default=0.05,
+    )
+
+    parser.add_argument(
         "--neuron.log_info_interval",
         type=int,
         help="Interval for logging the validator state, seconds.",
@@ -231,10 +350,24 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
+        "--neuron.task_poll_interval",
+        type=int,
+        help="Task polling interval, seconds.",
+        default=30,
+    )
+
+    parser.add_argument(
+        "--neuron.task_timeout",
+        type=int,
+        help="Task execution timeout, seconds.",
+        default=300,
+    )
+
+    parser.add_argument(
         "--validation.endpoint",
         type=str,
         help="Specifies the URL of the endpoint responsible for scoring 3D models. "
-             "This endpoint should handle the /validate/ POST route.",
+        "This endpoint should handle the /validate/ POST route.",
         default="http://127.0.0.1:10006",
     )
 

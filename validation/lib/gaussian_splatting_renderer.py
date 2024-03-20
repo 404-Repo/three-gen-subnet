@@ -20,12 +20,7 @@ class GSUtils:
         pass
 
     def build_rotation(self, r: torch.Tensor):
-        norm = torch.sqrt(
-            r[:, 0] * r[:, 0]
-            + r[:, 1] * r[:, 1]
-            + r[:, 2] * r[:, 2]
-            + r[:, 3] * r[:, 3]
-        )
+        norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
 
         q = r / norm[:, None]
         R = torch.zeros((q.size(0), 3, 3), device="cuda")
@@ -89,7 +84,6 @@ class BasicPointCloud(NamedTuple):
 
 
 class BasicGSModel:
-
     def __init__(self, sh_degree: int):
         self.__active_sh_degree = 0
         self.__max_sh_degree = sh_degree
@@ -113,9 +107,7 @@ class BasicGSModel:
         # setting up function calls (shortcuts)
         self._scaling_activation = torch.exp
         self._scaling_inv_activation = torch.log
-        self._covariance_activation = (
-            self.__gs_utils.build_covariance_from_scaling_rotation
-        )
+        self._covariance_activation = self.__gs_utils.build_covariance_from_scaling_rotation
         self._opacity_activation = torch.sigmoid
         self._inv_opacity_activation = self.__gs_utils.inverse_sigmoid
         self._rotation_activation = torch.nn.functional.normalize
@@ -150,17 +142,11 @@ class BasicGSModel:
     def get_max_sh_degree(self):
         return self.__max_sh_degree
 
-    def create_from_point_cloud(
-        self, pcd: BasicPointCloud, spatial_lr_scale: float = 1.0
-    ):
+    def create_from_point_cloud(self, pcd: BasicPointCloud, spatial_lr_scale: float = 1.0):
         self.__spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
-        features = (
-            torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2))
-            .float()
-            .cuda()
-        )
+        features = torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0] = fused_color
         features[:, 3:, 1:] = 0.0
 
@@ -175,19 +161,12 @@ class BasicGSModel:
         rots[:, 0] = 1
 
         opacities = self.__gs_utils.inverse_sigmoid(
-            0.1
-            * torch.ones(
-                (fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"
-            )
+            0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")
         )
 
         self.__xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
-        self.__features_dc = nn.Parameter(
-            features[:, :, 0:1].transpose(1, 2).contiguous().requires_grad_(True)
-        )
-        self.__features_rest = nn.Parameter(
-            features[:, :, 1:].transpose(1, 2).contiguous().requires_grad_(True)
-        )
+        self.__features_dc = nn.Parameter(features[:, :, 0:1].transpose(1, 2).contiguous().requires_grad_(True))
+        self.__features_rest = nn.Parameter(features[:, :, 1:].transpose(1, 2).contiguous().requires_grad_(True))
         self.__scaling = nn.Parameter(scales.requires_grad_(True))
         self.__rotation = nn.Parameter(rots.requires_grad_(True))
         self.__opacity = nn.Parameter(opacities.requires_grad_(True))
@@ -202,38 +181,20 @@ class BasicGSModel:
         rotation = data_dict["rotation"]
         sh_degree = data_dict["sh_degree"]
 
-        self.__xyz = nn.Parameter(
-            torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True)
-        )
+        self.__xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
         self.__features_dc = nn.Parameter(
-            torch.tensor(features_dc, dtype=torch.float, device="cuda")
-            .contiguous()
-            .requires_grad_(True)
+            torch.tensor(features_dc, dtype=torch.float, device="cuda").contiguous().requires_grad_(True)
         )
         self.__features_rest = nn.Parameter(
-            torch.tensor(features_rest, dtype=torch.float, device="cuda")
-            .contiguous()
-            .requires_grad_(True)
+            torch.tensor(features_rest, dtype=torch.float, device="cuda").contiguous().requires_grad_(True)
         )
-        self.__opacity = nn.Parameter(
-            torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(
-                True
-            )
-        )
-        self.__scaling = nn.Parameter(
-            torch.tensor(scaling, dtype=torch.float, device="cuda").requires_grad_(True)
-        )
-        self.__rotation = nn.Parameter(
-            torch.tensor(rotation, dtype=torch.float, device="cuda").requires_grad_(
-                True
-            )
-        )
+        self.__opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
+        self.__scaling = nn.Parameter(torch.tensor(scaling, dtype=torch.float, device="cuda").requires_grad_(True))
+        self.__rotation = nn.Parameter(torch.tensor(rotation, dtype=torch.float, device="cuda").requires_grad_(True))
         self.__active_sh_degree = sh_degree
 
     def get_covariance(self, scaling_modifier: float = 1.0):
-        return self._covariance_activation(
-            self.__scaling, scaling_modifier, self.__rotation
-        )
+        return self._covariance_activation(self.__scaling, scaling_modifier, self.__rotation)
 
 
 ########################################################################################################################################################################
@@ -253,7 +214,6 @@ class BasicCamera:
         znear: float,
         zfar: float,
     ):
-
         self.__image_width = width
         self.__image_height = height
         self.__FoVy = fovx
@@ -269,16 +229,12 @@ class BasicCamera:
 
         self.__world_view_transform = torch.tensor(world2cam).transpose(0, 1).cuda()
         self.__projection_matrix = (
-            self._get_projection_matrix(
-                znear=self.__znear, zfar=self.__zfar, fovX=self.__FoVx, fovY=self.__FoVy
-            )
+            self._get_projection_matrix(znear=self.__znear, zfar=self.__zfar, fovX=self.__FoVx, fovY=self.__FoVy)
             .transpose(0, 1)
             .cuda()
         )
 
-        self.__full_proj_transform = (
-            self.__world_view_transform @ self.__projection_matrix
-        )
+        self.__full_proj_transform = self.__world_view_transform @ self.__projection_matrix
         self.__camera_center = -torch.tensor(cam2world[:3, 3]).cuda()
 
     @staticmethod
@@ -336,10 +292,7 @@ class BasicCamera:
 
 
 class GSRenderer:
-    def __init__(
-        self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0
-    ):
-
+    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
         self.__sh_degree = sh_degree
         self.__white_background = white_background
         self.__radius = radius
@@ -368,9 +321,7 @@ class GSRenderer:
             xyz = np.stack((x, y, z), axis=1)
 
             shs = np.random.random((num_pts, 3)) / 255.0
-            pcd = BasicPointCloud(
-                points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3))
-            )
+            pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
             self.__gs_model.create_from_point_cloud(pcd, 10)
 
         elif isinstance(input, BasicPointCloud):
@@ -388,7 +339,6 @@ class GSRenderer:
         compute_cov3d_python: bool = False,
         convert_shs_python: bool = False,
     ):
-
         # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
         screenspace_points = (
             torch.zeros_like(
@@ -454,9 +404,7 @@ class GSRenderer:
                 )
                 dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
 
-                sh2rgb = eval_sh(
-                    self.__gs_model.get_active_sh_degree, shs_view, dir_pp_normalized
-                )
+                sh2rgb = eval_sh(self.__gs_model.get_active_sh_degree, shs_view, dir_pp_normalized)
                 colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
             else:
                 shs = self.__gs_model.get_features
