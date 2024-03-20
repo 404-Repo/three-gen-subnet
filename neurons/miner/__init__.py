@@ -116,7 +116,7 @@ class Miner:
                 self.last_sync_time = time.time()
                 self.metagraph.sync(subtensor=self.subtensor)
 
-    async def _task(self, synapse: synapses.TGTask) -> synapses.TGTask:
+    async def _task(self, synapse: protocol.TGTask) -> protocol.TGTask:
         bt.logging.debug(f"Task received from: {synapse.dendrite.hotkey}. Prompt: {synapse.prompt}")
 
         if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
@@ -130,10 +130,10 @@ class Miner:
         synapse.status = "IN QUEUE"
         return synapse
 
-    async def _blacklist_task(self, synapse: synapses.TGTask) -> Tuple[bool, str]:
+    async def _blacklist_task(self, synapse: protocol.TGTask) -> Tuple[bool, str]:
         return self._blacklist(synapse)
 
-    async def _poll(self, synapse: synapses.TGPoll) -> synapses.TGPoll:
+    async def _poll(self, synapse: protocol.TGPoll) -> protocol.TGPoll:
         task = self.task_registry.get_task(synapse.task_id)
         if task is None:
             synapse.status = "NOT FOUND"
@@ -156,7 +156,7 @@ class Miner:
 
         return synapse
 
-    async def _blacklist_poll(self, synapse: synapses.TGPoll) -> Tuple[bool, str]:
+    async def _blacklist_poll(self, synapse: protocol.TGPoll) -> Tuple[bool, str]:
         return self._blacklist(synapse)
 
     def _blacklist(self, synapse: bt.Synapse) -> Tuple[bool, str]:
