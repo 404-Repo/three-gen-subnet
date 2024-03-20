@@ -166,8 +166,6 @@ class Miner:
 
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
 
-        bt.logging.info(f"!!!! {uid} | {self.metagraph.validator_permit[uid]} | {self.metagraph.validator_permit}")
-
         if self.config.blacklist.vpermit_only and not self.metagraph.validator_permit[uid]:
             bt.logging.debug(f"Blacklisting validator without the permit {synapse.dendrite.hotkey}")
             return True, "No validator permit"
@@ -176,7 +174,7 @@ class Miner:
             bt.logging.debug(
                 f"Blacklisting - not enough stake {synapse.dendrite.hotkey} with {self.metagraph.S[uid]} TAO "
             )
-            return True, "No validator permit"
+            return True, "Not enough stake"
 
         return False, "OK"
 
@@ -224,7 +222,7 @@ def read_config() -> bt.config:
         "--blacklist.min_stake",
         type=int,
         help="Defines the minimum stake validator should have to send requests",
-        default=1000,
+        default=10,
     )
 
     parser.add_argument(
