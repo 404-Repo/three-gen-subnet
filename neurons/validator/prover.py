@@ -13,9 +13,9 @@ class ResponseData(BaseModel):
 def _quality_factor(validation_score: float) -> float:
     bt.logging.debug(f"Validation score: {validation_score}")
 
-    if validation_score > 0.9:
+    if validation_score > 0.8:
         return 1.0
-    if validation_score > 0.7:
+    if validation_score > 0.6:
         return 0.75
     return 0.0
 

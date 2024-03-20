@@ -53,8 +53,8 @@ async def main():
         bt.logging.info({a.hotkey: r.status for r, a in zip(rs, axons)})
         for r in rs:
             if r.status == "DONE":
-                with open("content_pcl.h5", "wb") as f:
-                    f.write(base64.b64decode(r.results))
+                with open("content_pcl.h5", "w") as f:
+                    f.write(r.results)
                 bt.logging.info("Result save to `content_pcl.h5`")
                 return
         await asyncio.sleep(10)
