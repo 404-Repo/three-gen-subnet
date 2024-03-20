@@ -165,6 +165,9 @@ class Miner:
             return True, "Unrecognized hotkey"
 
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
+
+        bt.logging.info(f"!!!! {uid} | {self.metagraph.validator_permit[uid]} | {self.metagraph.validator_permit}")
+
         if self.config.blacklist.vpermit_only and not self.metagraph.validator_permit[uid]:
             bt.logging.debug(f"Blacklisting validator without the permit {synapse.dendrite.hotkey}")
             return True, "No validator permit"
