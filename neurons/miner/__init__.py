@@ -46,7 +46,7 @@ class Miner:
         self._check_for_registration()
 
         self.metagraph = bt.metagraph(
-            netuid=self.config.netuid, network=self.subtensor.network, sync=False
+            netuid=self.config.netuid, network=self.subtensor.network, sync=False, lite=False
         )  # Make sure not to sync without passing subtensor
         self.metagraph.sync(subtensor=self.subtensor)  # Sync metagraph with subtensor.
         bt.logging.info(f"Metagraph: {self.metagraph}")
@@ -183,7 +183,7 @@ class Miner:
         log = (
             "Miner | "
             f"UID:{self.uid} | "
-            f"Block:{metagraph.block} | "
+            f"Block:{metagraph.block.item()} | "
             f"Stake:{metagraph.S[self.uid]:.4f} | "
             f"Trust:{metagraph.T[self.uid]:.4f} | "
             f"Incentive:{metagraph.I[self.uid]:.6f} | "

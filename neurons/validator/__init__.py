@@ -104,7 +104,7 @@ class Validator:
         log = (
             "Validator | "
             f"UID:{self.uid} | "
-            f"Block:{metagraph.block.int()} | "
+            f"Block:{metagraph.block.item()} | "
             f"Stake:{metagraph.S[self.uid]:.4f} | "
             f"VTrust:{metagraph.Tv[self.uid]:.4f} | "
             f"Dividends:{metagraph.D[self.uid]:.6f} | "
