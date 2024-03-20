@@ -31,8 +31,8 @@ async def main():
     }
 
     # Send the JSON request
-    response_json = await send_json_request(url, json_body)
-    print(response_json)
+    r = await asyncio.gather(send_json_request(url, json_body), send_json_request(url, json_body))
+    print(r)
 
 
 # Run the main function

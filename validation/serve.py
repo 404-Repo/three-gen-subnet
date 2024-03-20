@@ -49,13 +49,13 @@ async def validate(request: RequestData) -> ResponseData:
     validator.init_gaussian_splatting_renderer()
     score = validator.score_response_gs_input(
         request.prompt, request.data, save_images=False, cam_rad=4
-    )[0]
+    )
 
     t2 = time()
     print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec")
 
-    return {"score": score}
+    return ResponseData(score=score)
 
 
 if __name__ == "__main__":
