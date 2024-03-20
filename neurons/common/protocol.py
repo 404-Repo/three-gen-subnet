@@ -21,7 +21,7 @@ class TGPoll(bt.Synapse):
 
     task_id: str
     status: Literal["NOT FOUND", "FORBIDDEN", "IN QUEUE", "IN PROGRESS", "DONE", "FAILED"] | None = None
-    results: bytes | None = None  # Binary content of the generated 3D model, provided when task is "DONE".
+    results: str | None = None  # Binary content of the generated 3D model, provided when task is "DONE".
 
 
 class TGJobDoneCallback(bt.Synapse):

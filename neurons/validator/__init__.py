@@ -5,6 +5,7 @@ import os
 import random
 import time
 import uuid
+import urllib.parse
 from typing import cast
 
 import bittensor as bt
@@ -13,6 +14,7 @@ from bittensor.utils import weight_utils
 
 from common import create_neuron_dir
 from common.protocol import TGTask, TGPoll
+from validator.prover import prove_generation
 
 # TODO: support dynamic neurons number increase
 NEURONS_LIMIT = 256
@@ -74,9 +76,6 @@ class Validator:
         )
 
         self.scores = torch.zeros(NEURONS_LIMIT, dtype=torch.float32)
-        for i in range(14):
-            self.scores[i] = 0.5
-
         self.active_miners = set()
 
         self._load_state()
@@ -216,52 +215,62 @@ class Validator:
         new = prev * (1 - alpha) + alpha * observation
         self.scores[uid] = new
 
-        bt.logging.debug(f"Miner {uid} score update: {prev} -> {new}")
+        bt.logging.debug(f"Miner {uid} score update: {prev} + {observation} -> {new}")
 
     async def _concurrent_poll(self, prompt: str, task_id: str, miners: set[int]) -> None:
         # TODO: implement registry and callback
         current_time = time.time()
         start_time = current_time
         poll_time = current_time
-        while bool(miners) and start_time + self.config.neuron.task_timeout > current_time:
-            await asyncio.sleep(max(0.1, poll_time + self.config.neuron.task_poll_interval - current_time))
-            poll_time = current_time
 
-            bt.logging.info(f"------- {start_time} -- {current_time} -- {miners}")
+        while bool(miners) and start_time + self.config.neuron.task_timeout > current_time:
+            await asyncio.sleep(max(5, poll_time + self.config.neuron.task_poll_interval - current_time))
+
+            poll_time = time.time()
 
             poll = TGPoll(task_id=task_id)
-
             synapses = cast(
                 list[TGPoll],
                 await self.dendrite.forward(
                     axons=[self.metagraph.axons[uid] for uid in miners],
                     synapse=poll,
                     deserialize=False,
+                    timeout=30,
                 ),
             )
+
+            current_time = time.time()
 
             bt.logging.debug(f"Task {task_id} statuses: {', '.join(s.status or 'None' for s in synapses)}")
 
             for uid, s in zip(set(miners), synapses):
                 if s.status in {None, "IN QUEUE", "IN PROGRESS"}:
                     continue
-                if s.status == "DONE":
-                    # TODO: verify results
-                    quality_factor = 1.0
-                    time_factor = 1 - (poll_time - start_time) / self.config.neuron.task_timeout
-                    bt.logging.debug(
-                        f"Miner {uid} completed task in {poll_time - start_time} seconds. "
-                        f"Task size: {len(s.results or b'')}"
-                    )
-                    self._update_miner_score(uid, quality_factor * time_factor)
+
                 miners.remove(uid)
 
-            current_time = time.time()
+                if s.status != "DONE" or s.results is None:
+                    bt.logging.debug(f"Miner {uid} failed.")
+                    self._update_miner_score(uid, 0)
+                    continue
+
+                time_factor = 1 - (poll_time - start_time) / self.config.neuron.task_timeout
+
+                bt.logging.debug(
+                    f"Miner {uid} completed task in {poll_time - start_time} seconds. "
+                    f"Task size: {len(s.results or b'')}. Reward time factor: {time_factor}"
+                )
+
+                asyncio.create_task(self._concurrent_reward(uid, prompt, s.results, time_factor))
 
         if bool(miners):
             bt.logging.info(f"Task {task_id} time out for {miners}")
             for uid in miners:
                 self._update_miner_score(uid, 0)
+
+    async def _concurrent_reward(self, uid: int, prompt: str, result: str, time_factor: float) -> None:
+        quality_factor = await prove_generation(self.config.validation.endpoint, prompt, result)
+        self._update_miner_score(uid, quality_factor * time_factor)
 
     def _save_state(self):
         bt.logging.info("Saving validator state.")

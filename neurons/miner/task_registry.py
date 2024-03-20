@@ -14,7 +14,7 @@ class Task(BaseModel):
     # Prompt to use for generation.
     validator_hotkey: str
     # Hotkey of the validator sent the task.
-    results: bytes | None = None
+    results: str | None = None
     # Generation results.
     in_progress: bool = False
     # Flag indicating whether task execution has started.
@@ -100,7 +100,7 @@ class TaskRegistry:
         task.in_progress = False
         task.failed = True
 
-    def complete_task(self, task_id: str, results: bytes) -> None:
+    def complete_task(self, task_id: str, results: str) -> None:
         """
         Marks the specified task as completed, recording its output and the completion timestamp.
 
