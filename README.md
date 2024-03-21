@@ -97,34 +97,49 @@ pm2 start miner.config.js
 ```
 
 #### Monitoring Miner Activity
-Validators update the miner list hourly. It's normal not to observe requests in the initial 1.5 hours. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
+Validators update the miner every 20 minutes. It's normal not to observe requests in the initial hour. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
 ```commandline
 nc -vz [Your Miner IP] [Port]
 ```
 
-## Validation
+## Validator
 
-### Setup
-To install all dependencies and generate the run configuration execute the following command in the project base directory:
+To operate the validator, the validator neuron and validation endpoints must be initiated. 
+
+### Validation Endpoint
+
+#### Setup
+Set up the environment by navigating to the directory and running the setup script:
+```commandline
+cd three-gen-subnet/validation
+chmod +x setup_env.sh
+./setup_env.sh
 ```
-make validator
+This script creates a Conda environment `three-gen-validation`, installs dependencies, and sets up a PM2 configuration file (`validation.config.js`).
+
+#### Running
+After optional modifications to validation.config.js, initiate it using [PM2](https://pm2.io):
+```commandline
+pm2 start validation.config.js
 ```
 
-### Startup
-To start the validator service execute the following command in the project base directory:
+#### Validator Neuron
+
+#### Prerequisites
+
+Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
+
+#### Setup
+Prepare the neuron by executing the setup script in the `neurons` directory:
+```commandline
+cd three-gen-subnet/neurons
+chmod +x setup_env.sh
+./setup_env.sh
 ```
-make start_validator
+This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `validator.config.js` for PM2 configuration.
+
+#### Running
+Customize `validator.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
+```commandline
+pm2 start validator.config.js
 ```
-
-### Cleanup
-To remove all dependencies execute the following command in the project base directory:
-
-```
-make clean_validator
-```
-
-
-
-
-[//]: # (## TODO:)
-[//]: # (- tests and benchmarking on different setups)
