@@ -263,7 +263,7 @@ class GaussianProcessor:
                         )
 
                         # bg_color = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device="cuda")
-                        out_i = self.__renderer.render(cur_cam_i, bg_color=bg_color)
+                        out_i = self.__renderer.render(cur_cam_i, bg_color=bg_color, convert_SHs_python=True)
 
                         image = out_i["image"].unsqueeze(0)  # [1, 3, H, W] in [0, 1]
                         images.append(image)
