@@ -43,7 +43,7 @@ async def main():
             deserialize=False,
         ))
 
-        bt.logging.info(f"Response to the poll: {r}")
+        bt.logging.info(f"Response to the poll. Status: {r.status}. Bytes: {len(r.results or '')}")
 
         if r.status in {None, "IN QUEUE", "IN PROGRESS"}:
             continue
