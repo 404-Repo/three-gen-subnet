@@ -28,9 +28,22 @@ module.exports = {
     name: 'miner',
     script: 'serve_miner.py',
     interpreter: '${CONDA_INTERPRETER_PATH}',
-    args: '--wallet.name default --wallet.hotkey default --netuid 29 --axon.port 8091 --generation.endpoint http://127.0.0.1:8093 --logging.debug'
+    args: '--wallet.name default --wallet.hotkey default --subtensor.network test --netuid 89 --axon.port 8091 --generation.endpoint http://127.0.0.1:8093 --logging.debug'
   }]
 };
 EOF
 
 echo -e "\n\n[INFO] miner.config.js generated for PM2."
+
+cat <<EOF > validator.config.js
+module.exports = {
+  apps : [{
+    name: 'validator',
+    script: 'serve_validator.py',
+    interpreter: '${CONDA_INTERPRETER_PATH}',
+    args: '--wallet.name default --wallet.hotkey default --subtensor.network test --netuid 89 --axon.port 8092 --validation.endpoint http://127.0.0.1:8094 --logging.debug'
+  }]
+};
+EOF
+
+echo -e "\n\n[INFO] validator.config.js generated for PM2."
