@@ -40,11 +40,14 @@ async def main():
     while True:
         await asyncio.sleep(10)
 
-        r = typing.cast(protocol.TGPoll, await dendrite.call(
-            target_axon=metagraph.axons[alive_axon_uid],
-            synapse=poll,
-            deserialize=False,
-        ))
+        r = typing.cast(
+            protocol.TGPoll,
+            await dendrite.call(
+                target_axon=metagraph.axons[alive_axon_uid],
+                synapse=poll,
+                deserialize=False,
+            ),
+        )
 
         bt.logging.info(f"Response to the poll. Status: {r.status}. Bytes: {len(r.results or '')}")
 

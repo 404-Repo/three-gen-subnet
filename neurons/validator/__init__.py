@@ -14,7 +14,7 @@ from bittensor.utils import weight_utils
 from common import create_neuron_dir
 from common.protocol import TGTask, TGPoll
 from validator.dataset import Dataset
-from validator.prover import prove_generation
+from validator.fidelity_check import validate
 
 # TODO: support dynamic neurons number increase
 NEURONS_LIMIT = 256
@@ -269,8 +269,8 @@ class Validator:
                 self._update_miner_score(uid, 0)
 
     async def _concurrent_reward(self, uid: int, prompt: str, result: str, time_factor: float) -> None:
-        quality_factor = await prove_generation(self.config.validation.endpoint, prompt, result)
-        self._update_miner_score(uid, quality_factor * time_factor)
+        fidelity_factor = await validate(self.config.validation.endpoint, prompt, result)
+        self._update_miner_score(uid, fidelity_factor * time_factor)
 
     def _save_state(self):
         bt.logging.info("Saving validator state.")
