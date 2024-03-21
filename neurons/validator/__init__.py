@@ -5,7 +5,6 @@ import os
 import random
 import time
 import uuid
-import urllib.parse
 from typing import cast
 
 import bittensor as bt
@@ -14,6 +13,7 @@ from bittensor.utils import weight_utils
 
 from common import create_neuron_dir
 from common.protocol import TGTask, TGPoll
+from validator.dataset import Dataset
 from validator.prover import prove_generation
 
 # TODO: support dynamic neurons number increase
@@ -43,6 +43,7 @@ class Validator:
     """Last time neuron info was logged."""
     last_load_time = 0.0
     """Last time miners were loaded."""
+    dataset: Dataset
 
     def __init__(self, config: bt.config):
         self.config: bt.config = copy.deepcopy(config)
@@ -77,6 +78,8 @@ class Validator:
 
         self.scores = torch.zeros(NEURONS_LIMIT, dtype=torch.float32)
         self.active_miners = set()
+
+        self.dataset = Dataset(self.config.dataset.path)
 
         self._load_state()
 
@@ -174,7 +177,7 @@ class Validator:
         self.last_load_time = time.time()
 
         cavies = self._get_random_miners(self.config.neuron.sample_size)
-        prompt = self._get_next_task()
+        prompt = self.dataset.get_random_prompt()
         task = TGTask(prompt=prompt, task_id=str(uuid.uuid4()))
 
         bt.logging.debug(f"Loading miners: {cavies}. Task_id: {task.task_id}. Prompt: {task.prompt}")
@@ -206,16 +209,13 @@ class Validator:
         random.shuffle(all_uids)
         return all_uids[:sample_size]
 
-    def _get_next_task(self) -> str:
-        return "A Tiger"
-
     def _update_miner_score(self, uid: int, observation: float) -> None:
         alpha = self.config.neuron.moving_average_alpha
         prev = self.scores[uid].item()
         new = prev * (1 - alpha) + alpha * observation
         self.scores[uid] = new
 
-        bt.logging.debug(f"Miner {uid} score update: {prev} + {observation} -> {new}")
+        bt.logging.debug(f"Miner {uid:3d} score. Prev: {prev:.2f} | Obs: {observation:.2f} | New: {new:.2f}")
 
     async def _concurrent_poll(self, prompt: str, task_id: str, miners: set[int]) -> None:
         # TODO: implement registry and callback
@@ -226,7 +226,7 @@ class Validator:
         while bool(miners) and start_time + self.config.neuron.task_timeout > current_time:
             await asyncio.sleep(max(5, poll_time + self.config.neuron.task_poll_interval - current_time))
 
-            poll_time = time.time()
+            poll_time = current_time
 
             poll = TGPoll(task_id=task_id)
             synapses = cast(
@@ -241,7 +241,7 @@ class Validator:
 
             current_time = time.time()
 
-            bt.logging.debug(f"Task {task_id} statuses: {', '.join(s.status or 'None' for s in synapses)}")
+            bt.logging.trace(f"Task {task_id} statuses: {', '.join(s.status or 'None' for s in synapses)}")
 
             for uid, s in zip(set(miners), synapses):
                 if s.status in {None, "IN QUEUE", "IN PROGRESS"}:
@@ -254,17 +254,17 @@ class Validator:
                     self._update_miner_score(uid, 0)
                     continue
 
-                time_factor = 1 - (poll_time - start_time) / self.config.neuron.task_timeout
+                time_factor = max(0.0, 1 - (poll_time - start_time) / self.config.neuron.task_timeout)
 
                 bt.logging.debug(
-                    f"Miner {uid} completed task in {poll_time - start_time} seconds. "
-                    f"Task size: {len(s.results or b'')}. Reward time factor: {time_factor}"
+                    f"Miner {uid} completed task in {poll_time - start_time:.2f} seconds. "
+                    f"Task size: {len(s.results or b'')}. Reward time factor: {time_factor:.2f}"
                 )
 
                 asyncio.create_task(self._concurrent_reward(uid, prompt, s.results, time_factor))
 
         if bool(miners):
-            bt.logging.info(f"Task {task_id} time out for {miners}")
+            bt.logging.info(f"Task {task_id} timed out for {miners}")
             for uid in miners:
                 self._update_miner_score(uid, 0)
 
@@ -370,6 +370,13 @@ def read_config() -> bt.config:
         type=int,
         help="Task execution timeout, seconds.",
         default=300,
+    )
+
+    parser.add_argument(
+        "--dataset.path",
+        type=str,
+        help="Path to the file with the prompts (relative or absolute)",
+        default="resources/prompts.txt",
     )
 
     parser.add_argument(

@@ -10,8 +10,8 @@ class ResponseData(BaseModel):
     score: float
 
 
-def _quality_factor(validation_score: float) -> float:
-    bt.logging.debug(f"Validation score: {validation_score}")
+def _quality_factor(prompt: str, validation_score: float) -> float:
+    bt.logging.debug(f"Validation score: {validation_score:.2f} | Prompt: {prompt}")
 
     if validation_score > 0.8:
         return 1.0
@@ -27,7 +27,7 @@ async def prove_generation(endpoint: str, prompt: str, data: str) -> float:
         response = requests.post(generate_url, json={"prompt": prompt, "data": data})
         if response.status_code == 200:
             results = response.json()
-            return _quality_factor(results["score"])
+            return _quality_factor(prompt, results["score"])
         else:
             bt.logging.error(f"Validation failed with code: {response.status_code}")
     except requests.ConnectionError:
