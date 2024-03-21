@@ -16,10 +16,21 @@ class HDF5Loader:
         return np.array(data, dtype=data.dtype)
 
     # xyz, normals, f_dc, f_rest, opacities, scale, rotation
-    def save_point_cloud_to_h5(self, points: np.ndarray, normals: np.ndarray, features_dc: np.ndarray, features_rest: np.ndarray, opacities: np.ndarray,
-                               scale: np.ndarray, rotation: np.ndarray, sh_degree: int, h5file_name: str, h5file_path: str):
+    def save_point_cloud_to_h5(
+        self,
+        points: np.ndarray,
+        normals: np.ndarray,
+        features_dc: np.ndarray,
+        features_rest: np.ndarray,
+        opacities: np.ndarray,
+        scale: np.ndarray,
+        rotation: np.ndarray,
+        sh_degree: int,
+        h5file_name: str,
+        h5file_path: str,
+    ):
         h5_fpath = h5file_path + "/" + h5file_name + "_pcl.h5"
-        file = h5.File(h5_fpath, mode='w')
+        file = h5.File(h5_fpath, mode="w")
 
         self._create_dataset(file, "points", points)
         self._create_dataset(file, "normals", normals)
@@ -34,7 +45,7 @@ class HDF5Loader:
 
     def load_point_cloud_from_h5(self, h5file_name: str, h5file_path: str):
         h5_fpath = h5file_path + "/" + h5file_name + "_pcl.h5"
-        file = h5.File(h5_fpath, mode='r')
+        file = h5.File(h5_fpath, mode="r")
 
         points = self._get_dataset(file, "points")
         normals = self._get_dataset(file, "normals")
@@ -47,21 +58,30 @@ class HDF5Loader:
         file.close()
 
         data_dict = {}
-        data_dict['points'] = points
-        data_dict['normals'] = normals
-        data_dict['features_dc'] = features_dc
-        data_dict['features_rest'] = features_rest
-        data_dict['opacities'] = opacities
-        data_dict['scale'] = scale
-        data_dict['rotation'] = rotation
-        data_dict['sh_degree'] = sh_degree
+        data_dict["points"] = points
+        data_dict["normals"] = normals
+        data_dict["features_dc"] = features_dc
+        data_dict["features_rest"] = features_rest
+        data_dict["opacities"] = opacities
+        data_dict["scale"] = scale
+        data_dict["rotation"] = rotation
+        data_dict["sh_degree"] = sh_degree
 
         return data_dict
 
-    def pack_point_cloud_to_io_buffer(self, points: np.ndarray, normals: np.ndarray, features_dc: np.ndarray, features_rest: np.ndarray, opacities: np.ndarray,
-                                      scale: np.ndarray, rotation: np.ndarray, sh_degree: int):
+    def pack_point_cloud_to_io_buffer(
+        self,
+        points: np.ndarray,
+        normals: np.ndarray,
+        features_dc: np.ndarray,
+        features_rest: np.ndarray,
+        opacities: np.ndarray,
+        scale: np.ndarray,
+        rotation: np.ndarray,
+        sh_degree: int,
+    ):
         buffer = io.BytesIO()
-        with h5.File(buffer, 'w', driver='fileobj') as file:
+        with h5.File(buffer, "w", driver="fileobj") as file:
             self._create_dataset(file, "points", points)
             self._create_dataset(file, "normals", normals)
             self._create_dataset(file, "features_dc", features_dc)
@@ -73,7 +93,7 @@ class HDF5Loader:
         return buffer
 
     def unpack_point_cloud_from_io_buffer(self, buffer: io.BytesIO):
-        with h5.File(buffer, 'r', driver='fileobj') as file:
+        with h5.File(buffer, "r", driver="fileobj") as file:
             points = self._get_dataset(file, "points")
             normals = self._get_dataset(file, "normals")
             features_dc = self._get_dataset(file, "features_dc")
@@ -84,13 +104,13 @@ class HDF5Loader:
             sh_degree = int(self._get_dataset(file, "sh_degree")[0])
 
         data_dict = {}
-        data_dict['points'] = points
-        data_dict['normals'] = normals
-        data_dict['features_dc'] = features_dc
-        data_dict['features_rest'] = features_rest
-        data_dict['opacities'] = opacities
-        data_dict['scale'] = scale
-        data_dict['rotation'] = rotation
-        data_dict['sh_degree'] = sh_degree
+        data_dict["points"] = points
+        data_dict["normals"] = normals
+        data_dict["features_dc"] = features_dc
+        data_dict["features_rest"] = features_rest
+        data_dict["opacities"] = opacities
+        data_dict["scale"] = scale
+        data_dict["rotation"] = rotation
+        data_dict["sh_degree"] = sh_degree
 
         return data_dict
