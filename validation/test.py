@@ -23,7 +23,7 @@ async def send_json_request(url, json_body):
 
 
 async def main():
-    url = "http://34.123.125.222:8094/validate/"
+    url = "http://127.0.0.1:8094/validate/"
 
     json_body = {"prompt": "A tiger", "data": h5_to_base64()}
 
