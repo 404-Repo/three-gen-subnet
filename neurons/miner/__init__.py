@@ -8,7 +8,7 @@ from typing import Tuple
 
 import bittensor as bt
 
-from common import create_neuron_dir, synapses
+from common import create_neuron_dir, protocol
 from miner.task_registry import TaskRegistry
 from miner.workers import worker_task
 
@@ -27,6 +27,7 @@ class Miner:
     axon: bt.axon | None = None
     """Axon for external connections."""
     last_sync_time = 0.0
+
     """Last time the metagraph was synchronized."""
     task_registry: TaskRegistry
 
@@ -45,7 +46,7 @@ class Miner:
         self._check_for_registration()
 
         self.metagraph = bt.metagraph(
-            netuid=self.config.netuid, network=self.subtensor.network, sync=False
+            netuid=self.config.netuid, network=self.subtensor.network, sync=False, lite=False
         )  # Make sure not to sync without passing subtensor
         self.metagraph.sync(subtensor=self.subtensor)  # Sync metagraph with subtensor.
         bt.logging.info(f"Metagraph: {self.metagraph}")
@@ -66,9 +67,6 @@ class Miner:
         bt.logging.info("Attaching forward function to the miner axon.")
 
         self.axon.attach(
-            forward_fn=self._handshake,
-            blacklist_fn=self._blacklist_handshake,
-        ).attach(
             forward_fn=self._task,
             blacklist_fn=self._blacklist_task,
         ).attach(
@@ -110,7 +108,7 @@ class Miner:
         )
 
         while True:
-            bt.logging.info("Miner running...", time.time())
+            self._log_info()
             await asyncio.sleep(30)
 
             if self.last_sync_time + self.config.neuron.sync_interval < time.time():
@@ -118,15 +116,7 @@ class Miner:
                 self.last_sync_time = time.time()
                 self.metagraph.sync(subtensor=self.subtensor)
 
-    async def _handshake(self, synapse: synapses.TGHandshakeV1) -> synapses.TGHandshakeV1:
-        bt.logging.debug(f"Handshake received from: {synapse.dendrite.hotkey}")
-        synapse.active_generation_endpoints = 1
-        return synapse
-
-    async def _blacklist_handshake(self, synapse: synapses.TGHandshakeV1) -> Tuple[bool, str]:
-        return self._blacklist(synapse)
-
-    async def _task(self, synapse: synapses.TGTaskV1) -> synapses.TGTaskV1:
+    async def _task(self, synapse: protocol.TGTask) -> protocol.TGTask:
         bt.logging.debug(f"Task received from: {synapse.dendrite.hotkey}. Prompt: {synapse.prompt}")
 
         if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
@@ -137,12 +127,13 @@ class Miner:
         stake = float(self.metagraph.S[uid])
 
         self.task_registry.add_task(synapse, stake)
+        synapse.status = "IN QUEUE"
         return synapse
 
-    async def _blacklist_task(self, synapse: synapses.TGTaskV1) -> Tuple[bool, str]:
+    async def _blacklist_task(self, synapse: protocol.TGTask) -> Tuple[bool, str]:
         return self._blacklist(synapse)
 
-    async def _poll(self, synapse: synapses.TGPollV1) -> synapses.TGPollV1:
+    async def _poll(self, synapse: protocol.TGPoll) -> protocol.TGPoll:
         task = self.task_registry.get_task(synapse.task_id)
         if task is None:
             synapse.status = "NOT FOUND"
@@ -165,7 +156,7 @@ class Miner:
 
         return synapse
 
-    async def _blacklist_poll(self, synapse: synapses.TGPollV1) -> Tuple[bool, str]:
+    async def _blacklist_poll(self, synapse: protocol.TGPoll) -> Tuple[bool, str]:
         return self._blacklist(synapse)
 
     def _blacklist(self, synapse: bt.Synapse) -> Tuple[bool, str]:
@@ -174,17 +165,32 @@ class Miner:
             return True, "Unrecognized hotkey"
 
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
+
         if self.config.blacklist.vpermit_only and not self.metagraph.validator_permit[uid]:
             bt.logging.debug(f"Blacklisting validator without the permit {synapse.dendrite.hotkey}")
             return True, "No validator permit"
 
         if self.metagraph.S[uid] < self.config.blacklist.min_stake:
             bt.logging.debug(
-                f"Blacklisting - not enough stake {synapse.dendrite.hotkey} " f"with {self.metagraph.S[uid]} TAO "
+                f"Blacklisting - not enough stake {synapse.dendrite.hotkey} with {self.metagraph.S[uid]} TAO "
             )
-            return True, "No validator permit"
+            return True, "Not enough stake"
 
         return False, "OK"
+
+    def _log_info(self):
+        metagraph = self.metagraph
+
+        log = (
+            "Miner | "
+            f"UID:{self.uid} | "
+            f"Block:{metagraph.block.item()} | "
+            f"Stake:{metagraph.S[self.uid]:.4f} | "
+            f"Trust:{metagraph.T[self.uid]:.4f} | "
+            f"Incentive:{metagraph.I[self.uid]:.6f} | "
+            f"Emission:{metagraph.E[self.uid]:.6f}"
+        )
+        bt.logging.info(log)
 
 
 def read_config() -> bt.config:
@@ -196,14 +202,14 @@ def read_config() -> bt.config:
 
     parser.add_argument("--netuid", type=int, help="Subnet netuid", default=29)
 
-    parser.add_argument("--neuron.sync_interval", type=int, help="Metagraph sync interval, seconds", default=30*60)
-
     parser.add_argument(
         "--neuron.name",
         type=str,
         help="Name of the neuron, used to determine the neuron directory",
         default="miner",
     )
+
+    parser.add_argument("--neuron.sync_interval", type=int, help="Metagraph sync interval, seconds", default=30 * 60)
 
     parser.add_argument(
         "--blacklist.vpermit_only",
@@ -216,7 +222,7 @@ def read_config() -> bt.config:
         "--blacklist.min_stake",
         type=int,
         help="Defines the minimum stake validator should have to send requests",
-        default=1,
+        default=10,
     )
 
     parser.add_argument(

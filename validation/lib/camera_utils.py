@@ -52,7 +52,7 @@ def orbit_camera(elevation, azimuth, radius=1, is_degree=True, target=None, open
         azimuth = np.deg2rad(azimuth)
 
     x = radius * np.cos(elevation) * np.sin(azimuth)
-    y = - radius * np.sin(elevation)
+    y = -radius * np.sin(elevation)
     z = radius * np.cos(elevation) * np.cos(azimuth)
     if target is None:
         target = np.zeros([3], dtype=np.float32)
@@ -108,10 +108,20 @@ class OrbitCamera:
     def perspective(self):
         y = np.tan(self.fovy / 2)
         aspect = self.W / self.H
-        return np.array([[1 / (y * aspect), 0, 0, 0],
-                               [0, -1 / y, 0, 0],
-                               [0, 0, -(self.far + self.near) / (self.far - self.near), -(2 * self.far * self.near) / (self.far - self.near)],
-                               [0, 0, -1, 0]], dtype=np.float32)
+        return np.array(
+            [
+                [1 / (y * aspect), 0, 0, 0],
+                [0, -1 / y, 0, 0],
+                [
+                    0,
+                    0,
+                    -(self.far + self.near) / (self.far - self.near),
+                    -(2 * self.far * self.near) / (self.far - self.near),
+                ],
+                [0, 0, -1, 0],
+            ],
+            dtype=np.float32,
+        )
 
     # intrinsics
     @property

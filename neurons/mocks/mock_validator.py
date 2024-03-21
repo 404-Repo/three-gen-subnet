@@ -7,7 +7,7 @@ import uuid
 
 import bittensor as bt
 
-from common import synapses
+from common import protocol
 
 
 async def main():
@@ -28,16 +28,7 @@ async def main():
 
     bt.logging.info(f"Other axons: {axons}")
 
-    handshakes = await dendrite.forward(
-        axons=axons,
-        synapse=synapses.TGHandshakeV1(),
-        deserialize=False,
-        timeout=5,
-    )
-
-    bt.logging.info(f"Handshakes: {handshakes}")
-
-    task = synapses.TGTaskV1(prompt="Dog", task_id=str(uuid.uuid4()))
+    task = protocol.TGTask(prompt="Dog", task_id=str(uuid.uuid4()))
 
     await dendrite.forward(
         axons=axons,
@@ -48,19 +39,22 @@ async def main():
 
     bt.logging.info("Task sent")
 
-    poll = synapses.TGPollV1(task_id=task.task_id)
+    poll = protocol.TGPoll(task_id=task.task_id)
     while True:
-        rs = typing.cast(list[synapses.TGPollV1], await dendrite.forward(
-            axons=axons,
-            synapse=poll,
-            deserialize=False,
-            timeout=60,
-        ))
+        rs = typing.cast(
+            list[protocol.TGPoll],
+            await dendrite.forward(
+                axons=axons,
+                synapse=poll,
+                deserialize=False,
+                timeout=60,
+            ),
+        )
         bt.logging.info({a.hotkey: r.status for r, a in zip(rs, axons)})
         for r in rs:
             if r.status == "DONE":
-                with open("content_pcl.h5", "wb") as f:
-                    f.write(base64.b64decode(r.results))
+                with open("content_pcl.h5", "w") as f:
+                    f.write(r.results)
                 bt.logging.info("Result save to `content_pcl.h5`")
                 return
         await asyncio.sleep(10)

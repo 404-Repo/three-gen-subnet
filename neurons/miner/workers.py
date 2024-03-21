@@ -15,7 +15,7 @@ def worker_task(endpoint: str, task_registry: TaskRegistry):
         try:
             response = requests.post(generate_url, data={"prompt": task.prompt})
             if response.status_code == 200:
-                results = response.content
+                results = response.text
             else:
                 bt.logging.error(f"Generation failed with code: {response.status_code}")
         except requests.ConnectionError:
