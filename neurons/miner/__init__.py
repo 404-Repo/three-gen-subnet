@@ -230,7 +230,7 @@ def read_config() -> bt.config:
         type=str,
         help="Specifies the URL of the endpoint responsible for generating 3D models. "
         "This endpoint should handle the /generation/ POST route.",
-        default="http://127.0.0.1:10006",
+        default="http://127.0.0.1:8093",
     )
 
     return bt.config(parser)

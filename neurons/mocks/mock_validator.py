@@ -1,7 +1,5 @@
 import argparse
 import asyncio
-import base64
-import time
 import typing
 import uuid
 
@@ -23,41 +21,41 @@ async def main():
 
     bt.logging.info(f"Stake: {metagraph.S[uid]}")
 
-    axons = list(metagraph.axons)
-    del axons[uid]
+    alive_axon_uid = 1
 
-    bt.logging.info(f"Other axons: {axons}")
+    task = protocol.TGTask(prompt="tourmaline tassel earring", task_id=str(uuid.uuid4()))
 
-    task = protocol.TGTask(prompt="Dog", task_id=str(uuid.uuid4()))
-
-    await dendrite.forward(
-        axons=axons,
+    await dendrite.call(
+        target_axon=metagraph.axons[alive_axon_uid],
         synapse=task,
         deserialize=False,
-        timeout=60,
     )
 
     bt.logging.info("Task sent")
 
     poll = protocol.TGPoll(task_id=task.task_id)
     while True:
-        rs = typing.cast(
-            list[protocol.TGPoll],
-            await dendrite.forward(
-                axons=axons,
-                synapse=poll,
-                deserialize=False,
-                timeout=60,
-            ),
-        )
-        bt.logging.info({a.hotkey: r.status for r, a in zip(rs, axons)})
-        for r in rs:
-            if r.status == "DONE":
-                with open("content_pcl.h5", "w") as f:
-                    f.write(r.results)
-                bt.logging.info("Result save to `content_pcl.h5`")
-                return
         await asyncio.sleep(10)
+
+        r = typing.cast(protocol.TGPoll, await dendrite.call(
+            target_axon=metagraph.axons[alive_axon_uid],
+            synapse=poll,
+            deserialize=False,
+        ))
+
+        bt.logging.info(f"Response to the poll: {r}")
+
+        if r.status in {None, "IN QUEUE", "IN PROGRESS"}:
+            continue
+
+        if r.status == "DONE":
+            with open("content_pcl.h5", "w") as f:
+                f.write(r.results)
+            bt.logging.info("Result save to `content_pcl.h5`")
+            break
+
+        bt.logging.info("Generation failed")
+        break
 
 
 async def get_config() -> bt.config:
@@ -65,7 +63,7 @@ async def get_config() -> bt.config:
     bt.logging.add_args(parser)
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
-    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=29)
+    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=89)
     return bt.config(parser)
 
 

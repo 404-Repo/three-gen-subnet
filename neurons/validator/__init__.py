@@ -384,7 +384,7 @@ def read_config() -> bt.config:
         type=str,
         help="Specifies the URL of the endpoint responsible for scoring 3D models. "
         "This endpoint should handle the /validate/ POST route.",
-        default="http://127.0.0.1:10006",
+        default="http://127.0.0.1:8094",
     )
 
     return bt.config(parser)
