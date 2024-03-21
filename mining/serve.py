@@ -75,7 +75,7 @@ async def generate_video(
     processed_data = gaussian_processor.train(models, opt.iters)
     print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
 
-    video_utils = VideoUtils(512, 512, 4, 5, 10, -30, 10)
+    video_utils = VideoUtils(512, 512, 6, 5, 10, -30, 10)
     buffer = video_utils.render_video(*processed_data)
 
     return StreamingResponse(content=buffer, media_type="video/mp4")
