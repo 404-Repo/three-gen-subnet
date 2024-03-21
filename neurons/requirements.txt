@@ -1,2 +1,1 @@
 bittensor==6.9.3
-aiohttp==3.9.3
