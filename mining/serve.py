@@ -1,7 +1,7 @@
 from io import BytesIO
 
 from fastapi import FastAPI, Depends, Form
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, FileResponse
 import uvicorn
 import argparse
 import base64
@@ -62,6 +62,25 @@ async def generate_raw(
 ):
     buffer = await _generate(models, opt, prompt)
     return Response(content=buffer.getvalue(), media_type="application/octet-stream")
+
+
+@app.post("/generate_model/")
+async def generate_model(
+    prompt: str = Form(),
+    opt: OmegaConf = Depends(get_config),
+    models: list = Depends(get_models),
+) -> Response:
+    start_time = time()
+    gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
+    gaussian_processor.train(models, opt.iters)
+    print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
+
+    buffer = BytesIO()
+    gaussian_processor.get_gs_model().save_ply(buffer)
+    buffer.seek(0)
+
+    return StreamingResponse(buffer, media_type="application/octet-stream")
+    # return Response(content=buffer, headers=headers)
 
 
 @app.post("/generate_video/")
