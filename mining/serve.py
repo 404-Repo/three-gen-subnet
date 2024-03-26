@@ -1,7 +1,7 @@
 from io import BytesIO
 
 from fastapi import FastAPI, Depends, Form
-from fastapi.responses import Response, StreamingResponse, FileResponse
+from fastapi.responses import Response, StreamingResponse
 import uvicorn
 import argparse
 import base64
@@ -80,7 +80,6 @@ async def generate_model(
     buffer.seek(0)
 
     return StreamingResponse(buffer, media_type="application/octet-stream")
-    # return Response(content=buffer, headers=headers)
 
 
 @app.post("/generate_video/")
