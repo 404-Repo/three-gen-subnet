@@ -97,34 +97,31 @@ pm2 start miner.config.js
 ```
 
 #### Monitoring Miner Activity
-Validators update the miner list hourly. It's normal not to observe requests in the initial 1.5 hours. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
+Validators update the miner every 20 minutes. It's normal not to observe requests in the initial hour. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
 ```commandline
 nc -vz [Your Miner IP] [Port]
 ```
 
 ## Validation
+### Prerequisites
+Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
 
 ### Setup
 To install all dependencies and generate the run configuration execute the following command in the project base directory:
-```
+```commandline
 make validator
 ```
+Apply optional modifications to validation.config.js where need be.
 
 ### Startup
 To start the validator service execute the following command in the project base directory:
-```
+```commandline
 make start_validator
 ```
 
 ### Cleanup
 To remove all dependencies execute the following command in the project base directory:
-
-```
+```commandline
 make clean_validator
 ```
 
-
-
-
-[//]: # (## TODO:)
-[//]: # (- tests and benchmarking on different setups)

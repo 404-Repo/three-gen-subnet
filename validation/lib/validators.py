@@ -35,9 +35,7 @@ class TextTo3DModelValidator:
 
         self._preload_clip_model()
 
-    def init_gaussian_splatting_renderer(
-        self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0
-    ):
+    def init_gaussian_splatting_renderer(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
         self.__renderer = GSRenderer(sh_degree, white_background, radius)
 
     def score_response_gs_input(
@@ -50,9 +48,7 @@ class TextTo3DModelValidator:
     ):
         print("[INFO] Start scoring the response.")
 
-        orbitcam = OrbitCamera(
-            self.__img_width, self.__img_height, r=cam_rad, fovy=49.1
-        )
+        orbitcam = OrbitCamera(self.__img_width, self.__img_height, r=cam_rad, fovy=49.1)
 
         pcl_raw = base64.b64decode(data)
         pcl_buffer = io.BytesIO(pcl_raw)
@@ -84,9 +80,7 @@ class TextTo3DModelValidator:
             output_dict = self.__renderer.render(camera)
             img = output_dict["image"].permute(1, 2, 0)
             img = img.detach().cpu().numpy() * 255
-            img = np.concatenate(
-                (img, 255 * np.ones((img.shape[0], img.shape[1], 1))), axis=2
-            ).astype(np.uint8)
+            img = np.concatenate((img, 255 * np.ones((img.shape[0], img.shape[1], 1))), axis=2).astype(np.uint8)
             img = Image.fromarray(img)
             rendered_images.append(img)
 
@@ -103,9 +97,7 @@ class TextTo3DModelValidator:
         print("[INFO] Preloading CLIP model for validation.")
 
         self.__model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-        self.__preprocess = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-base-patch16"
-        )
+        self.__preprocess = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
 
         print("[INFO] Done.")
 
@@ -114,13 +106,9 @@ class TextTo3DModelValidator:
         self.__negative_prompts.append(prompt)
         prompts = self.__negative_prompts
         for img in images:
-            inputs = self.__preprocess(
-                text=prompts, images=[img], return_tensors="pt", padding=True
-            )
+            inputs = self.__preprocess(text=prompts, images=[img], return_tensors="pt", padding=True)
             results = self.__model(**inputs)
-            logits_per_image = results[
-                "logits_per_image"
-            ]  # this is the image-text similarity score
+            logits_per_image = results["logits_per_image"]  # this is the image-text similarity score
             probs = (
                 logits_per_image.softmax(dim=1).detach().numpy()
             )  # we can take the softmax to get the label probabilities

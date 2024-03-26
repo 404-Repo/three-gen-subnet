@@ -1,2 +1,1 @@
-torch==2.2.1
-bittensor==6.8.1
+bittensor==6.9.3

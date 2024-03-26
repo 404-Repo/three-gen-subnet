@@ -4,7 +4,7 @@ from queue import PriorityQueue
 import bittensor as bt
 from pydantic import BaseModel, Field
 
-from common import synapses
+from common import protocol
 
 
 class Task(BaseModel):
@@ -14,7 +14,7 @@ class Task(BaseModel):
     # Prompt to use for generation.
     validator_hotkey: str
     # Hotkey of the validator sent the task.
-    results: bytes | None = None
+    results: str | None = None
     # Generation results.
     in_progress: bool = False
     # Flag indicating whether task execution has started.
@@ -44,13 +44,13 @@ class TaskRegistry:
         """Returns True if the task queue is full, otherwise False."""
         return self._queue.full()
 
-    def add_task(self, syn: synapses.TGTaskV1, validator_stake: float):
+    def add_task(self, syn: protocol.TGTask, validator_stake: float):
         """
         Asynchronously registers a new task in the system with given parameters, using the validator's stake
         as a priority indicator, and enqueues it for execution.
 
         Args:
-        - syn (synapses.TGTaskV1): synapse received from the validator
+        - syn (protocol.TGTaskV1): synapse received from the validator
         - validator_stake (float): The validator's stake, used to prioritize the task in the queue.
         """
 
@@ -100,7 +100,7 @@ class TaskRegistry:
         task.in_progress = False
         task.failed = True
 
-    def complete_task(self, task_id: str, results: bytes) -> None:
+    def complete_task(self, task_id: str, results: str) -> None:
         """
         Marks the specified task as completed, recording its output and the completion timestamp.
 
