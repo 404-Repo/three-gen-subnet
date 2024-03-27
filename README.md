@@ -56,7 +56,7 @@ To operate the miner, the miner neuron and generation endpoints must be initiate
 #### Setup
 Set up the environment by navigating to the directory and running the setup script:
 ```commandline
-cd three-gen-subnet/mining
+cd three-gen-subnet/generation
 chmod +x setup_env.sh
 ./setup_env.sh
 ```
@@ -109,26 +109,21 @@ To operate the validator, the validator neuron and validation endpoints must be 
 ### Validation Endpoint
 
 #### Setup
-To install all dependencies and generate the run configuration execute the following command in the project base directory:
+Set up the environment by navigating to the directory and running the setup script:
 ```commandline
-make validator
+cd three-gen-subnet/validation
+chmod +x setup_env.sh
+./setup_env.sh
 ```
-Apply optional modifications to validation.config.js where need be.
+This script creates a Conda environment `three-gen-validation`, installs dependencies, and sets up a PM2 configuration file (`validation.config.js`).
 
-#### Startup
-
-After optional modifications to generation.config.js, change into the validation folder and initiate it using [PM2](https://pm2.io):
+#### Running
+After optional modifications to validation.config.js, initiate it using [PM2](https://pm2.io):
 ```commandline
-pm2 start generation.config.js
-```
-
-#### Cleanup
-To remove all dependencies execute the following command in the project base directory:
-```commandline
-make clean_validator
+pm2 start validation.config.js
 ```
 
-### Validator Neuron
+#### Validator Neuron
 
 #### Prerequisites
 
@@ -148,6 +143,3 @@ Customize `validator.config.js` with wallet information and ports, then execute 
 ```commandline
 pm2 start validator.config.js
 ```
-
-
-
