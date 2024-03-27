@@ -114,9 +114,10 @@ make validator
 Apply optional modifications to validation.config.js where need be.
 
 ### Startup
-To start the validator service execute the following command in the project base directory:
+
+After optional modifications to generation.config.js, change into the validation folder and initiate it using [PM2](https://pm2.io):
 ```commandline
-make start_validator
+pm2 start generation.config.js
 ```
 
 ### Cleanup
