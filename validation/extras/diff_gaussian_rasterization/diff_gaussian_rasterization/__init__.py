@@ -58,6 +58,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         cov3Ds_precomp,
         raster_settings,
     ):
+
         # Restructure arguments the way that the C++ lib expects them
         args = (
             raster_settings.bg,
@@ -117,6 +118,7 @@ class _RasterizeGaussians(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_color, grad_radii, grad_depth, grad_alpha):
+
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
@@ -246,6 +248,7 @@ class GaussianRasterizer(nn.Module):
         rotations=None,
         cov3D_precomp=None,
     ):
+
         raster_settings = self.raster_settings
 
         if (shs is None and colors_precomp is None) or (shs is not None and colors_precomp is not None):

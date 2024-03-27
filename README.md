@@ -56,7 +56,7 @@ To operate the miner, the miner neuron and generation endpoints must be initiate
 #### Setup
 Set up the environment by navigating to the directory and running the setup script:
 ```commandline
-cd three-gen-subnet/mining
+cd three-gen-subnet/generation
 chmod +x setup_env.sh
 ./setup_env.sh
 ```

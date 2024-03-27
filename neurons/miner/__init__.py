@@ -27,7 +27,6 @@ class Miner:
     axon: bt.axon | None = None
     """Axon for external connections."""
     last_sync_time = 0.0
-
     """Last time the metagraph was synchronized."""
     task_registry: TaskRegistry
 
@@ -165,7 +164,6 @@ class Miner:
             return True, "Unrecognized hotkey"
 
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
-
         if self.config.blacklist.vpermit_only and not self.metagraph.validator_permit[uid]:
             bt.logging.debug(f"Blacklisting validator without the permit {synapse.dendrite.hotkey}")
             return True, "No validator permit"
