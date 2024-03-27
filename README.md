@@ -102,27 +102,52 @@ Validators update the miner every 20 minutes. It's normal not to observe request
 nc -vz [Your Miner IP] [Port]
 ```
 
-## Validation
-### Prerequisites
-Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
+## Validator
 
-### Setup
+To operate the validator, the validator neuron and validation endpoints must be initiated. 
+
+### Validation Endpoint
+
+#### Setup
 To install all dependencies and generate the run configuration execute the following command in the project base directory:
 ```commandline
 make validator
 ```
 Apply optional modifications to validation.config.js where need be.
 
-### Startup
+#### Startup
 
 After optional modifications to generation.config.js, change into the validation folder and initiate it using [PM2](https://pm2.io):
 ```commandline
 pm2 start generation.config.js
 ```
 
-### Cleanup
+#### Cleanup
 To remove all dependencies execute the following command in the project base directory:
 ```commandline
 make clean_validator
 ```
+
+### Validator Neuron
+
+#### Prerequisites
+
+Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
+
+#### Setup
+Prepare the neuron by executing the setup script in the `neurons` directory:
+```commandline
+cd three-gen-subnet/neurons
+chmod +x setup_env.sh
+./setup_env.sh
+```
+This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `validator.config.js` for PM2 configuration.
+
+#### Running
+Customize `validator.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
+```commandline
+pm2 start validator.config.js
+```
+
+
 
