@@ -226,8 +226,7 @@ class Validator:
         while bool(miners) and start_time + self.config.neuron.task_timeout > current_time:
             await asyncio.sleep(max(5, poll_time + self.config.neuron.task_poll_interval - current_time))
 
-            poll_time = current_time
-
+            poll_time = time.time()
             poll = TGPoll(task_id=task_id)
             synapses = cast(
                 list[TGPoll],
@@ -238,7 +237,6 @@ class Validator:
                     timeout=30,
                 ),
             )
-
             current_time = time.time()
 
             bt.logging.trace(f"Task {task_id} statuses: {', '.join(s.status or 'None' for s in synapses)}")
@@ -369,7 +367,7 @@ def read_config() -> bt.config:
         "--neuron.task_timeout",
         type=int,
         help="Task execution timeout, seconds.",
-        default=300,
+        default=600,
     )
 
     parser.add_argument(
