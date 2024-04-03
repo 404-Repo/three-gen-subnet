@@ -1,10 +1,10 @@
 import asyncio
+
 import bittensor as bt
+from miner import Miner, read_config
 
-from miner import read_config, Miner
 
-
-async def main():
+async def main() -> None:
     config = read_config()
     bt.logging.info(f"Starting with config: {config}")
 

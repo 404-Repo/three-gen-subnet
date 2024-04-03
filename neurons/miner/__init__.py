@@ -7,8 +7,8 @@ from functools import partial
 from typing import Tuple
 
 import bittensor as bt
-
 from common import create_neuron_dir, protocol
+
 from miner.task_registry import TaskRegistry
 from miner.workers import worker_task
 
@@ -24,13 +24,13 @@ class Miner:
     """The subtensor is our connection to the Bittensor blockchain."""
     metagraph: bt.metagraph
     """The metagraph holds the state of the network, letting us know about other validators and miners."""
-    axon: bt.axon | None = None
+    axon: bt.axon
     """Axon for external connections."""
     last_sync_time = 0.0
     """Last time the metagraph was synchronized."""
     task_registry: TaskRegistry
 
-    def __init__(self, config: bt.config):
+    def __init__(self, config: bt.config) -> None:
         self.config: bt.config = copy.deepcopy(config)
         create_neuron_dir(self.config)
 
@@ -79,7 +79,7 @@ class Miner:
 
         # TODO: add queue limit
 
-    def _check_for_registration(self):
+    def _check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
             netuid=self.config.netuid,
             hotkey_ss58=self.wallet.hotkey.ss58_address,
@@ -89,7 +89,7 @@ class Miner:
                 f" Please register the hotkey using `btcli subnets register` before trying again."
             )
 
-    async def run(self):
+    async def run(self) -> None:
         bt.logging.debug("Starting the workers.")
 
         for endpoint in [self.config.generation.endpoint]:
@@ -118,10 +118,6 @@ class Miner:
     async def _task(self, synapse: protocol.TGTask) -> protocol.TGTask:
         bt.logging.debug(f"Task received from: {synapse.dendrite.hotkey}. Prompt: {synapse.prompt}")
 
-        if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
-            bt.logging.error("Unexpected happened. Hotkey was removed between blacklisting and processing")
-            return synapse
-
         uid = self.metagraph.hotkeys.index(synapse.dendrite.hotkey)
         stake = float(self.metagraph.S[uid])
 
@@ -129,7 +125,7 @@ class Miner:
         synapse.status = "IN QUEUE"
         return synapse
 
-    async def _blacklist_task(self, synapse: protocol.TGTask) -> Tuple[bool, str]:
+    async def _blacklist_task(self, synapse: protocol.TGTask) -> tuple[bool, str]:
         return self._blacklist(synapse)
 
     async def _poll(self, synapse: protocol.TGPoll) -> protocol.TGPoll:
@@ -155,10 +151,10 @@ class Miner:
 
         return synapse
 
-    async def _blacklist_poll(self, synapse: protocol.TGPoll) -> Tuple[bool, str]:
+    async def _blacklist_poll(self, synapse: protocol.TGPoll) -> tuple[bool, str]:
         return self._blacklist(synapse)
 
-    def _blacklist(self, synapse: bt.Synapse) -> Tuple[bool, str]:
+    def _blacklist(self, synapse: bt.Synapse) -> tuple[bool, str]:
         if synapse.dendrite.hotkey not in self.metagraph.hotkeys:
             bt.logging.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
@@ -176,7 +172,7 @@ class Miner:
 
         return False, "OK"
 
-    def _log_info(self):
+    def _log_info(self) -> None:
         metagraph = self.metagraph
 
         log = (

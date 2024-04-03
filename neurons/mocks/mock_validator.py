@@ -2,14 +2,14 @@ import argparse
 import asyncio
 import typing
 import uuid
+from pathlib import Path
 
+import aiohttp
 import bittensor as bt
-import requests
-
 from common import protocol
 
 
-async def main():
+async def main() -> None:
     config = await get_config()
     bt.logging(config=config)
 
@@ -54,9 +54,9 @@ async def main():
         if r.status in {None, "IN QUEUE", "IN PROGRESS"}:
             continue
 
-        if r.status == "DONE":
+        if r.status == "DONE" and r.results is not None:
             results = r.results
-            with open("content_pcl.h5", "w") as f:
+            with Path("content_pcl.h5").open("w") as f:  # noqa
                 f.write(results)
             bt.logging.info("Result save to `content_pcl.h5`")
             break
@@ -67,8 +67,10 @@ async def main():
     if results is None:
         return
 
-    validation = requests.post("http://127.0.0.1:8094/validate/", json={"prompt": prompt, "data": results})
-    bt.logging.info(f"Validation: {validation.json()}")
+    async with aiohttp.ClientSession() as session:
+        async with session.post("http://127.0.0.1:8094/validate/", json={"prompt": prompt, "data": results}) as req:
+            validation = await req.json()
+            bt.logging.info(f"Validation: {validation.json()}")
 
 
 async def get_config() -> bt.config:

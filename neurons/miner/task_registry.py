@@ -2,9 +2,8 @@ import time
 from queue import PriorityQueue
 
 import bittensor as bt
-from pydantic import BaseModel, Field
-
 from common import protocol
+from pydantic import BaseModel, Field
 
 
 class Task(BaseModel):
@@ -38,13 +37,13 @@ class TaskRegistry:
         enabling priority-based task execution and supports tracking tasks from creation through completion.
         """
         self._tasks: dict[str, Task] = {}
-        self._queue = PriorityQueue(maxsize=queue_size)
+        self._queue: PriorityQueue[tuple[float, str]] = PriorityQueue(maxsize=queue_size)
 
     def is_queue_full(self) -> bool:
         """Returns True if the task queue is full, otherwise False."""
         return self._queue.full()
 
-    def add_task(self, syn: protocol.TGTask, validator_stake: float):
+    def add_task(self, syn: protocol.TGTask, validator_stake: float) -> None:
         """
         Asynchronously registers a new task in the system with given parameters, using the validator's stake
         as a priority indicator, and enqueues it for execution.
@@ -71,7 +70,7 @@ class TaskRegistry:
         - Task: The task instance that is starting its execution.
         """
 
-        task = None
+        task: Task | None = None
         while task is None:
             _, task_id = self._queue.get()
             task = self._tasks.get(task_id, None)

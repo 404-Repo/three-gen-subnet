@@ -1,21 +1,25 @@
-import os
 import random
-import bittensor as bt
 from pathlib import Path
+
+import bittensor as bt
 
 
 class Dataset:
     def __init__(self, path: str):
-        if not os.path.isabs(path):
-            path = Path(__file__).parent / ".." / ".." / path
+        dataset_path = Path(path)
+        if not dataset_path.is_absolute():
+            dataset_path = Path(__file__).parent / ".." / ".." / dataset_path
+        else:
+            dataset_path = Path(path)
 
-        if not os.path.exists(path):
-            raise RuntimeError(f"Dataset file {path} not found")
+        if not dataset_path.exists():
+            raise RuntimeError(f"Dataset file {dataset_path} not found")
 
-        with open(path) as f:
+        with dataset_path.open() as f:
             self.prompts = f.read().strip().split("\n")
 
         bt.logging.info(f"{len(self.prompts)} prompts loaded")
 
     def get_random_prompt(self) -> str:
-        return random.choice(self.prompts)
+        prompt = random.choice(self.prompts)  # noqa # nosec
+        return prompt
