@@ -1,6 +1,6 @@
 <div align="center">
 
-# **THREE GEN | SUBNET 29**
+# **THREE GEN | TEST SUBNET 89**
 
 [![Discord Chat](https://img.shields.io/discord/308323056592486420.svg)](https://discord.gg/bittensor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
@@ -22,7 +22,7 @@ The project is divided into three key modules, each designed to perform specific
 
 ## Hardware Requirements
 
-Pending detailed benchmark results (see TODOs), our recommended setup aligns with Google Cloud's a2-highgpu-1g specs:
+Pending detailed benchmark results, our recommended setup aligns with Google Cloud's a2-highgpu-1g specs:
 - GPU: NVIDIA A100 40GB
 - CPU: 12 vCPUs
 - RAM: 85GB
@@ -57,7 +57,6 @@ To operate the miner, the miner neuron and generation endpoints must be initiate
 Set up the environment by navigating to the directory and running the setup script:
 ```commandline
 cd three-gen-subnet/generation
-chmod +x setup_env.sh
 ./setup_env.sh
 ```
 This script creates a Conda environment `three-gen-mining`, installs dependencies, and sets up a PM2 configuration file (`generation.config.js`).
@@ -85,7 +84,6 @@ Ensure wallet registration as per the [official bittensor guide](https://docs.bi
 Prepare the neuron by executing the setup script in the `neurons` directory:
 ```commandline
 cd three-gen-subnet/neurons
-chmod +x setup_env.sh
 ./setup_env.sh
 ```
 This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `miner.config.js` for PM2 configuration.
@@ -94,12 +92,6 @@ This script generates a Conda environment `three-gen-neurons`, installs required
 Customize `miner.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
 ```commandline
 pm2 start miner.config.js
-```
-
-#### Monitoring Miner Activity
-Validators update the miner every 20 minutes. It's normal not to observe requests in the initial hour. Absence of requests beyond this period suggests an issue, often due to network inaccessibility. Verify accessibility using:
-```commandline
-nc -vz [Your Miner IP] [Port]
 ```
 
 ## Validator
@@ -112,7 +104,6 @@ To operate the validator, the validator neuron and validation endpoints must be 
 Set up the environment by navigating to the directory and running the setup script:
 ```commandline
 cd three-gen-subnet/validation
-chmod +x setup_env.sh
 ./setup_env.sh
 ```
 This script creates a Conda environment `three-gen-validation`, installs dependencies, and sets up a PM2 configuration file (`validation.config.js`).
@@ -133,7 +124,6 @@ Ensure wallet registration as per the [official bittensor guide](https://docs.bi
 Prepare the neuron by executing the setup script in the `neurons` directory:
 ```commandline
 cd three-gen-subnet/neurons
-chmod +x setup_env.sh
 ./setup_env.sh
 ```
 This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `validator.config.js` for PM2 configuration.
@@ -143,3 +133,14 @@ Customize `validator.config.js` with wallet information and ports, then execute 
 ```commandline
 pm2 start validator.config.js
 ```
+
+#### Important
+Validator must serve the axon and the port must be opened. You can check the port using `nc`. 
+```commandline
+nc -vz [Your Validator IP] [Port]
+```
+You can also test the validator using the mock script. Navigate to the `mocks` folder and run
+```commandline
+PYTHONPATH=$PWD/.. python mock_miner.py --subtensor.network test --netuid 89 --wallet.name default --wallet.hotkey default --logging.trace
+```
+

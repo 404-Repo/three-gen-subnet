@@ -1,10 +1,11 @@
 import asyncio
+
 import bittensor as bt
+from validator import Validator
+from validator.config import read_config
 
-from validator import read_config, Validator
 
-
-async def main():
+async def main() -> None:
     config = read_config()
     bt.logging.info(f"Starting with config: {config}")
 
