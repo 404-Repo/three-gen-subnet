@@ -1,5 +1,6 @@
 from diffusers import DDIMScheduler
 import torchvision.transforms.functional as TF
+import numpy as np
 
 import torch
 import torch.nn as nn
