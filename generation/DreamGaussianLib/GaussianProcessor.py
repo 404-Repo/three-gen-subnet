@@ -125,7 +125,10 @@ class GaussianProcessor:
             self.__guidance_sd = models[0]
 
         if self.__guidance_zero123 is None and self.__enable_zero123:
-            self.__enable_zero123 = models[1]
+            if len(models) > 1:
+                self.__guidance_zero123 = models[1]
+            else:
+                self.__guidance_zero123 = models[0]
 
         # input image
         if self.__input_image is not None:
