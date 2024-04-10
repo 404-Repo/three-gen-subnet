@@ -143,3 +143,5 @@ Customize `validator.config.js` with wallet information and ports, then execute 
 ```commandline
 pm2 start validator.config.js
 ```
+
+### Autoupdater
