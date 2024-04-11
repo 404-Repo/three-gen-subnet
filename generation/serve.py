@@ -85,7 +85,7 @@ async def generate_model(
 @app.post("/generate_video/")
 async def generate_video(
     prompt: str = Form(),
-    video_res: int = 1088,
+    video_res: int = Form(1088),
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),
 ):
