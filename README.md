@@ -145,3 +145,9 @@ pm2 start validator.config.js
 ```
 
 ### Autoupdater
+#### Setup
+#### Running
+After optional modifications to validation.config.js, initiate it using [PM2](https://pm2.io):
+```commandline
+pm2 start updater.config.js
+```
