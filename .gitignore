@@ -23,6 +23,7 @@ generation.config.js
 validation.config.js
 miner.config.js
 validator.config.js
+updater.config.js
 
 # build artifacts
 mining/extras/ImageDream/build
