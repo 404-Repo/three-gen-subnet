@@ -145,7 +145,15 @@ pm2 start validator.config.js
 ```
 
 ### Autoupdater
+One started the autoupdater checks regularly for repository updates and pulls them and restart all running three-gen services including itself.
+
 #### Setup
+Set up the environment by navigating to the directory and running the setup script:
+```commandline
+cd three-gen-subnet/validation
+chmod +x setup_env.sh
+./setup_env.sh
+```
 #### Running
 After optional modifications to validation.config.js, initiate it using [PM2](https://pm2.io):
 ```commandline
