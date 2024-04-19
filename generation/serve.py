@@ -85,6 +85,7 @@ async def generate_model(
 @app.post("/generate_video/")
 async def generate_video(
     prompt: str = Form(),
+    video_res: int = Form(1088),
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),
 ):
@@ -93,7 +94,7 @@ async def generate_video(
     processed_data = gaussian_processor.train(models, opt.iters)
     print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
 
-    video_utils = VideoUtils(512, 512, 6, 5, 10, -30, 10)
+    video_utils = VideoUtils(video_res, video_res, 5, 5, 10, -30, 10)
     buffer = video_utils.render_video(*processed_data)
 
     return StreamingResponse(content=buffer, media_type="video/mp4")
