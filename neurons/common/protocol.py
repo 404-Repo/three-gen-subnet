@@ -9,6 +9,9 @@ class Version(BaseModel):
     minor: int
     patch: int
 
+    def __int__(self) -> int:
+        return self.patch + self.minor * 100 + self.major * 10000
+
 
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))  # Unique task identifier.

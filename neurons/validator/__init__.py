@@ -405,5 +405,5 @@ class Validator:
             weights=converted_weights,
             wait_for_finalization=False,
             wait_for_inclusion=False,
-            version_key=1,
+            version_key=int(NEURONS_VERSION),
         )
