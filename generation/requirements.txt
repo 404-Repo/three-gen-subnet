@@ -13,7 +13,7 @@ torch==2.1.1
 huggingface_hub==0.19.4
 diffusers==0.24.0
 accelerate==0.24.1
-transformers==4.36.2
+transformers==4.38.0
 rembg[gpu,cli]==2.0.49
 xformers==0.0.23
 gradio==4.19.2
