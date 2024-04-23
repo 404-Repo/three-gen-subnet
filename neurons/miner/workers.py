@@ -7,7 +7,7 @@ import aiohttp
 import bittensor as bt
 from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
-from common.protocol import PollTask, SubmitResults
+from common.protocol import PullTask, SubmitResults
 from common.version import NEURONS_VERSION, compare_versions
 
 from miner import ValidatorSelector
@@ -29,7 +29,7 @@ async def worker_routine(
 async def _complete_one_task(
     generate_url: str, wallet: bt.wallet, metagraph: bt.metagraph, validator_selector: ValidatorSelector
 ) -> None:
-    validator_uid = validator_selector.get_next_validator_to_poll()
+    validator_uid = validator_selector.get_next_validator_to_query()
     if validator_uid is None:
         await asyncio.sleep(10.0)
         return
@@ -39,27 +39,27 @@ async def _complete_one_task(
     # Setting cooldown to prevent selecting the same validator for concurrent task.
     validator_selector.set_cooldown(validator_uid, int(time.time()) + 60)
 
-    poll = await _poll_task(dendrite, metagraph, validator_uid)
-    if poll.task is None:
+    pull = await _pull_task(dendrite, metagraph, validator_uid)
+    if pull.task is None:
         bt.logging.warning(
             f"Validator [{metagraph.hotkeys[validator_uid]}] is not serving tasks or miner is"
             f" violating rules. Check the trace logs for more details."
         )
         return
 
-    bt.logging.debug(f"Task received. Prompt: {poll.task.prompt}. Version: {poll.version}")
+    bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}. Version: {pull.version}")
 
     # Updating cooldown. Validator won't give new tasks until this one is submitted.
-    validator_selector.set_cooldown(validator_uid, poll.submit_before)
+    validator_selector.set_cooldown(validator_uid, pull.submit_before)
 
-    timeout = poll.submit_before - time.time() - NETWORK_DELAY_TIME_BUFFER if poll.submit_before > 0 else None
-    results = await _generate(generate_url, poll.task.prompt, timeout=timeout)
+    timeout = pull.submit_before - time.time() - NETWORK_DELAY_TIME_BUFFER if pull.submit_before > 0 else None
+    results = await _generate(generate_url, pull.task.prompt, timeout=timeout)
     if results is None:
         return
 
     submit = None
     for _ in range(3):
-        submit = await _submit_results(dendrite, metagraph, validator_uid, poll, results)
+        submit = await _submit_results(dendrite, metagraph, validator_uid, pull, results)
         if submit.feedback is not None:
             break
 
@@ -82,10 +82,10 @@ async def _complete_one_task(
     validator_selector.set_cooldown(validator_uid, submit.cooldown_until)
 
 
-async def _poll_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> PollTask:
-    synapse = PollTask()
+async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> PullTask:
+    synapse = PullTask()
     response = typing.cast(
-        PollTask,
+        PullTask,
         await dendrite.call(
             target_axon=metagraph.axons[validator_uid], synapse=synapse, deserialize=False, timeout=12.0
         ),
@@ -98,9 +98,9 @@ async def _poll_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
 
 
 async def _submit_results(
-    dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, poll: PollTask, results: str
+    dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
 ) -> SubmitResults:
-    synapse = SubmitResults(task=poll.task, results=results)
+    synapse = SubmitResults(task=pull.task, results=results)
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

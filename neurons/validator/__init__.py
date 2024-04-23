@@ -5,10 +5,10 @@ from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import torch
-from api import Generate, PollResults
+from api import Generate, StatusCheck
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
-from common.protocol import Feedback, PollTask, SubmitResults, Task
+from common.protocol import Feedback, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 
 from validator.dataset import Dataset
@@ -93,8 +93,8 @@ class Validator:
 
         self.axon = bt.axon(wallet=self.wallet, config=self.config)
         self.axon.attach(
-            forward_fn=self.poll_task,
-            blacklist_fn=self.blacklist_polling_task,
+            forward_fn=self.pull_task,
+            blacklist_fn=self.blacklist_pulling_task,
         ).attach(
             forward_fn=self.submit_results,
             blacklist_fn=self.blacklist_submitting_results,
@@ -109,8 +109,8 @@ class Validator:
                 forward_fn=self.generate,
                 blacklist_fn=self.blacklist_generation,
             ).attach(
-                forward_fn=self.poll_results,
-                blacklist_fn=self.blacklist_polling_results,
+                forward_fn=self.check_status,
+                blacklist_fn=self.blacklist_checking_status,
             )
 
         bt.logging.info(f"Axon created: {self.axon}")
@@ -121,7 +121,7 @@ class Validator:
             copies=self.config.public_api.copies,
             wait_after_first_copy=self.config.public_api.wait_after_first_copy,
             task_timeout=self.config.generation.task_timeout,
-            poll_interval=self.config.public_api.poll_interval,
+            polling_interval=self.config.public_api.polling_interval,
         )
 
         self.public_api_limiter = RateLimiter(
@@ -137,7 +137,7 @@ class Validator:
         bt.logging.debug(f"Public API. Generation requested. Requester: {synapse.dendrite.hotkey}.")
 
         synapse.task_id = self.task_registry.add_task(synapse.prompt, synapse.dendrite.hotkey)
-        synapse.poll_interval = self.config.public_api.poll_interval
+        synapse.polling_interval = self.config.public_api.polling_interval
         return synapse
 
     def blacklist_generation(self, synapse: Generate) -> Tuple[bool, str]:  # noqa: UP006, UP035
@@ -163,19 +163,22 @@ class Validator:
 
         return True
 
-    def poll_results(self, synapse: PollResults) -> PollResults:
-        """Public API. Poll results request. Rate limit is applied in the `get_task_status`."""
+    def check_status(self, synapse: StatusCheck) -> StatusCheck:
+        """Public API. Status check request. Rate limit is applied in the `get_task_status`."""
 
         synapse.status, synapse.results = self.task_registry.get_task_status(synapse.task_id, synapse.dendrite.hotkey)
         return synapse
 
-    def blacklist_polling_results(self, synapse: PollResults) -> Tuple[bool, str]:  # noqa: UP006, UP035
+    def blacklist_checking_status(self, synapse: StatusCheck) -> Tuple[bool, str]:  # noqa: UP006, UP035
         if not self._is_wallet_whitelisted(synapse.dendrite.hotkey):
             return True, "Not whitelisted"
 
         return False, ""
 
-    def poll_task(self, synapse: PollTask) -> PollTask:
+    def pull_task(self, synapse: PullTask) -> PullTask:
+        bt.logging.info(f"!!!! {synapse.dendrite.nonce}")
+        bt.logging.info(f"!!!! {synapse.axon.nonce}")
+
         """Miner requesting new task from the validator."""
 
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
@@ -202,7 +205,7 @@ class Validator:
         synapse.version = NEURONS_VERSION
         return synapse
 
-    def blacklist_polling_task(self, synapse: PollTask) -> Tuple[bool, str]:  # noqa: UP006, UP035
+    def blacklist_pulling_task(self, synapse: PullTask) -> Tuple[bool, str]:  # noqa: UP006, UP035
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if uid is None:
             bt.logging.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")

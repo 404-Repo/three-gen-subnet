@@ -25,7 +25,7 @@ class Feedback(BaseModel):
     current_miner_reward: float  # Recent miners reward value.
 
 
-class PollTask(bt.Synapse):
+class PullTask(bt.Synapse):
     """Miner requesting a new task from the validator."""
 
     version: Version | None = None

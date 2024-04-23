@@ -5,7 +5,7 @@ import typing
 from pathlib import Path
 
 import bittensor as bt
-from common.protocol import Feedback, PollTask, SubmitResults, Task, Version
+from common.protocol import Feedback, PullTask, SubmitResults, Task, Version
 
 
 async def main() -> None:
@@ -18,10 +18,10 @@ async def main() -> None:
     metagraph.sync(subtensor=subtensor)
     dendrite = bt.dendrite(wallet)
 
-    bt.logging.info("Polling a task")
+    bt.logging.info("Pulling a task")
 
     validator_uid = 0
-    task = await poll_task(dendrite, metagraph, validator_uid)
+    task = await pull_task(dendrite, metagraph, validator_uid)
     if task is None:
         bt.logging.info("No task received")
         return
@@ -39,14 +39,18 @@ async def main() -> None:
     bt.logging.info(f"Received feedback {feedback} and cooldown for {int(cooldown - time.time())} seconds")
 
 
-async def poll_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Task | None:
-    synapse = PollTask(version=Version(major=0, minor=0, patch=1))
+async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Task | None:
+    synapse = PullTask(version=Version(major=0, minor=0, patch=1))
     response = typing.cast(
-        PollTask,
+        PullTask,
         await dendrite.call(
             target_axon=metagraph.axons[validator_uid], synapse=synapse, deserialize=False, timeout=12.0
         ),
     )
+
+    bt.logging.info(f"!!!! {response.dendrite.nonce}")
+    bt.logging.info(f"!!!! {response.axon.nonce}")
+
     return response.task
 
 

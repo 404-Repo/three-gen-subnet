@@ -92,7 +92,7 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
-        "--public_api.poll_interval",
+        "--public_api.polling_interval",
         type=int,
         help="Minimum interval between task polling (in seconds).",
         default=30,

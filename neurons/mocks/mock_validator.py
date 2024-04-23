@@ -3,7 +3,7 @@ import asyncio
 import time
 
 import bittensor as bt
-from common.protocol import Feedback, PollTask, SubmitResults, Task, Version
+from common.protocol import Feedback, PullTask, SubmitResults, Task, Version
 
 
 async def main() -> None:
@@ -21,7 +21,7 @@ async def main() -> None:
     axon = bt.axon(wallet=wallet, config=config)
 
     axon.attach(
-        forward_fn=poll_task,
+        forward_fn=pull_task,
     ).attach(
         forward_fn=submit_results,
     )
@@ -33,7 +33,7 @@ async def main() -> None:
         await asyncio.sleep(30.0)
 
 
-def poll_task(synapse: PollTask) -> PollTask:
+def pull_task(synapse: PullTask) -> PullTask:
     synapse.version = Version(major=0, minor=0, patch=17)
     synapse.task = Task(prompt="Yeti")
     synapse.submit_before = int(time.time() + 600)

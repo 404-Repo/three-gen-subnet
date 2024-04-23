@@ -3,7 +3,7 @@ import asyncio
 import typing
 
 import bittensor as bt
-from api import Generate, PollResults, PollStatus
+from api import Generate, StatusCheck, TaskStatus
 
 
 async def main() -> None:
@@ -28,9 +28,9 @@ async def main() -> None:
 
     while True:
         await asyncio.sleep(10.0)
-        poll = await poll_results(dendrite, metagraph, validator_uid, task.task_id)
-        bt.logging.info(f"Status: {poll.status}. Results: {len(poll.results or '')}")
-        if poll.status == PollStatus.DONE:
+        check = await check_task(dendrite, metagraph, validator_uid, task.task_id)
+        bt.logging.info(f"Status: {check.status}. Results: {len(check.results or '')}")
+        if check.status == TaskStatus.DONE:
             break
 
 
@@ -45,10 +45,10 @@ async def generate(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid
     return response
 
 
-async def poll_results(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, task_id: str) -> PollResults:
-    synapse = PollResults(task_id=task_id)
+async def check_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, task_id: str) -> StatusCheck:
+    synapse = StatusCheck(task_id=task_id)
     response = typing.cast(
-        PollResults,
+        StatusCheck,
         await dendrite.call(
             target_axon=metagraph.axons[validator_uid],
             synapse=synapse,

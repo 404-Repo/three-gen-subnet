@@ -3,7 +3,7 @@ import uuid
 from collections import deque
 
 import bittensor as bt
-from api import PollStatus
+from api import TaskStatus
 from pydantic import BaseModel, Field
 
 
@@ -33,7 +33,7 @@ class OrganicTask(BaseModel):
     acceptable_results_time: float = 0
     # Time of the first acceptable results
 
-    last_poll_time: float = 0.0
+    last_status_check: float = 0.0
     # Last time task status was requested. Used for rate limiting.
 
 
@@ -57,7 +57,7 @@ class TaskRegistry:
         copies: int = 4,
         wait_after_first_copy: int = 60,
         task_timeout: int = 600,
-        poll_interval: int = 30,
+        polling_interval: int = 30,
     ) -> None:
         """
         Args:
@@ -66,7 +66,7 @@ class TaskRegistry:
         - wait_after_first_copy (int): Maximum wait time for the second results after the first acceptable results
             were generated.
         - task_timeout (int): Time limit for submitting tasks (in seconds).
-        - poll_interval (int): Minimum interval between task polling (in seconds).
+        - polling_interval (int): Minimum interval between status checks (in seconds).
 
         The TaskRegistry manages organic task received by this validator.
         """
@@ -76,7 +76,7 @@ class TaskRegistry:
         self._copies = copies
         self._wait_after_first_copy = wait_after_first_copy
         self._task_timeout = task_timeout
-        self._poll_interval = poll_interval
+        self._polling_interval = polling_interval
 
     def is_queue_full(self) -> bool:
         """Returns True if the task queue is full, otherwise False."""
@@ -210,24 +210,24 @@ class TaskRegistry:
             return False
         return True
 
-    def get_task_status(self, task_id: str, hotkey: str) -> tuple[PollStatus, str | None]:
+    def get_task_status(self, task_id: str, hotkey: str) -> tuple[TaskStatus, str | None]:
         task = self._tasks.get(task_id, None)
         if task is None:
-            return PollStatus.NOT_FOUND, None
+            return TaskStatus.NOT_FOUND, None
         if task.wallet != hotkey:
-            return PollStatus.NOT_FOUND, None
+            return TaskStatus.NOT_FOUND, None
 
         current_time = time.time()
-        if task.last_poll_time + self._poll_interval > current_time:
-            return PollStatus.RATE_LIMIT, None
-        task.last_poll_time = current_time
+        if task.last_status_check + self._polling_interval > current_time:
+            return TaskStatus.RATE_LIMIT, None
+        task.last_status_check = current_time
         if not task.assigned:
-            return PollStatus.IN_QUEUE, None
+            return TaskStatus.IN_QUEUE, None
         if task.acceptable_results_time == 0:
-            return PollStatus.IN_PROGRESS, None
+            return TaskStatus.IN_PROGRESS, None
         if task.acceptable_results_time + self._wait_after_first_copy < current_time:
-            return PollStatus.DONE, _get_best_results(task)
+            return TaskStatus.DONE, _get_best_results(task)
         if all(miner.results is not None for miner in task.assigned.values()):
-            return PollStatus.DONE, _get_best_results(task)
+            return TaskStatus.DONE, _get_best_results(task)
 
-        return PollStatus.IN_PROGRESS, None
+        return TaskStatus.IN_PROGRESS, None

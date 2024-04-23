@@ -24,18 +24,18 @@ class ValidatorSelector:
         else:
             self._owner_uid = metagraph.hotkeys.index(self._owner_hotkey)
 
-    def get_next_validator_to_poll(self) -> int | None:
+    def get_next_validator_to_query(self) -> int | None:
         current_time = int(time.time())
         metagraph: bt.metagraph = self._metagraph_ref()
 
-        if self._poll_subnet_owner(current_time):
-            bt.logging.debug("Polling task from the subnet owner")
+        if self._query_subnet_owner(current_time):
+            bt.logging.debug("Querying task from the subnet owner")
             return self._owner_uid
 
         start_uid = self._next_uid
         while True:
             if metagraph.S[self._next_uid] >= self._min_stake and self._cooldowns.get(self._next_uid, 0) < current_time:
-                bt.logging.debug(f"Polling task from [{self._next_uid}]. Stake: {metagraph.S[self._next_uid]}")
+                bt.logging.debug(f"Querying task from [{self._next_uid}]. Stake: {metagraph.S[self._next_uid]}")
                 return self._next_uid
 
             self._next_uid = 0 if self._next_uid + 1 == metagraph.n else self._next_uid + 1
@@ -46,7 +46,7 @@ class ValidatorSelector:
     def set_cooldown(self, validator_uid: int, cooldown_until: int) -> None:
         self._cooldowns[validator_uid] = cooldown_until
 
-    def _poll_subnet_owner(self, current_time: int) -> bool:
+    def _query_subnet_owner(self, current_time: int) -> bool:
         if self._cooldowns.get(self._owner_uid, 0) > current_time:
             return False
 
