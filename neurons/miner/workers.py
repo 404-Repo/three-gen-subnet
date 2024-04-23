@@ -100,7 +100,10 @@ async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
 async def _submit_results(
     dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
 ) -> SubmitResults:
-    synapse = SubmitResults(task=pull.task, results=results)
+    nonce = time.time_ns()
+    prompt = pull.task.prompt if pull.task is not None else None
+    signature = dendrite.keypair.sign(f"{nonce}{prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.hotkey}")
+    synapse = SubmitResults(task=pull.task, results=results, nonce=nonce, signature=signature)
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

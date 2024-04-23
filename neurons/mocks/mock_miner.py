@@ -48,9 +48,6 @@ async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_ui
         ),
     )
 
-    bt.logging.info(f"!!!! {response.dendrite.nonce}")
-    bt.logging.info(f"!!!! {response.axon.nonce}")
-
     return response.task
 
 
@@ -60,7 +57,7 @@ async def submit_results(
     with Path("content_pcl.h5").open("r") as f:  # noqa
         results = f.read()
 
-    synapse = SubmitResults(task=task, results=results)
+    synapse = SubmitResults(task=task, results=results, signature="mock")
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

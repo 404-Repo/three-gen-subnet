@@ -176,9 +176,6 @@ class Validator:
         return False, ""
 
     def pull_task(self, synapse: PullTask) -> PullTask:
-        bt.logging.info(f"!!!! {synapse.dendrite.nonce}")
-        bt.logging.info(f"!!!! {synapse.axon.nonce}")
-
         """Miner requesting new task from the validator."""
 
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)

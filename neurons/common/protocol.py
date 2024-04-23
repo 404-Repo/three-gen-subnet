@@ -28,22 +28,19 @@ class Feedback(BaseModel):
 class PullTask(bt.Synapse):
     """Miner requesting a new task from the validator."""
 
-    version: Version | None = None
-    # Current validator version.
-    task: Task | None = None
-    # Task to be filled by validator.
-    submit_before: int = 0
-    # Allocated time to submit the results.
+    version: Version | None = None  # Current validator version.
+    task: Task | None = None  # Task to be filled by validator.
+    submit_before: int = 0  # Allocated time to submit the results.
 
 
 class SubmitResults(bt.Synapse):
     """Miner submitting generation results."""
 
-    task: Task | None
-    # The original task miner is submitting results for.
-    results: str
-    #  Binary content of the generated 3D asset, encoded as a string.
-    feedback: Feedback | None = None
-    # Feedback provided by a validator.
-    cooldown_until: int = 0
-    # UTC time indicating when the miner is allowed to pull the next task from this validator.
+    task: Task | None  # The original task miner is submitting results for.
+    results: str  # Generated assets, encoded as a string.
+
+    nonce: int  # time.time_ns()
+    signature: str  # Miner signature (keypair.sign(f"{nonce}{prompt}{validator.hotkey}{miner.hotkey})"
+
+    feedback: Feedback | None = None  # Feedback provided by a validator.
+    cooldown_until: int = 0  # UTC time indicating when the miner is allowed to pull the next task from this validator.
