@@ -1,15 +1,12 @@
 import argparse
 import asyncio
-import typing
-import uuid
+import time
 
 import bittensor as bt
-import requests
-
-from common import protocol
+from common.protocol import Feedback, PullTask, SubmitResults, Task, Version
 
 
-async def main():
+async def main() -> None:
     config = await get_config()
     bt.logging(config=config)
 
@@ -17,58 +14,41 @@ async def main():
     subtensor = bt.subtensor(config=config)
     metagraph = bt.metagraph(netuid=config.netuid, network=subtensor.network, sync=False)
     metagraph.sync(subtensor=subtensor)
-    dendrite = bt.dendrite(wallet)
     uid = metagraph.hotkeys.index(wallet.hotkey.ss58_address)
 
     bt.logging.info(f"Stake: {metagraph.S[uid]}")
 
-    alive_axon_uid = 1
+    axon = bt.axon(wallet=wallet, config=config)
 
-    prompt = "tourmaline tassel earring"
-    task = protocol.TGTask(prompt=prompt, task_id=str(uuid.uuid4()))
-
-    await dendrite.call(
-        target_axon=metagraph.axons[alive_axon_uid],
-        synapse=task,
-        deserialize=False,
+    axon.attach(
+        forward_fn=pull_task,
+    ).attach(
+        forward_fn=submit_results,
     )
 
-    bt.logging.info("Task sent")
+    axon.serve(netuid=config.netuid, subtensor=subtensor)
+    axon.start()
 
-    poll = protocol.TGPoll(task_id=task.task_id)
-    results = None
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(30.0)
 
-        r = typing.cast(
-            protocol.TGPoll,
-            await dendrite.call(
-                target_axon=metagraph.axons[alive_axon_uid],
-                synapse=poll,
-                deserialize=False,
-            ),
-        )
 
-        bt.logging.info(f"Response to the poll. Status: {r.status}. Bytes: {len(r.results or '')}")
+def pull_task(synapse: PullTask) -> PullTask:
+    synapse.version = Version(major=0, minor=0, patch=17)
+    synapse.task = Task(prompt="Yeti")
+    synapse.submit_before = int(time.time() + 600)
+    return synapse
 
-        if r.status in {None, "IN QUEUE", "IN PROGRESS"}:
-            continue
 
-        if r.status == "DONE":
-            results = r.results
-            with open("content_pcl.h5", "w") as f:
-                f.write(results)
-            bt.logging.info("Result save to `content_pcl.h5`")
-            break
-
-        bt.logging.info("Generation failed")
-        break
-
-    if results is None:
-        return
-
-    validation = requests.post("http://127.0.0.1:8094/validate/", json={"prompt": prompt, "data": results})
-    bt.logging.info(f"Validation: {validation.json()}")
+def submit_results(synapse: SubmitResults) -> SubmitResults:
+    synapse.feedback = Feedback(
+        task_fidelity_score=0.75,
+        average_fidelity_score=0.8,
+        generations_within_8_hours=42,
+        current_miner_reward=0.8 * 42,
+    )
+    synapse.cooldown_until = int(time.time() + 60.0)
+    return synapse
 
 
 async def get_config() -> bt.config:
@@ -76,6 +56,7 @@ async def get_config() -> bt.config:
     bt.logging.add_args(parser)
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
+    bt.axon.add_args(parser)
     parser.add_argument("--netuid", type=int, help="Subnet netuid", default=89)
     return bt.config(parser)
 
