@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import copy
 import time
 from typing import Tuple  # noqa: UP035
@@ -10,6 +11,7 @@ from bittensor.utils import weight_utils
 from common import create_neuron_dir
 from common.protocol import Feedback, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
+from substrateinterface import Keypair
 
 from validator.dataset import Dataset
 from validator.fidelity_check import validate_with_retries
@@ -243,6 +245,10 @@ class Validator:
             bt.logging.warning(f"[{uid}] submitted empty results")
             return self._add_feedback(synapse, miner)
 
+        if not self._verify_results_signature(synapse):
+            bt.logging.warning(f"[{uid}] submitted results with wrong signature")
+            return self._add_feedback(synapse, miner)
+
         validation_score = await validate_with_retries(
             self.config.validation.endpoint, synapse.task.prompt, synapse.results
         )
@@ -292,6 +298,17 @@ class Validator:
         )
         synapse.cooldown_until = current_time + self.config.generation.task_cooldown
         return synapse
+
+    @staticmethod
+    def _verify_results_signature(synapse: SubmitResults) -> bool:
+        # This security measure is redundant for results validation process, however
+        # it's needed for stored results verification.
+        if synapse.task is None:
+            return False
+
+        keypair = Keypair(ss58_address=synapse.dendrite.hotkey)
+        message = f"{synapse.nonce}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
+        return bool(keypair.verify(message, base64.b64decode(synapse.signature)))
 
     @staticmethod
     def _get_fidelity_score(validation_score: float) -> float:
