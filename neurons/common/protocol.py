@@ -40,7 +40,7 @@ class SubmitResults(bt.Synapse):
     results: str  # Generated assets, encoded as a string.
 
     nonce: int  # time.time_ns()
-    signature: str  # Miner signature (keypair.sign(f"{nonce}{prompt}{validator.hotkey}{miner.hotkey})"
+    signature: str  # Miner signature: b64.encode(keypair.sign(f'{nonce}{prompt}{validator.hotkey}{miner.hotkey}'))
 
     feedback: Feedback | None = None  # Feedback provided by a validator.
     cooldown_until: int = 0  # UTC time indicating when the miner is allowed to pull the next task from this validator.

@@ -25,15 +25,15 @@ miner.config.js
 validator.config.js
 
 # build artifacts
-mining/extras/ImageDream/build
-mining/extras/ImageDream/imagedream.egg-info
-mining/extras/MVDream/build
-mining/extras/MVDream/mvdream.egg-info
-mining/extras/diff_gaussian_rasterization/build
-mining/extras/diff_gaussian_rasterization/diff_gaussian_rasterization.egg-info
-mining/extras/diff_gaussian_rasterization/third_party
-mining/extras/simple-knn/build
-mining/extras/simple-knn/simple_knn.egg-info
+generation/extras/ImageDream/build
+generation/extras/ImageDream/imagedream.egg-info
+generation/extras/MVDream/build
+generation/extras/MVDream/mvdream.egg-info
+generation/extras/diff_gaussian_rasterization/build
+generation/extras/diff_gaussian_rasterization/diff_gaussian_rasterization.egg-info
+generation/extras/diff_gaussian_rasterization/third_party
+generation/extras/simple-knn/build
+generation/extras/simple-knn/simple_knn.egg-info
 validation/extras/diff_gaussian_rasterization/build/
 validation/extras/diff_gaussian_rasterization/diff_gaussian_rasterization.egg-info/
 validation/extras/diff_gaussian_rasterization/third_party/

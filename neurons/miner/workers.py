@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import time
 import typing
 import urllib.parse
@@ -59,7 +60,7 @@ async def _complete_one_task(
 
     submit = None
     for _ in range(3):
-        submit = await _submit_results(dendrite, metagraph, validator_uid, pull, results)
+        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
         if submit.feedback is not None:
             break
 
@@ -98,12 +99,12 @@ async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
 
 
 async def _submit_results(
-    dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
+    wallet: bt.wallet, dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
 ) -> SubmitResults:
     nonce = time.time_ns()
     prompt = pull.task.prompt if pull.task is not None else None
-    signature = dendrite.keypair.sign(f"{nonce}{prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.hotkey}")
-    synapse = SubmitResults(task=pull.task, results=results, nonce=nonce, signature=signature)
+    signature = dendrite.keypair.sign(f"{nonce}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}")
+    synapse = SubmitResults(task=pull.task, results=results, nonce=nonce, signature=base64.b64encode(signature))
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

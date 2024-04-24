@@ -57,7 +57,7 @@ async def submit_results(
     with Path("content_pcl.h5").open("r") as f:  # noqa
         results = f.read()
 
-    synapse = SubmitResults(task=task, results=results, signature="mock")
+    synapse = SubmitResults(task=task, results=results, nonce=0, signature="mock")
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

@@ -68,7 +68,6 @@ To operate the miner, the miner neuron and generation endpoints must be initiate
 
 ### Generation Endpoints
 
-#### Setup
 Set up the environment by navigating to the directory and running the setup script:
 ```commandline
 cd three-gen-subnet/generation
@@ -76,18 +75,15 @@ cd three-gen-subnet/generation
 ```
 This script creates a Conda environment `three-gen-mining`, installs dependencies, and sets up a PM2 configuration file (`generation.config.js`).
 
-#### Running
-After optional modifications to generation.config.js, initiate it using [PM2](https://pm2.io):
+After optional modifications to `generation.config.js`, initiate it using [PM2](https://pm2.io):
 ```commandline
 pm2 start generation.config.js
 ```
 
-#### Validation
-To verify the endpoint's functionality for video generation:
+To verify the endpoint's functionality generate a test video:
 ```commandline
 curl -d "prompt=pink bicycle" -X POST http://127.0.0.1:8093/generate_video/ > video.mp4
 ```
-For testing 3D object generation: http://127.0.0.1:8093/generate.
 
 ### Miner Neuron
 
@@ -104,7 +100,7 @@ cd three-gen-subnet/neurons
 This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `miner.config.js` for PM2 configuration.
 
 #### Running
-Customize `miner.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
+Update `miner.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
 ```commandline
 pm2 start miner.config.js
 ```
@@ -127,7 +123,7 @@ cd three-gen-subnet/validation
 ```
 This script creates a Conda environment `three-gen-validation`, installs dependencies, and sets up a PM2 configuration file (`validation.config.js`).
 
-After optional modifications to validation.config.js, initiate it using [PM2](https://pm2.io):
+After optional modifications to `validation.config.js`, initiate it using [PM2](https://pm2.io):
 ```commandline
 pm2 start validation.config.js
 ```
@@ -136,11 +132,8 @@ pm2 start validation.config.js
 
 ### Validator Neuron
 
-#### Prerequisites
-
 Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
 
-#### Setup
 Prepare the neuron by executing the setup script in the `neurons` directory:
 ```commandline
 cd three-gen-subnet/neurons
@@ -148,8 +141,7 @@ cd three-gen-subnet/neurons
 ```
 This script generates a Conda environment `three-gen-neurons`, installs required dependencies, and prepares `validator.config.js` for PM2 configuration.
 
-#### Running
-Customize `validator.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
+Update `validator.config.js` with wallet information and ports, then execute with [PM2](https://pm2.io):
 ```commandline
 pm2 start validator.config.js
 ```
@@ -163,4 +155,3 @@ You can also test the validator using the mock script. Navigate to the `mocks` f
 ```commandline
 PYTHONPATH=$PWD/.. python mock_miner.py --subtensor.network test --netuid 89 --wallet.name default --wallet.hotkey default --logging.trace
 ```
-
