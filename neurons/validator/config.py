@@ -30,7 +30,7 @@ def read_config() -> bt.config:
         "--neuron.weight_set_interval",
         type=int,
         help="Weight set interval, measured in blocks.",
-        default=100,
+        default=100,  # 100 * 12 seconds = 20 minutes
     )
 
     parser.add_argument(
@@ -40,26 +40,10 @@ def read_config() -> bt.config:
         default=1000,
     )
 
-    # parser.add_argument("--neuron.sync_interval", type=int, help="Metagraph sync interval, seconds", default=20)
-    #
-    # parser.add_argument(
-    #     "--neuron.weight_set_interval",
-    #     type=int,
-    #     help="Weight set interval, measured in blocks.",
-    #     default=5,
-    # )
-    #
-    # parser.add_argument(
-    #     "--neuron.min_stake_to_set_weights",
-    #     type=int,
-    #     help="Minimal required stake to set weights.",
-    #     default=10,
-    # )
-
     parser.add_argument(
         "--neuron.moving_average_alpha",
         type=float,
-        help="Alpha parameter for updating score using moving average.",
+        help="Alpha parameter for fidelity factor update.",
         default=0.05,
     )
 
@@ -73,8 +57,37 @@ def read_config() -> bt.config:
     parser.add_argument(
         "--neuron.strong_miners_count",
         type=int,
-        help="Number of top miners that are considered strong.",
+        help="Number of top miners that are considered strong. Used for Public API",
         default=100,
+    )
+
+    parser.add_argument(
+        "--generation.task_timeout",
+        type=int,
+        help="Time limit for submitting tasks (in seconds).",
+        default=10 * 60,  # 10 minutes
+    )
+
+    parser.add_argument(
+        "--generation.task_cooldown",
+        type=int,
+        help="Cooldown period between tasks from the same miner (in seconds).",
+        default=60,
+    )
+
+    parser.add_argument(
+        "--validation.endpoint",
+        type=str,
+        help="Specifies the URL of the endpoint responsible for scoring 3D assets. "
+        "This endpoint should handle the /validate/ POST route.",
+        default="http://127.0.0.1:8094",
+    )
+
+    parser.add_argument(
+        "--dataset.path",
+        type=str,
+        help="Path to the file with the prompts (relative or absolute)",
+        default="resources/prompts.txt",
     )
 
     parser.add_argument(
@@ -115,7 +128,7 @@ def read_config() -> bt.config:
     parser.add_argument(
         "--public_api.copies",
         type=int,
-        help="Number of copies to generate to chose the best from.",
+        help="Number of copies to generate to chose the best from. Only one copy is sent back to the client.",
         default=4,
     )
 
@@ -127,32 +140,52 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
-        "--generation.task_timeout",
-        type=int,
-        help="Time limit for submitting tasks (in seconds).",
-        default=10 * 60,
+        "--storage.enabled",
+        action="store_true",
+        help="If enabled, generated assets are stored on the Bittensor storage subnet (SN21).",
+        default=False,
+    )
+
+    parser.add_argument("--storage.netuid", type=int, help="Storage subnet netuid.", default=21)
+
+    parser.add_argument(
+        "--storage.testnet", action="store_true", help="Set if testnet is used for storage", default=False
     )
 
     parser.add_argument(
-        "--generation.task_cooldown",
-        type=int,
-        help="Cooldown period between tasks from the same miner (in seconds).",
-        default=60,
-    )
-
-    parser.add_argument(
-        "--validation.endpoint",
+        "--storage.validator.hotkey",
         type=str,
-        help="Specifies the URL of the endpoint responsible for scoring 3D assets. "
-        "This endpoint should handle the /validate/ POST route.",
-        default="http://127.0.0.1:8094",
+        help="Storage subnet validator to use for storing",
+        default="",
     )
 
     parser.add_argument(
-        "--dataset.path",
+        "--storage.wallet.name",
         type=str,
-        help="Path to the file with the prompts (relative or absolute)",
-        default="resources/prompts.txt",
+        help="Wallet to use for assets storing on storage subnet",
+        default=bt.defaults.wallet.name,
     )
+
+    parser.add_argument(
+        "--storage.wallet.hotkey",
+        type=str,
+        help="Wallet to use for assets storing on storage subnet",
+        default=bt.defaults.wallet.hotkey,
+    )
+
+    parser.add_argument(
+        "--storage.queue_size",
+        type=int,
+        help="Maximum, concurrent number of generated assets waiting in queue to be saved.",
+        default=256,
+    )
+
+    parser.add_argument(
+        "--storage.ttl",
+        type=int,
+        help="Assets storing time.",
+        default=60 * 60 * 24 * 30 * 12,  # almost 1 year
+    )
+    # We expect to significantly increase the assets quality. Storing for one year only.
 
     return bt.config(parser)

@@ -11,6 +11,7 @@ from bittensor.utils import weight_utils
 from common import create_neuron_dir
 from common.protocol import Feedback, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
+from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
 from validator.dataset import Dataset
@@ -51,6 +52,8 @@ class Validator:
     """Simple wrapper to encapsulate validator state save and load."""
     public_api_limiter: RateLimiter
     """Rate limiter for organic requests."""
+    storage: Storage | None
+    """Bittensor storage subnet is used to store generated assets (if enabled)."""
 
     def __init__(self, config: bt.config) -> None:
         self.config: bt.config = copy.deepcopy(config)
@@ -132,11 +135,18 @@ class Validator:
 
         self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
         self.state = ValidatorState(miners=self.miners)
-        self.state.load(self.config.neuron.full_path / "state.pt")
+        self.state.load(self.config.neuron.full_path / "state.txt")
+
+        if self.config.storage.enabled:
+            self.storage = Storage(config)
+        else:
+            self.storage = None
 
     def generate(self, synapse: Generate) -> Generate:
         """Public API. Generation request."""
-        bt.logging.debug(f"Public API. Generation requested. Requester: {synapse.dendrite.hotkey}.")
+        bt.logging.debug(
+            f"Public API. Generation requested. Requester: {synapse.dendrite.hotkey}. Prompt: {synapse.prompt}"
+        )
 
         synapse.task_id = self.task_registry.add_task(synapse.prompt, synapse.dendrite.hotkey)
         synapse.polling_interval = self.config.public_api.polling_interval
@@ -158,6 +168,9 @@ class Validator:
         # TODO: move whitelist to the config file
         # TODO: add dynamic watchers to whitelist additional keys without restarting the validator.
 
+        # Temporary solution. Only one wallet that belongs to the subnet owners is whitelisted.
+        # Validators are free to modify this list.
+        # Once the testing period is over, run-time whitelist modification will be provided.
         whitelist = ["5DwHD8Ja9aWGhB5nbmZqCCs9GNMpzxhBcZjnhcY73Sd75qe7"]
         if not self.config.public_api.whitelist_disabled and hotkey not in whitelist:
             bt.logging.warning(f"{hotkey} is not white-listed for the public API")
@@ -262,6 +275,9 @@ class Validator:
             bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
             return self._add_feedback(synapse, miner)
 
+        if self.storage is not None:
+            asyncio.create_task(self.storage.store(StoredData.from_results(synapse)))
+
         current_time = int(time.time())
         miner.add_observation(
             task_finish_time=current_time,
@@ -270,13 +286,6 @@ class Validator:
         )
 
         self.task_registry.complete_task(synapse.task.id, synapse.dendrite.hotkey, synapse.results, validation_score)
-
-        # TODO: store results
-        # Add a separate queue to store results in case of rate limit or low bandwidth.
-        # Use this miner hotkey to access storage API
-        #   Try same validator first. Then try other validators.
-        #   Config this ^
-        # Store all cids.
 
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
@@ -307,8 +316,8 @@ class Validator:
             return False
 
         keypair = Keypair(ss58_address=synapse.dendrite.hotkey)
-        message = f"{synapse.nonce}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
-        return bool(keypair.verify(message, base64.b64decode(synapse.signature)))
+        message = f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
+        return bool(keypair.verify(message, base64.b64decode(synapse.signature.encode(encoding="utf-8"))))
 
     @staticmethod
     def _get_fidelity_score(validation_score: float) -> float:
@@ -377,9 +386,9 @@ class Validator:
 
             if self.metagraph_sync.should_sync():
                 # TODO: test with blocking sleep(120)
+                self.state.save(self.config.neuron.full_path / "state.txt")
                 self.metagraph_sync.sync()
                 self._set_weights()
-                self.state.save(self.config.neuron.full_path / "state.pt")
 
     def _set_weights(self) -> None:
         if not self._is_enough_stake_to_set_weights():
