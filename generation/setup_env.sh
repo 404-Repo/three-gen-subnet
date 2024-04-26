@@ -17,6 +17,7 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda env create -f conda_env_mining.yml
 conda activate three-gen-mining
 conda info --env
+CUDA_HOME=${CONDA_PREFIX}
 
 echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
 mkdir -p ./extras/diff_gaussian_rasterization/third_party
