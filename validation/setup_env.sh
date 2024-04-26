@@ -18,7 +18,7 @@ conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
 
-cho -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
+echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
 mkdir -p ./extras/diff_gaussian_rasterization/third_party
 git clone --branch 0.9.9.0 https://github.com/g-truc/glm.git ./extras/diff_gaussian_rasterization/third_party/glm
 pip install ./extras/diff_gaussian_rasterization
