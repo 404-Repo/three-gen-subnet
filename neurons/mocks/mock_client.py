@@ -16,7 +16,7 @@ async def main() -> None:
     metagraph.sync(subtensor=subtensor)
     dendrite = bt.dendrite(wallet)
 
-    bt.logging.info("Requesting a job")
+    bt.logging.info("Requesting the job")
 
     validator_uid = 0
     task = await generate(dendrite, metagraph, validator_uid)
@@ -35,7 +35,7 @@ async def main() -> None:
 
 
 async def generate(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Generate:
-    synapse = Generate(prompt="tourmaline tassel earring")
+    synapse = Generate(prompt="Bill Gates")
     response = typing.cast(
         Generate,
         await dendrite.call(

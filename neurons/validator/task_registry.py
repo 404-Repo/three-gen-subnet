@@ -184,8 +184,6 @@ class TaskRegistry:
         - results (str): encoded binary with the results.
         - score (float): validation score.
         """
-        bt.logging.trace(f"[{hotkey}] completed the task: {task_id} with: {score:.2f}")
-
         task = self._tasks.get(task_id, None)
         if task is None:
             return
@@ -193,6 +191,8 @@ class TaskRegistry:
         miner = task.assigned.get(hotkey, None)
         if miner is None:
             return
+
+        bt.logging.trace(f"[{hotkey}] completed the task: {task_id} with: {score:.2f}")
 
         miner.results = results
         if task.acceptable_results_time == 0:
