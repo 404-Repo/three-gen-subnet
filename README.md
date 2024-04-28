@@ -153,5 +153,5 @@ nc -vz [Your Validator IP] [Port]
 ```
 You can also test the validator using the mock script. Navigate to the `mocks` folder and run
 ```commandline
-PYTHONPATH=$PWD/.. python mock_miner.py --subtensor.network test --netuid 89 --wallet.name default --wallet.hotkey default --logging.trace
+PYTHONPATH=$PWD/.. python mock_miner.py --subtensor.network finney --netuid 17 --wallet.name default --wallet.hotkey default --logging.trace
 ```
