@@ -7,6 +7,8 @@ from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import torch
+from pydantic import BaseModel
+
 from api import Generate, StatusCheck
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
@@ -387,11 +389,14 @@ class Validator:
                 self.metagraph_sync.sync()
                 self._set_weights()
 
+    class State(BaseModel):
+        miners: list[MinerData]
+
     def save_state(self) -> None:
         try:
             path = self.config.neuron.full_path / "state.txt"
             with path.open("w") as f:
-                json.dump([miner.json() for miner in self.miners], f)
+                f.write(Validator.State(miners=self.miners).json())
         except Exception as e:
             bt.logging.exception(f"Validator state saving failed with {e}")
 
@@ -404,8 +409,7 @@ class Validator:
         try:
             with path.open("r") as f:
                 content = f.read()
-            self.miners = [MinerData.parse_raw(miner) for miner in content]
-            bt.logging.info(f"{self.miners}")
+            self.miners = Validator.State.parse_raw(content).miners
         except Exception as e:
             bt.logging.exception(f"Failed to load the state: {e}")
 
