@@ -3,6 +3,7 @@ from pathlib import Path
 import bittensor as bt
 from pydantic import BaseModel
 
+from validator import Validator
 from validator.miner_data import MinerData
 
 
@@ -24,8 +25,11 @@ class ValidatorState(BaseModel):
         try:
             with path.open("r") as f:
                 content = f.read()
-            self.parse_raw(content)
+            self.miners = ValidatorState.parse_raw(content).miners
         except Exception as e:
             bt.logging.exception(f"Failed to load the state: {e}")
 
         bt.logging.info("Validator state loaded.")
+
+
+
