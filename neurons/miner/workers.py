@@ -43,8 +43,7 @@ async def _complete_one_task(
     pull = await _pull_task(dendrite, metagraph, validator_uid)
     if pull.task is None:
         bt.logging.warning(
-            f"Validator [{metagraph.hotkeys[validator_uid]}] is not serving tasks or miner is"
-            f" violating rules. Check the trace logs for more details."
+            f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. " f"Reason: {pull.axon.status_message}."
         )
         return
 
@@ -64,17 +63,17 @@ async def _complete_one_task(
         if submit.feedback is not None:
             break
 
-        submit = None
         bt.logging.debug(
-            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
+            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. Reason: {submit.axon.status_message}. "
             f"Making another attempt in 10 seconds"
         )
+        submit = None
         await asyncio.sleep(10.0)
 
     if submit is None:
         bt.logging.warning(
-            f"Validator [{metagraph.hotkeys[validator_uid]}] failed to receive results or miner is"
-            f" violating rules. Check the trace logs for more details."
+            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
+            f"Check the trace or debug logs for more details."
         )
         return
 
