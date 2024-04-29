@@ -42,15 +42,15 @@ class Storage:
 
         bt.logging.debug("Storage metagraph synced.")
 
-        self.storage_wallet = bt.wallet(
-            name=config.storage.wallet.name, hotkey=config.storage.wallet.hotkey, path=config.storage.wallet.path
-        )
-
         if (
-            self.storage_wallet.name == bt.defaults.wallet.name
-            and self.storage_wallet.hotkey == bt.defaults.wallet.hotkey
+            config.storage.wallet.name == bt.defaults.wallet.name
+            and config.storage.wallet.hotkey == bt.defaults.wallet.hotkey
         ):
             self.storage_wallet = bt.wallet(config=self.config)
+        else:
+            self.storage_wallet = bt.wallet(
+                name=config.storage.wallet.name, hotkey=config.storage.wallet.hotkey, path=config.storage.wallet.path
+            )
 
         bt.logging.info(f"Storage wallet: {self.storage_wallet}")
 

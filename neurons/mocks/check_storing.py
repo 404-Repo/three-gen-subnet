@@ -43,7 +43,7 @@ async def main() -> None:
     for attempt in range(3):
         response = typing.cast(
             StoreUser,
-            await dendrite.call(target_axon=metagraph.axons[7], synapse=synapse, timeout=timeout, deserialize=False),
+            await dendrite.call(target_axon=metagraph.axons[86], synapse=synapse, timeout=timeout, deserialize=False),
         )
         if response.axon.status_code == 200:
             bt.logging.info(f"Saved successfully. CID: {response.data_hash}")
@@ -74,7 +74,7 @@ async def main() -> None:
     timeout = 300
     response = typing.cast(
         RetrieveUser,
-        await dendrite.call(target_axon=metagraph.axons[7], synapse=synapse, timeout=timeout, deserialize=False),
+        await dendrite.call(target_axon=metagraph.axons[86], synapse=synapse, timeout=timeout, deserialize=False),
     )
 
     if response.axon.status_code != 200:
