@@ -1,11 +1,14 @@
 import asyncio
 import base64
 import copy
+import json
 import time
 from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import torch
+from pydantic import BaseModel
+
 from api import Generate, StatusCheck
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
@@ -20,7 +23,6 @@ from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
 from validator.task_registry import TaskRegistry
-from validator.validator_state import ValidatorState
 
 
 NEURONS_LIMIT = 256
@@ -48,8 +50,6 @@ class Validator:
     """List of neurons."""
     metagraph_sync: MetagraphSynchronizer
     """Simple wrapper to encapsulate metagraph syncs."""
-    state: ValidatorState
-    """Simple wrapper to encapsulate validator state save and load."""
     public_api_limiter: RateLimiter
     """Rate limiter for organic requests."""
     storage: Storage | None
@@ -134,8 +134,7 @@ class Validator:
         )
 
         self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
-        self.state = ValidatorState(miners=self.miners)
-        self.state.load(self.config.neuron.full_path / "state.txt")
+        self.load_state()
 
         if self.config.storage.enabled:
             self.storage = Storage(config)
@@ -386,9 +385,35 @@ class Validator:
 
             if self.metagraph_sync.should_sync():
                 # TODO: test with blocking sleep(120)
-                self.state.save(self.config.neuron.full_path / "state.txt")
+                self.save_state()
                 self.metagraph_sync.sync()
                 self._set_weights()
+
+    class State(BaseModel):
+        miners: list[MinerData]
+
+    def save_state(self) -> None:
+        try:
+            path = self.config.neuron.full_path / "state.txt"
+            with path.open("w") as f:
+                f.write(Validator.State(miners=self.miners).json())
+        except Exception as e:
+            bt.logging.exception(f"Validator state saving failed with {e}")
+
+    def load_state(self) -> None:
+        path = self.config.neuron.full_path / "state.txt"
+        if not path.exists():
+            bt.logging.warning("No saved state found")
+            return
+
+        try:
+            with path.open("r") as f:
+                content = f.read()
+            self.miners = Validator.State.parse_raw(content).miners
+        except Exception as e:
+            bt.logging.exception(f"Failed to load the state: {e}")
+
+        bt.logging.info("Validator state loaded.")
 
     def _set_weights(self) -> None:
         if not self._is_enough_stake_to_set_weights():

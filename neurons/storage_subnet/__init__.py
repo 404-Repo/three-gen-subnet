@@ -111,7 +111,7 @@ class Storage:
             bt.logging.error("Failed to save generated assets to the storage subnet")
 
         if cid is not None:
-            bt.logging.info(f"Generated assets saved to: {self.config.storage.hotkey}. CID: {cid}")
+            bt.logging.info(f"Generated assets saved to: {self.config.storage.validator.hotkey}. CID: {cid}")
             self._update_stored_catalog(cid, data)
 
     def _update_stored_catalog(self, cid: str, data: StoredData) -> None:
