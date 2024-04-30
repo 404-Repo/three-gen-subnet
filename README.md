@@ -40,13 +40,16 @@ The project is divided into three key modules, each designed to perform specific
 Pending detailed benchmark results, our recommended setup aligns with Google Cloud's a2-highgpu-1g specs:
 - GPU: NVIDIA A100 40GB
 - CPU: 12 vCPUs
-- RAM: 85GB
+- RAM: 32GB - 85GB
 - Storage: 200GB SSD
 Expectations under continuous operation include about 500GB/month in network traffic and 0.2MB/s throughput.
 
 ## OS Requirements
 
-Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11, Ubuntu 20 and Arch Linux. The most rigorous testing environment used is the Deep Learning VM Image, which includes pre-installed ML frameworks and tools essential for development.
+Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11, Ubuntu 20 and Arch Linux. 
+The most rigorous testing environment used is the Deep Learning VM Image, which includes pre-installed ML frameworks and tools essential for development.
+
+**NOTE**: the linux image should come with **pytorch 2.1+** and **CUDA 12.1.1** otherwise you might have problems with running miner or validator pipelines.
 
 ## Setup Guidelines for Miners and Validators
 
