@@ -86,7 +86,7 @@ class TextTo3DModelValidator:
 
         if save_images:
             for j, im in enumerate(rendered_images):
-                im.save(os.path.curdir + "/images/img" + str(j) + "_" + str(i) + ".png")
+                im.save(os.path.curdir + "/images/img" + str(j) + ".png")
 
         score = self._score_images(rendered_images, prompt)
 
