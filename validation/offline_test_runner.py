@@ -3,6 +3,10 @@ import os
 import base64
 
 from lib.validators import TextTo3DModelValidator
+
+from lib.RenderingPipeline import Renderer
+from lib.ValidationPipeline import Validator
+
 from lib.hdf5_loader import HDF5Loader
 from time import time
 
@@ -17,9 +21,17 @@ def validate(data: str, prompt: str):
     print(f"[INFO] Input prompt: {prompt}")
     t1 = time()
 
-    validator = TextTo3DModelValidator(512, 512, 20)
-    validator.init_gaussian_splatting_renderer()
-    score = validator.score_response_gs_input(prompt, data, save_images=False, cam_rad=5)
+    renderer = Renderer(512, 512)
+    renderer.init_gaussian_splatting_renderer()
+    images = renderer.render_gaussian_splatting_views(data, 20, 5.0)
+
+    validator = Validator()
+    validator.preload_scoring_model()
+    score = validator.validate(images, prompt)
+
+    # validator = TextTo3DModelValidator(512, 512, 20)
+    # validator.init_gaussian_splatting_renderer()
+    # score = validator.score_response_gs_input(prompt, data, save_images=False, cam_rad=5)
 
     t2 = time()
     print(f"[INFO] Score: {score}")
