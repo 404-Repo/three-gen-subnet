@@ -16,9 +16,8 @@ from lib.spherical_harmonics import eval_sh, SH2RGB, RGB2SH
 
 
 class GSUtils:
-    def __init__(self):
-        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        torch.set_default_device(self.__device)
+    def __init__(self, device: str = "cuda"):
+        self.__device = device
 
     def build_rotation(self, r: torch.Tensor):
         norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
@@ -85,10 +84,8 @@ class BasicPointCloud(NamedTuple):
 
 
 class BasicGSModel:
-    def __init__(self, sh_degree: int):
-        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        torch.set_default_device(self.__device)
-
+    def __init__(self, sh_degree: int, device: str = "cuda"):
+        self.__device = device
         self.__active_sh_degree = 0
         self.__max_sh_degree = sh_degree
         self.__xyz = torch.empty(0)
@@ -155,10 +152,11 @@ class BasicGSModel:
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
-        points = torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)
 
-        dist2 = torch.clamp_min(distCUDA2(points),0.0000001)
-
+        dist2 = torch.clamp_min(
+            distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)),
+            0.0000001,
+        )
         scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4)).to(self.__device)
         rots[:, 0] = 1
@@ -223,10 +221,9 @@ class BasicCamera:
         fovx: float,
         znear: float,
         zfar: float,
+        device: str = "cuda"
     ):
-        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        torch.set_default_device(self.__device)
-
+        self.__device = device
         self.__image_width = width
         self.__image_height = height
         self.__FoVy = fovx
@@ -305,12 +302,11 @@ class BasicCamera:
 
 
 class GSRenderer:
-    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
+    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0, device: str = "cuda"):
         self.__sh_degree = sh_degree
         self.__white_background = white_background
         self.__radius = radius
-        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        torch.set_default_device(self.__device)
+        self.__device = device
 
         self.__gs_model = BasicGSModel(sh_degree)
 
@@ -385,7 +381,7 @@ class GSRenderer:
             debug=False,
         )
 
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings).to(self.__device)
+        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
         means3D = self.__gs_model.get_xyz
         means2D = screenspace_points
