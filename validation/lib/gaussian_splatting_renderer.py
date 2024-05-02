@@ -157,6 +157,7 @@ class BasicGSModel:
             distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)),
             0.0000001,
         )
+
         scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4)).to(self.__device)
         rots[:, 0] = 1
