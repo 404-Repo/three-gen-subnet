@@ -44,6 +44,11 @@ Pending detailed benchmark results, our recommended setup aligns with Google Clo
 - Storage: 200GB SSD
 Expectations under continuous operation include about 500GB/month in network traffic and 0.2MB/s throughput.
 
+Minimal setup aligns with RunPod 1 x RTX 4090 specs:
+- GPU: NVIDIA 1 x RTX 4090
+- CPU: 16 vCPU
+- RAM: 61 GB
+
 ## OS Requirements
 
 Our code is compatible across various operating systems, yet it has undergone most of its testing on Debian 11, Ubuntu 20 and Arch Linux. 
