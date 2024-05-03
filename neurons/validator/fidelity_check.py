@@ -5,7 +5,7 @@ import aiohttp
 import bittensor as bt
 
 
-VALIDATION_RETRIES = 3
+VALIDATION_RETRIES = 1
 RETRIES_COOLDOWN = 10.0
 
 

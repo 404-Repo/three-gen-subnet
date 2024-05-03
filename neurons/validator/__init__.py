@@ -1,19 +1,17 @@
 import asyncio
 import base64
 import copy
-import json
 import time
 from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import torch
-from pydantic import BaseModel
-
 from api import Generate, StatusCheck
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
 from common.protocol import Feedback, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
+from pydantic import BaseModel
 from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
@@ -219,8 +217,7 @@ class Validator:
     def blacklist_pulling_task(self, synapse: PullTask) -> Tuple[bool, str]:  # noqa: UP006, UP035
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if uid is None:
-            bt.logging.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
-            return True, "Unrecognized hotkey"
+            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
 
         miner = self.miners[uid]
         if miner.is_task_expired(self.config.generation.task_timeout):
@@ -228,12 +225,12 @@ class Validator:
             miner.reset_task()
 
         if miner.assigned_task is not None:
-            bt.logging.trace(f"[{uid}] asked for a new task while having assigned task")
-            return True, "Waiting for the previous task"
+            return True, (f"[{uid}] asked for a new task while having assigned task. "
+                          f"Nothing to worry about unless spams a lot")
 
         if miner.is_on_cooldown():
-            bt.logging.trace(f"[{uid}] asked for a new task while on a cooldown")
-            return True, "Cooldown from the previous task"
+            return True, (f"[{uid}] asked for a new task while on a cooldown. "
+                          f"Nothing to worry about unless spams a lot")
 
         return False, ""
 
@@ -330,13 +327,12 @@ class Validator:
     def blacklist_submitting_results(self, synapse: SubmitResults) -> Tuple[bool, str]:  # noqa: UP006, UP035
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if uid is None:
-            bt.logging.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
-            return True, "Unrecognized hotkey"
+            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
 
         miner = self.miners[uid]
         if miner.assigned_task is None:
-            bt.logging.trace(f"[{uid}] submitted results while having no task assigned")
-            return True, "No task assigned"
+            return True, (f"[{uid}] submitted results while having no task assigned. "
+                          f"It could happen if validator restarts or miner faults")
 
         return False, ""
 

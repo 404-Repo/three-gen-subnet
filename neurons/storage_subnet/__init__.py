@@ -104,7 +104,7 @@ class Storage:
 
             bt.logging.debug(
                 f"Failed to save generated assets. Attempt #{attempt}. Repeating attempt with bigger timeout."
-                f"Status message: {response.axon.status_message}."
+                f"Status message: {response.dendrite.status_message}."
             )
             timeout += 120
         else:

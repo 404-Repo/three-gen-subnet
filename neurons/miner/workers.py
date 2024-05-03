@@ -15,6 +15,7 @@ from miner import ValidatorSelector
 
 
 NETWORK_DELAY_TIME_BUFFER = 60
+FAILED_VALIDATOR_DELAY = 300
 
 
 async def worker_routine(
@@ -43,9 +44,9 @@ async def _complete_one_task(
     pull = await _pull_task(dendrite, metagraph, validator_uid)
     if pull.task is None:
         bt.logging.warning(
-            f"Validator [{metagraph.hotkeys[validator_uid]}] is not serving tasks or miner is"
-            f" violating rules. Check the trace logs for more details."
+            f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
         )
+        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
         return
 
     bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}. Version: {pull.version}")
@@ -58,24 +59,13 @@ async def _complete_one_task(
     if results is None:
         return
 
-    submit = None
-    for _ in range(3):
-        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
-        if submit.feedback is not None:
-            break
-
-        submit = None
-        bt.logging.debug(
-            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
-            f"Making another attempt in 10 seconds"
-        )
-        await asyncio.sleep(10.0)
-
-    if submit is None:
+    submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
+    if submit.feedback is None:
         bt.logging.warning(
-            f"Validator [{metagraph.hotkeys[validator_uid]}] failed to receive results or miner is"
-            f" violating rules. Check the trace logs for more details."
+            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
+            f"Reason: {submit.dendrite.status_message}."
         )
+        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
         return
 
     _log_feedback(submit)

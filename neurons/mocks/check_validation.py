@@ -14,8 +14,9 @@ async def main() -> None:
     with Path(config.data).open() as f:  # noqa
         data = f.read()
 
-    score = await validate(config.validation.endpoint, config.prompt, data)
-    bt.logging.info(f"Validation score: {score:.2f}")
+    jobs = [validate(config.validation.endpoint, config.prompt, data) for _x in range(1)]
+    scores = await asyncio.gather(*jobs)
+    bt.logging.info(f"Validation scores: {scores}")
 
 
 async def validate(endpoint: str, prompt: str, data: str) -> float | None:
