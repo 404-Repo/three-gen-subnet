@@ -28,7 +28,7 @@ class Validator:
             results = self.__model(**inputs)
             logits_per_image = results["logits_per_image"]  # this is the image-text similarity score
             probs = (
-                logits_per_image.softmax(dim=1).detach().numpy()
+                logits_per_image.softmax(dim=1).cput().detach().numpy()
             )  # we can take the softmax to get the label probabilities
             dists.append(probs[0][-1])
 
