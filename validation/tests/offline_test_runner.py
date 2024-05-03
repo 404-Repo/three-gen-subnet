@@ -1,5 +1,13 @@
 import glob
 import os
+import sys
+import inspect
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0, parentdir)
+sys.path.insert(0, parentdir+"/lib")
+
 import base64
 import torch
 
@@ -37,7 +45,7 @@ def validate(data: str, prompt: str):
 
 
 if __name__ == '__main__':
-    h5_files = get_all_h5_file_names("../h5_files")
+    h5_files = get_all_h5_file_names(parentdir + "/h5_files")
     print(h5_files)
     prompts = ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon",]
 
