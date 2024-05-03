@@ -16,8 +16,8 @@ from lib.spherical_harmonics import eval_sh, SH2RGB, RGB2SH
 
 
 class GSUtils:
-    def __init__(self, device: str = "cuda"):
-        self.__device = device
+    def __init__(self):
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def build_rotation(self, r: torch.Tensor):
         norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
@@ -84,8 +84,8 @@ class BasicPointCloud(NamedTuple):
 
 
 class BasicGSModel:
-    def __init__(self, sh_degree: int, device: str = "cuda"):
-        self.__device = device
+    def __init__(self, sh_degree: int):
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.__active_sh_degree = 0
         self.__max_sh_degree = sh_degree
         self.__xyz = torch.empty(0)
@@ -220,9 +220,8 @@ class BasicCamera:
         fovx: float,
         znear: float,
         zfar: float,
-        device: str = "cuda"
     ):
-        self.__device = device
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.__image_width = width
         self.__image_height = height
         self.__FoVy = fovx
@@ -301,11 +300,11 @@ class BasicCamera:
 
 
 class GSRenderer:
-    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0, device: str = "cuda"):
+    def __init__(self, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
         self.__sh_degree = sh_degree
         self.__white_background = white_background
         self.__radius = radius
-        self.__device = device
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.__gs_model = BasicGSModel(sh_degree)
 
