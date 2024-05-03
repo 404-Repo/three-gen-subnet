@@ -152,11 +152,9 @@ class BasicGSModel:
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+        points = torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)
 
-        dist2 = torch.clamp_min(
-            distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)),
-            0.0000001,
-        )
+        dist2 = torch.clamp_min(distCUDA2(points),0.0000001)
 
         scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4)).to(self.__device)
