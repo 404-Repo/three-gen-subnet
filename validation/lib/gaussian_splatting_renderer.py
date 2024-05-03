@@ -18,6 +18,7 @@ from lib.spherical_harmonics import eval_sh, SH2RGB, RGB2SH
 class GSUtils:
     def __init__(self):
         self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
 
     def build_rotation(self, r: torch.Tensor):
         norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
@@ -86,6 +87,8 @@ class BasicPointCloud(NamedTuple):
 class BasicGSModel:
     def __init__(self, sh_degree: int):
         self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
+
         self.__active_sh_degree = 0
         self.__max_sh_degree = sh_degree
         self.__xyz = torch.empty(0)
@@ -222,6 +225,8 @@ class BasicCamera:
         zfar: float,
     ):
         self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
+
         self.__image_width = width
         self.__image_height = height
         self.__FoVy = fovx
@@ -305,6 +310,7 @@ class GSRenderer:
         self.__white_background = white_background
         self.__radius = radius
         self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
 
         self.__gs_model = BasicGSModel(sh_degree)
 
@@ -379,7 +385,7 @@ class GSRenderer:
             debug=False,
         )
 
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+        rasterizer = GaussianRasterizer(raster_settings=raster_settings).to(self.__device)
 
         means3D = self.__gs_model.get_xyz
         means2D = screenspace_points
