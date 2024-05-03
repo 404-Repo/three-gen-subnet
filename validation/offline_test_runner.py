@@ -1,6 +1,7 @@
 import glob
 import os
 import base64
+import torch
 
 from lib.validators import TextTo3DModelValidator
 
@@ -20,6 +21,9 @@ def validate(data: str, prompt: str):
     print("[INFO] Start validating the input 3D data.")
     print(f"[INFO] Input prompt: {prompt}")
     t1 = time()
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('\nUsing device:', device, "\n")
 
     renderer = Renderer(512, 512)
     renderer.init_gaussian_splatting_renderer()
