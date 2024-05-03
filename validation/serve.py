@@ -1,12 +1,12 @@
 import argparse
 from time import time
-from typing import List
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 
-from lib.validators import TextTo3DModelValidator
+from lib.validation_pipeline import Validator
+from lib.rendering_pipeline import Renderer
 
 
 def get_args():
@@ -45,9 +45,13 @@ async def validate(request: RequestData) -> ResponseData:
     print(f"[INFO] Input prompt: {request.prompt}")
     t1 = time()
 
-    validator = TextTo3DModelValidator(512, 512, 10)
-    validator.init_gaussian_splatting_renderer()
-    score = validator.score_response_gs_input(request.prompt, request.data, save_images=False, cam_rad=5)
+    renderer = Renderer(512, 512)
+    renderer.init_gaussian_splatting_renderer()
+    images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
+
+    validator = Validator()
+    validator.preload_scoring_model()
+    score = validator.validate(images, request.prompt)
 
     t2 = time()
     print(f"[INFO] Score: {score}")
