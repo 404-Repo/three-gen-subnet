@@ -17,13 +17,14 @@ from lib.spherical_harmonics import eval_sh, SH2RGB, RGB2SH
 
 class GSUtils:
     def __init__(self):
-        pass
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
 
     def build_rotation(self, r: torch.Tensor):
         norm = torch.sqrt(r[:, 0] * r[:, 0] + r[:, 1] * r[:, 1] + r[:, 2] * r[:, 2] + r[:, 3] * r[:, 3])
 
         q = r / norm[:, None]
-        R = torch.zeros((q.size(0), 3, 3), device="cuda")
+        R = torch.zeros((q.size(0), 3, 3)).to(self.__device)
 
         r = q[:, 0]
         x = q[:, 1]
@@ -42,7 +43,7 @@ class GSUtils:
         return R
 
     def build_scaling_rotation(self, s: torch.Tensor, r: torch.Tensor):
-        L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
+        L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float).to(self.__device)
         R = self.build_rotation(r)
 
         L[:, 0, 0] = s[:, 0]
@@ -53,7 +54,7 @@ class GSUtils:
         return L
 
     def strip_tensot_lowerdiag(self, L: torch.Tensor):
-        uncertainty = torch.zeros((L.shape[0], 6), dtype=torch.float, device="cuda")
+        uncertainty = torch.zeros((L.shape[0], 6), dtype=torch.float).to(self.__device)
 
         uncertainty[:, 0] = L[:, 0, 0]
         uncertainty[:, 1] = L[:, 0, 1]
@@ -85,6 +86,9 @@ class BasicPointCloud(NamedTuple):
 
 class BasicGSModel:
     def __init__(self, sh_degree: int):
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
+
         self.__active_sh_degree = 0
         self.__max_sh_degree = sh_degree
         self.__xyz = torch.empty(0)
@@ -144,24 +148,23 @@ class BasicGSModel:
 
     def create_from_point_cloud(self, pcd: BasicPointCloud, spatial_lr_scale: float = 1.0):
         self.__spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
-        features = torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2)).float().cuda()
+        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().to(self.__device)
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().to(self.__device))
+        features = torch.zeros((fused_color.shape[0], 3, (self.__max_sh_degree + 1) ** 2)).float().to(self.__device)
         features[:, :3, 0] = fused_color
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+        points = torch.from_numpy(np.asarray(pcd.points)).float().to(self.__device)
 
-        dist2 = torch.clamp_min(
-            distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()),
-            0.0000001,
-        )
+        dist2 = torch.clamp_min(distCUDA2(points),0.0000001)
+
         scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
-        rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
+        rots = torch.zeros((fused_point_cloud.shape[0], 4)).to(self.__device)
         rots[:, 0] = 1
 
         opacities = self.__gs_utils.inverse_sigmoid(
-            0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")
+            0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float).to(self.__device)
         )
 
         self.__xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
@@ -170,7 +173,7 @@ class BasicGSModel:
         self.__scaling = nn.Parameter(scales.requires_grad_(True))
         self.__rotation = nn.Parameter(rots.requires_grad_(True))
         self.__opacity = nn.Parameter(opacities.requires_grad_(True))
-        self.__max_radii2D = torch.zeros((self.__xyz.shape[0]), device="cuda")
+        self.__max_radii2D = torch.zeros((self.__xyz.shape[0])).to(self.__device)
 
     def create_from_dictionary(self, data_dict: dict):
         xyz = data_dict["points"]
@@ -181,16 +184,23 @@ class BasicGSModel:
         rotation = data_dict["rotation"]
         sh_degree = data_dict["sh_degree"]
 
-        self.__xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__features_dc = nn.Parameter(
-            torch.tensor(features_dc, dtype=torch.float, device="cuda").contiguous().requires_grad_(True)
-        )
-        self.__features_rest = nn.Parameter(
-            torch.tensor(features_rest, dtype=torch.float, device="cuda").contiguous().requires_grad_(True)
-        )
-        self.__opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__scaling = nn.Parameter(torch.tensor(scaling, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.__rotation = nn.Parameter(torch.tensor(rotation, dtype=torch.float, device="cuda").requires_grad_(True))
+        xyz = torch.tensor(xyz, dtype=torch.float).requires_grad_(True)
+        self.__xyz = nn.Parameter(xyz.to(self.__device))
+
+        features_dc = torch.tensor(features_dc, dtype=torch.float).contiguous().requires_grad_(True)
+        self.__features_dc = nn.Parameter(features_dc.to(self.__device))
+
+        features_rest = torch.tensor(features_rest, dtype=torch.float).contiguous().requires_grad_(True)
+        self.__features_rest = nn.Parameter(features_rest.to(self.__device))
+
+        opacity = torch.tensor(opacities, dtype=torch.float).requires_grad_(True)
+        self.__opacity = nn.Parameter(opacity.to(self.__device))
+
+        scaling = torch.tensor(scaling, dtype=torch.float).requires_grad_(True)
+        self.__scaling = nn.Parameter(scaling.to(self.__device))
+
+        rotation = torch.tensor(rotation, dtype=torch.float).requires_grad_(True)
+        self.__rotation = nn.Parameter(rotation.to(self.__device))
         self.__active_sh_degree = sh_degree
 
     def get_covariance(self, scaling_modifier: float = 1.0):
@@ -214,6 +224,9 @@ class BasicCamera:
         znear: float,
         zfar: float,
     ):
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
+
         self.__image_width = width
         self.__image_height = height
         self.__FoVy = fovx
@@ -227,15 +240,15 @@ class BasicCamera:
         world2cam[1:3, :3] *= -1
         world2cam[:3, 3] *= -1
 
-        self.__world_view_transform = torch.tensor(world2cam).transpose(0, 1).cuda()
+        self.__world_view_transform = torch.tensor(world2cam).transpose(0, 1).to(self.__device)
         self.__projection_matrix = (
             self._get_projection_matrix(znear=self.__znear, zfar=self.__zfar, fovX=self.__FoVx, fovY=self.__FoVy)
             .transpose(0, 1)
-            .cuda()
+            .to(self.__device)
         )
 
         self.__full_proj_transform = self.__world_view_transform @ self.__projection_matrix
-        self.__camera_center = -torch.tensor(cam2world[:3, 3]).cuda()
+        self.__camera_center = -torch.tensor(cam2world[:3, 3]).to(self.__device)
 
     @staticmethod
     def _get_projection_matrix(znear: float, zfar: float, fovX: float, fovY: float):
@@ -296,14 +309,14 @@ class GSRenderer:
         self.__sh_degree = sh_degree
         self.__white_background = white_background
         self.__radius = radius
+        self.__device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.set_default_device(self.__device)
 
         self.__gs_model = BasicGSModel(sh_degree)
 
         self.__bg_color = torch.tensor(
             [1, 1, 1] if white_background else [0, 0, 0],
-            dtype=torch.float32,
-            device="cuda",
-        )
+            dtype=torch.float32).to(self.__device)
 
     def initialize(self, input=None, num_pts: int = 5000, radius: float = 0.5):
         # load checkpoint
@@ -344,9 +357,8 @@ class GSRenderer:
             torch.zeros_like(
                 self.__gs_model.get_xyz,
                 dtype=self.__gs_model.get_xyz.dtype,
-                requires_grad=True,
-                device="cuda",
-            )
+                requires_grad=True
+            ).to(self.__device)
             + 0
         )
         try:
@@ -373,7 +385,7 @@ class GSRenderer:
             debug=False,
         )
 
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+        rasterizer = GaussianRasterizer(raster_settings=raster_settings).to(self.__device)
 
         means3D = self.__gs_model.get_xyz
         means2D = screenspace_points
