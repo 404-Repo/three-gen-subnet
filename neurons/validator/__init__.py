@@ -168,7 +168,9 @@ class Validator:
         # Temporary solution. Only one wallet that belongs to the subnet owners is whitelisted.
         # Validators are free to modify this list.
         # Once the testing period is over, run-time whitelist modification will be provided.
-        whitelist = ["5DwHD8Ja9aWGhB5nbmZqCCs9GNMpzxhBcZjnhcY73Sd75qe7"]
+        whitelist = ["5DwHD8Ja9aWGhB5nbmZqCCs9GNMpzxhBcZjnhcY73Sd75qe7",
+                     "5FKstHjZkh4v3qAMSBa1oJcHCLjxYZ8SNTSz1opTv4hR7gVB",
+                    ]
         if not self.config.public_api.whitelist_disabled and hotkey not in whitelist:
             bt.logging.warning(f"{hotkey} is not white-listed for the public API")
             return False
