@@ -16,8 +16,7 @@ else
     eval "$($CONDA_PATH shell.bash hook)"
 fi
 
-# Ensure the conda_env_neurons.yml is present
-SCRIPT_DIR=$(dirname "$0")
+SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 ENV_FILE="$SCRIPT_DIR/conda_env_neurons.yml"
 if [ ! -f "$ENV_FILE" ]; then
     echo "Error: Environment file 'conda_env_neurons.yml' does not exist in the script directory."

@@ -17,7 +17,7 @@ else
 fi
 
 # Ensure the conda_env_validation.yml is present
-SCRIPT_DIR=$(dirname "$0")
+SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 ENV_FILE="$SCRIPT_DIR/conda_env_validation.yml"
 if [ ! -f "$ENV_FILE" ]; then
     echo "Error: Environment file 'conda_env_validation.yml' does not exist in the script directory."
