@@ -22,7 +22,7 @@ cd "$base_dir/neurons" || exit 1
 source_script "update_env.sh"
 
 # Navigate to the validation directory and source update script
-cd "$base_dir/validation" || exit 1
+cd "../validation" || exit 1
 source_script "update_env.sh"
 
 # Return to the base directory
