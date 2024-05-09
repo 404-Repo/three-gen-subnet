@@ -30,3 +30,4 @@ cd "$base_dir" || exit 1
 
 # Restart pm2 process
 pm2 restart validation
+pm2 restart validator
