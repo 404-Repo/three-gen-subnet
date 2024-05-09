@@ -399,7 +399,7 @@ class Validator:
                 self.metagraph_sync.sync()
                 self._set_weights()
 
-            if self.updater.should_update():
+            if await self.updater.should_update():
                 self.save_state()
                 await self.updater.update()
                 break
