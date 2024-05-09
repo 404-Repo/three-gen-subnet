@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# Navigate to the directory containing this script
-cd "$(dirname "${BASH_SOURCE[0]}")" || exit
+# Define the directory and script names
+script_dir="$(dirname "${BASH_SOURCE[0]}")"
+
+# Navigate to the script directory
+cd "$script_dir" || exit
 
 # Source the update scripts from their paths
 source neurons/update_env.sh

@@ -1,22 +1,35 @@
 #!/bin/bash
 
-# Navigate to the directory containing this script
-cd "$(dirname "${BASH_SOURCE[0]}")" || exit
+# Define the directory and script names
+script_dir="$(dirname "${BASH_SOURCE[0]}")"
+update_validator_script="update_validator.sh"
+self_script="git_pull.sh"
+
+# Navigate to the script directory
+cd "$script_dir" || exit
 
 # Stash changes to update_validator.sh
-git stash push -m "Stash update_validator.sh" update_validator.sh
+if [ -f "$update_validator_script" ]; then
+    git stash push -m "Stash update_validator.sh" "$update_validator_script"
+fi
 
-# Pull the latest changes from the main branch
-git fetch origin main
-git checkout main
-git reset --hard origin/main
+# Fetch the latest changes and update
+git fetch origin auto-update
+git checkout auto-update
+git reset --hard origin/auto-update
 
-# Ignore changes to git_pull.sh (assume script is executable and no need to restore executable permission)
-chmod +x git_pull.sh
+# Ensure self-preservation: script should not modify its own execution process
+if [ -f "$self_script" ]; then
+    chmod +x "$self_script"
+fi
 
-# Apply the previously stashed changes (flexible with stash index if multiple stashes are present)
-git stash list | grep "Stash update_validator.sh" | cut -d: -f1 | xargs -I {} git stash apply {}
+# Apply the previously stashed changes if they exist
+stash_id=$(git stash list | grep "Stash update_validator.sh" | cut -d: -f1 | head -n1)
+if [ -n "$stash_id" ]; then
+    git stash apply "$stash_id"
+fi
 
-# Reapply the executable permissions to ensure the scripts remain executable
-chmod +x update_validator.sh
-chmod +x git_pull.sh
+# In case 'update_validator.sh' was deleted upstream, check before changing permissions
+if [ -f "$update_validator_script" ]; then
+    chmod +x "$update_validator_script"
+fi
