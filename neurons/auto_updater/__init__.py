@@ -21,6 +21,8 @@ class AutoUpdater:
         if time.time() < self._last_check_time + self._interval:
             return False
 
+        self._last_check_time = time.time()
+
         remote_content = await fetch_remote_version()
         if not remote_content:
             bt.logging.error("Failed to fetch latest validator version")
