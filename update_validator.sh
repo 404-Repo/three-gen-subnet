@@ -28,6 +28,5 @@ source_script "update_env.sh"
 # Return to the base directory
 cd "$base_dir" || exit 1
 
-# Restart pm2 processes
+# Restart pm2 process
 pm2 restart validation
-pm2 restart validator

@@ -62,6 +62,20 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
+        "--neuron.auto_update_disabled",
+        action="store_true",
+        help="Disables neuron auto-update.",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--neuron.auto_update_interval",
+        type=int,
+        help="Version check interval",
+        default=30 * 60,  # 30 minutes
+    )
+
+    parser.add_argument(
         "--generation.task_timeout",
         type=int,
         help="Time limit for submitting tasks (in seconds).",
