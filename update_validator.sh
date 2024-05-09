@@ -8,6 +8,7 @@ cd "$script_dir" || exit
 
 # Source the update scripts from their paths
 source neurons/update_env.sh
+
 source validation/update_env.sh
 
 # Restart pm2 processes
