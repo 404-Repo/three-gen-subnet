@@ -3,12 +3,19 @@
 # Define the directory and script names
 script_dir="$(dirname "${BASH_SOURCE[0]}")"
 
-# Navigate to the script directory
-cd "$script_dir" || exit
+# Base directory for scripts
+base_dir="$script_dir"
 
-# Source the update scripts from their paths
-source neurons/update_env.sh
-source validation/update_env.sh
+# Navigate to the neurons directory and source update script
+cd "$base_dir/neurons" || exit 1
+source update_env.sh
+
+# Navigate to the validation directory and source update script
+cd "$base_dir/validation" || exit 1
+source update_env.sh
+
+# Return to the base directory
+cd "$base_dir" || exit 1
 
 # Restart pm2 processes
 pm2 restart validation
