@@ -57,7 +57,6 @@ class AutoUpdater:
 
 async def fetch_remote_version() -> str | None:
     url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/main/neurons/validator/version.py"
-    # url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/auto-update/neurons/validator/version.py"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:

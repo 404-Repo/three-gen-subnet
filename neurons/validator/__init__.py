@@ -124,7 +124,11 @@ class Validator:
 
         bt.logging.info(f"Axon created: {self.axon}")
 
-        self.dataset = Dataset(self.config.dataset.path)
+        self.dataset = Dataset(
+            default_prompts_path=self.config.dataset.default_prompts_path,
+            prompter_url=self.config.dataset.prompter.endpoint,
+            fetch_prompt_interval=self.config.dataset.prompter.fetch_interval,
+        )
 
         self.task_registry = TaskRegistry(
             copies=self.config.public_api.copies,
@@ -409,6 +413,9 @@ class Validator:
                 self.save_state()
                 await self.updater.update()
                 break
+
+            if self.dataset.should_fetch_fresh_prompts():
+                await self.dataset.fetch_fresh_prompts()
 
     class State(BaseModel):
         miners: list[MinerData]

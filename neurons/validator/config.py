@@ -98,10 +98,25 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
-        "--dataset.path",
+        "--dataset.default_prompts_path",
         type=str,
-        help="Path to the file with the prompts (relative or absolute)",
+        help="Path to the file with the default prompts (relative or absolute)",
         default="resources/prompts.txt",
+    )
+
+    parser.add_argument(
+        "--dataset.prompter.endpoint",
+        type=str,
+        help="Specifies the URL of the endpoint responsible for providing fresh batches of prompts. "
+        "This endpoint should handle the /get/ GET route.",
+        default="http://35.222.204.141:9100",
+    )
+
+    parser.add_argument(
+        "--dataset.prompter.fetch_interval",
+        type=int,
+        help="Defines the fetch interval. The prompt batch is quite big (100k+) prompts. No need to fetch frequently",
+        default=60 * 60,  # one hour
     )
 
     parser.add_argument(

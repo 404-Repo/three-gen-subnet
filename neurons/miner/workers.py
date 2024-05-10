@@ -68,7 +68,7 @@ async def _complete_one_task(
         validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
         return
 
-    _log_feedback(submit)
+    _log_feedback(validator_uid, submit)
 
     validator_selector.set_cooldown(validator_uid, submit.cooldown_until)
 
@@ -108,11 +108,13 @@ async def _submit_results(
     return response
 
 
-def _log_feedback(submit: SubmitResults) -> None:
+def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     feedback = submit.feedback
     if submit.task is None or feedback is None:
         return
-    bt.logging.debug(f"Feedback received. Prompt: {submit.task.prompt}. Score: {feedback.task_fidelity_score}")
+    bt.logging.debug(
+        f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {feedback.task_fidelity_score}"
+    )
     bt.logging.debug(
         f"Average score: {feedback.average_fidelity_score}. "
         f"Accepted results (last 8h): {feedback.generations_within_8_hours}. "
