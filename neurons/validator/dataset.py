@@ -66,6 +66,14 @@ class Dataset:
                     response.raise_for_status()
                     result = await response.json()
                     prompts = result["prompts"]
+
+            # Basic correctness check
+            if len(prompts) < 1000:
+                bt.logging.error(f"Insufficient amount ({len(prompts)}) of prompts fetched")
+                return
+
+            self._fresh_prompts = prompts
+            bt.logging.info(f"{len(prompts)} fresh prompts fetched")
         except aiohttp.ClientConnectorError:
             bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {url}.")
         except TimeoutError:
@@ -74,11 +82,3 @@ class Dataset:
             bt.logging.error(f"An unexpected client error occurred: {e} ({url})")
         except Exception as e:
             bt.logging.error(f"An unexpected error occurred: {e} ({url})")
-
-        # Basic correctness check
-        if len(prompts) < 1000:
-            bt.logging.error(f"Insufficient amount ({len(prompts)}) of prompts fetched")
-            return
-
-        self._fresh_prompts = prompts
-        bt.logging.info(f"{len(prompts)} fresh prompts fetched")
