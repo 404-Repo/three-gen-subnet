@@ -124,7 +124,12 @@ class Validator:
 
         bt.logging.info(f"Axon created: {self.axon}")
 
-        self.dataset = Dataset(self.config.dataset.path)
+        self.dataset = Dataset(
+            default_prompts_path=self.config.dataset.default_prompts_path,
+            prompter_url=self.config.dataset.prompter.endpoint,
+            fetch_prompt_interval=self.config.dataset.prompter.fetch_interval,
+            wallet=self.wallet,
+        )
 
         self.task_registry = TaskRegistry(
             copies=self.config.public_api.copies,
@@ -266,7 +271,8 @@ class Validator:
             return self._add_feedback(synapse, miner)
 
         if synapse.results == "":
-            bt.logging.warning(f"[{uid}] submitted empty results")
+            bt.logging.debug(f"[{uid}] submitted empty results")
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
             return self._add_feedback(synapse, miner)
 
         if not self._verify_results_signature(synapse):
@@ -409,6 +415,9 @@ class Validator:
                 self.save_state()
                 await self.updater.update()
                 break
+
+            if self.dataset.should_fetch_fresh_prompts():
+                await self.dataset.fetch_fresh_prompts()
 
     class State(BaseModel):
         miners: list[MinerData]
