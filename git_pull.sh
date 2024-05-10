@@ -14,9 +14,9 @@ if [ -f "$update_validator_script" ]; then
 fi
 
 # Fetch the latest changes and update
-git fetch origin auto-update
-git checkout auto-update
-git reset --hard origin/auto-update
+git fetch origin main
+git checkout main
+git reset --hard origin/main
 
 # Ensure self-preservation: script should not modify its own execution process
 if [ -f "$self_script" ]; then

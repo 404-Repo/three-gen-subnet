@@ -12,7 +12,7 @@ class AutoUpdater:
         self._disabled = disabled
         self._interval = interval
         self._local_version = local_version
-        self._last_check_time = 0
+        self._last_check_time = 0.0
 
     async def should_update(self) -> bool:
         if self._disabled:
@@ -56,8 +56,8 @@ class AutoUpdater:
 
 
 async def fetch_remote_version() -> str | None:
-    # url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/main/neurons/validator/version.py"
-    url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/auto-update/neurons/validator/version.py"
+    url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/main/neurons/validator/version.py"
+    # url = "https://raw.githubusercontent.com/404-Repo/three-gen-subnet/auto-update/neurons/validator/version.py"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
