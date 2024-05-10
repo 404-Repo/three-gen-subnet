@@ -58,7 +58,7 @@ class Dataset:
         nonce = time.time_ns()
         message = f"{nonce}{hotkey}"
         signature = base64.b64encode(self._wallet.hotkey.sign(message)).decode(encoding="utf-8")
-        payload = {"hotkey": hotkey, "nonce": nonce, "signature": signature}
+        payload = {"hotkey": hotkey.ss58_address, "nonce": nonce, "signature": signature}
 
         try:
             async with aiohttp.ClientSession() as session:
