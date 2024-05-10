@@ -56,7 +56,7 @@ class Dataset:
 
         hotkey = self._wallet.hotkey
         nonce = time.time_ns()
-        message = f"{nonce}{hotkey}"
+        message = f"{nonce}{hotkey.ss58_address}"
         signature = base64.b64encode(self._wallet.hotkey.sign(message)).decode(encoding="utf-8")
         payload = {"hotkey": hotkey.ss58_address, "nonce": nonce, "signature": signature}
 
