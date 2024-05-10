@@ -7,6 +7,7 @@ from typing import Tuple  # noqa: UP035
 import bittensor as bt
 import torch
 from api import Generate, StatusCheck
+from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
 from common.protocol import Feedback, PullTask, SubmitResults, Task
@@ -21,6 +22,7 @@ from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
 from validator.task_registry import TaskRegistry
+from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
@@ -52,6 +54,8 @@ class Validator:
     """Rate limiter for organic requests."""
     storage: Storage | None
     """Bittensor storage subnet is used to store generated assets (if enabled)."""
+    updater: AutoUpdater
+    """Simple wrapper to encapsulate neuron auto-updates."""
 
     def __init__(self, config: bt.config) -> None:
         self.config: bt.config = copy.deepcopy(config)
@@ -133,6 +137,12 @@ class Validator:
 
         self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
         self.load_state()
+
+        self.updater = AutoUpdater(
+            disabled=self.config.neuron.auto_update_disabled,
+            interval=self.config.neuron.auto_update_interval,
+            local_version=VALIDATOR_VERSION,
+        )
 
         if self.config.storage.enabled:
             self.storage = Storage(config)
@@ -225,12 +235,15 @@ class Validator:
             miner.reset_task()
 
         if miner.assigned_task is not None:
-            return True, (f"[{uid}] asked for a new task while having assigned task. "
-                          f"Nothing to worry about unless spams a lot")
+            return True, (
+                f"[{uid}] asked for a new task while having assigned task. "
+                f"Nothing to worry about unless spams a lot"
+            )
 
         if miner.is_on_cooldown():
-            return True, (f"[{uid}] asked for a new task while on a cooldown. "
-                          f"Nothing to worry about unless spams a lot")
+            return True, (
+                f"[{uid}] asked for a new task while on a cooldown. " f"Nothing to worry about unless spams a lot"
+            )
 
         return False, ""
 
@@ -331,8 +344,10 @@ class Validator:
 
         miner = self.miners[uid]
         if miner.assigned_task is None:
-            return True, (f"[{uid}] submitted results while having no task assigned. "
-                          f"It could happen if validator restarts or miner faults")
+            return True, (
+                f"[{uid}] submitted results while having no task assigned. "
+                f"It could happen if validator restarts or miner faults"
+            )
 
         return False, ""
 
@@ -380,10 +395,14 @@ class Validator:
             self.metagraph_sync.log_info(self.uid)
 
             if self.metagraph_sync.should_sync():
-                # TODO: test with blocking sleep(120)
                 self.save_state()
                 self.metagraph_sync.sync()
                 self._set_weights()
+
+            if await self.updater.should_update():
+                self.save_state()
+                await self.updater.update()
+                break
 
     class State(BaseModel):
         miners: list[MinerData]

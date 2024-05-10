@@ -16,15 +16,14 @@ else
     eval "$($CONDA_PATH shell.bash hook)"
 fi
 
-# Ensure the conda_env_validation.yml is present
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
-ENV_FILE="$SCRIPT_DIR/conda_env_validation.yml"
+ENV_FILE="$SCRIPT_DIR/conda_env_neurons.yml"
 if [ ! -f "$ENV_FILE" ]; then
-    echo "Error: Environment file 'conda_env_validation.yml' does not exist in the script directory."
+    echo "Error: Environment file 'conda_env_neurons.yml' does not exist in the script directory."
     exit 1
 fi
 
 # Update the Conda environment and prune any removed packages
-echo "Updating the 'three-gen-validation' environment using '$ENV_FILE'."
-conda env update --name three-gen-validation --file "$ENV_FILE" --prune
+echo "Updating the 'three-gen-neurons' environment using '$ENV_FILE'."
+conda env update --name three-gen-neurons --file "$ENV_FILE" --prune
 echo "Environment update completed successfully."
