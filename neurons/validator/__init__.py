@@ -128,6 +128,7 @@ class Validator:
             default_prompts_path=self.config.dataset.default_prompts_path,
             prompter_url=self.config.dataset.prompter.endpoint,
             fetch_prompt_interval=self.config.dataset.prompter.fetch_interval,
+            wallet=self.wallet,
         )
 
         self.task_registry = TaskRegistry(
