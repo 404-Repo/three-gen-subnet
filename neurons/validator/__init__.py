@@ -10,7 +10,7 @@ from api import Generate, StatusCheck
 from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
 from common import create_neuron_dir
-from common.protocol import Feedback, PullTask, SubmitResults, Task
+from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 from pydantic import BaseModel
 from storage_subnet import Storage, StoredData
@@ -106,6 +106,8 @@ class Validator:
             forward_fn=self.submit_results,
             blacklist_fn=self.blacklist_submitting_results,
             priority_fn=self.prioritize_submitting_results,
+        ).attach(
+            forward_fn=self.get_version,
         )
 
         if self.config.public_api.enabled:
@@ -358,6 +360,10 @@ class Validator:
             return 0.0
 
         return float(self.metagraph.S[uid])
+
+    def get_version(self, synapse: GetVersion) -> GetVersion:
+        synapse.version = VALIDATOR_VERSION
+        return synapse
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(

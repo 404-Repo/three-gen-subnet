@@ -44,3 +44,7 @@ class SubmitResults(bt.Synapse):
 
     feedback: Feedback | None = None  # Feedback provided by a validator.
     cooldown_until: int = 0  # UTC time indicating when the miner is allowed to pull the next task from this validator.
+
+
+class GetVersion(bt.Synapse):
+    version: int = 0
