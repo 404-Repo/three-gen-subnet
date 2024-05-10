@@ -271,7 +271,8 @@ class Validator:
             return self._add_feedback(synapse, miner)
 
         if synapse.results == "":
-            bt.logging.warning(f"[{uid}] submitted empty results")
+            bt.logging.debug(f"[{uid}] submitted empty results")
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
             return self._add_feedback(synapse, miner)
 
         if not self._verify_results_signature(synapse):
