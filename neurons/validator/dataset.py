@@ -23,7 +23,12 @@ class Dataset:
         self._fresh_prompts: list[str] = []
 
     def _load_default_prompts(self, path: str) -> None:
-        dataset_path = Path(path).resolve()
+        dataset_path = Path(path)
+        if not dataset_path.is_absolute():
+            dataset_path = Path(__file__).parent / ".." / ".." / dataset_path
+        else:
+            dataset_path = Path(path)
+
         if not dataset_path.exists():
             raise FileNotFoundError(f"Dataset file {dataset_path} not found")
 
