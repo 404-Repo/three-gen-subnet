@@ -1,21 +1,7 @@
-import asyncio
 import urllib.parse
 
 import aiohttp
 import bittensor as bt
-
-
-VALIDATION_RETRIES = 1
-RETRIES_COOLDOWN = 10.0
-
-
-async def validate_with_retries(endpoint: str, prompt: str, data: str) -> float | None:
-    for _ in range(VALIDATION_RETRIES):
-        score = await validate(endpoint, prompt, data)
-        if score is not None:
-            return score
-        await asyncio.sleep(RETRIES_COOLDOWN)
-    return None
 
 
 async def validate(endpoint: str, prompt: str, data: str) -> float | None:

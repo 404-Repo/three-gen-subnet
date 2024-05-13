@@ -17,7 +17,7 @@ from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
 from validator.dataset import Dataset
-from validator.fidelity_check import validate_with_retries
+from validator.fidelity_check import validate
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
@@ -279,9 +279,7 @@ class Validator:
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
             return self._add_feedback(synapse, miner)
 
-        validation_score = await validate_with_retries(
-            self.config.validation.endpoint, synapse.task.prompt, synapse.results
-        )
+        validation_score = await validate(self.config.validation.endpoint, synapse.task.prompt, synapse.results)
         if validation_score is None:
             validation_score = SCORE_ON_VALIDATION_FAILURE
         fidelity_score = self._get_fidelity_score(validation_score)
