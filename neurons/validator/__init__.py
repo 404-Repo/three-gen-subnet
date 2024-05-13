@@ -26,7 +26,7 @@ from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
-SCORE_ON_VALIDATION_FAILURE = 0.6
+SCORE_ON_VALIDATION_FAILURE = 0.0
 
 
 class Validator:
