@@ -18,8 +18,6 @@ def get_args():
 
 app = FastAPI()
 args, _ = get_args()
-validator = Validator()
-validator.preload_scoring_model()
 
 
 class RequestData(BaseModel):
@@ -56,7 +54,7 @@ async def validate(request: RequestData) -> ResponseData:
     renderer = Renderer(512, 512)
     renderer.init_gaussian_splatting_renderer()
     images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
-    score = validator.validate(images, request.prompt)
+    score = app.state.validator.validate(images, request.prompt)
 
     t2 = time()
     print(f"[INFO] Score: {score}")
