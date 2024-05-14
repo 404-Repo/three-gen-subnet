@@ -31,6 +31,12 @@ class ResponseData(BaseModel):
     score: float
 
 
+@app.on_event("startup")
+def startup_event() -> None:
+    app.state.validator = Validator()
+    app.state.validator.preload_scoring_model()
+
+
 @app.post("/validate/", response_model=ResponseData)
 async def validate(request: RequestData) -> ResponseData:
     """
