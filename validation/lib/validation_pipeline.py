@@ -41,10 +41,11 @@ class Validator:
 
         return np.mean(dists)
 
-    def preload_scoring_model(self, scoring_model: str = "openai/clip-vit-base-patch16"):
+    def preload_scoring_model(self, scoring_model: str = "openai/clip-vit-base-patch16", dev="cuda"):
         print("[INFO] Preloading CLIP model for validation.")
 
-        self.__model = CLIPModel.from_pretrained(scoring_model)
+        model = CLIPModel.from_pretrained(scoring_model)
+        self.__model = model.to(dev)
         self.__processor = CLIPProcessor.from_pretrained(scoring_model)
 
         print("[INFO] Done.")

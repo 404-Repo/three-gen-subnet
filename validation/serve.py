@@ -29,6 +29,12 @@ class ResponseData(BaseModel):
     score: float
 
 
+@app.on_event("startup")
+def startup_event() -> None:
+    app.state.validator = Validator()
+    app.state.validator.preload_scoring_model()
+
+
 @app.post("/validate/", response_model=ResponseData)
 async def validate(request: RequestData) -> ResponseData:
     """
@@ -48,10 +54,7 @@ async def validate(request: RequestData) -> ResponseData:
     renderer = Renderer(512, 512)
     renderer.init_gaussian_splatting_renderer()
     images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
-
-    validator = Validator()
-    validator.preload_scoring_model()
-    score = validator.validate(images, request.prompt)
+    score = app.state.validator.validate(images, request.prompt)
 
     t2 = time()
     print(f"[INFO] Score: {score}")

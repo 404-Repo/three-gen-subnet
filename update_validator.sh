@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Define the process names as variables
+VALIDATION_PROCESS="validation"
+VALIDATOR_PROCESS="validator"
+
 # Define the directory and script names
 script_dir="$(dirname "${BASH_SOURCE[0]}")"
 
@@ -28,6 +32,47 @@ source_script "update_env.sh"
 # Return to the base directory
 cd "$base_dir" || exit 1
 
-# Restart pm2 process
-pm2 restart validation
-pm2 restart validator
+# Function to check if a pm2 process is running successfully
+is_process_running() {
+    local process_name="$1"
+
+    # Get the status of the process
+    local status
+    status=$(pm2 info "$process_name" | grep -i "status" | awk '{print $4}')
+
+    if [[ "$status" == "online" ]] || [[ "$status" == "launching" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to restart a pm2 process until it succeeds or max attempts reached
+restart_with_retry() {
+    local process_name="$1"
+    local max_attempts="$2"
+    local attempt=0
+
+    while (( attempt < max_attempts )); do
+        pm2 restart "$process_name"
+
+        sleep 10 # Adding a delay to allow process to restart
+
+        if is_process_running "$process_name"; then
+            echo "$process_name restarted successfully."
+            return 0
+        else
+            echo "Attempt $(( attempt + 1 )) to restart $process_name failed."
+        fi
+        (( attempt++ ))
+    done
+
+    echo "Error: Failed to restart $process_name after $max_attempts attempts."
+    return 1
+}
+
+# Restart validation process up to 5 times
+restart_with_retry "$VALIDATION_PROCESS" 5
+
+# Restart validator process
+pm2 restart "$VALIDATOR_PROCESS"
