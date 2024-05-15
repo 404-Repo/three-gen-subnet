@@ -1,7 +1,10 @@
 import glob
 import os
 import sys
+import gc
 import inspect
+import numpy as np
+from typing import List
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -21,6 +24,25 @@ from time import time
 def get_all_h5_file_names(folder_path: str):
     h5_files = glob.glob(os.path.join(folder_path, '**/*.h5'), recursive=True)
     return h5_files
+
+
+def check_memory_footprint(data: List[np.ndarray], memory_limit: int):
+    total_memory_bytes = 0
+    for d in data:
+        total_memory_bytes += d.nbytes
+
+    # total_memory_bytes *= int(1e+10)
+
+    if total_memory_bytes <= memory_limit:
+        print("\n[INFO] Total VRAM available: ", memory_limit/int(1e+9), " Gb")
+        print("[INFO] Total data size to load to VRAM: ", total_memory_bytes/int(1e+9), " Gb\n")
+        return True
+    else:
+        print("\n[INFO] Total VRAM available: ", memory_limit/int(1e+9), " Gb")
+        print("[INFO] Total data size to load to VRAM: ", total_memory_bytes/int(1e+9), " Gb")
+        print("[INFO] Input data size exceeds the available VRAM free memory!")
+        print("[INFO] Rejecting the input data for further processing.\n")
+        return False
 
 
 def validate(data: str, prompt: str):
@@ -58,6 +80,19 @@ if __name__ == '__main__':
         # print(file_path, " ; ", file_name)
 
         data_dict = hdf5_loader.load_point_cloud_from_h5(file_name, file_path)
+
+        # test checkign the memory footprint
+        gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info(0)
+
+        data_arr = [np.array(data_dict["points"]),
+                    np.array(data_dict["normals"]),
+                    np.array(data_dict["features_dc"]),
+                    np.array(data_dict["features_rest"]),
+                    np.array(data_dict["opacities"])]
+
+        result = check_memory_footprint(data_arr, gpu_memory_free)
+        print("[INFO] Passed memory check: ", result)
+
         data_io = hdf5_loader.pack_point_cloud_to_io_buffer(data_dict["points"],
                                                             data_dict["normals"],
                                                             data_dict["features_dc"],
@@ -69,3 +104,6 @@ if __name__ == '__main__':
 
         data_io_encoded = base64.b64encode(data_io.getbuffer())
         validate(data_io_encoded, prompt)
+
+        gc.collect()
+        torch.cuda.empty_cache()
