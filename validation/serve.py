@@ -1,19 +1,13 @@
 import argparse
-import base64
-import io
 from time import time
-from typing import List
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
-import torch
-import numpy as np
 
 
 from lib.validation_pipeline import Validator
 from lib.rendering_pipeline import Renderer
-from lib.hdf5_loader import HDF5Loader
 
 
 def get_args():
