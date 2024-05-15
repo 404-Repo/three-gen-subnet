@@ -26,7 +26,7 @@ from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
-SCORE_ON_VALIDATION_FAILURE = 0.0
+SCORE_ON_VALIDATION_FAILURE = 0.5
 
 
 class Validator:
@@ -214,6 +214,28 @@ class Validator:
             return synapse
 
         miner = self.miners[uid]
+        if miner.is_task_expired(self.config.generation.task_timeout):
+            bt.logging.debug(f"[{uid}] asked for a new task while having expired task. New task will be assigned")
+            miner.reset_task()
+
+        cooldown_violation = True
+        if miner.assigned_task is not None:
+            bt.logging.debug(
+                f"[{uid}] asked for a new task while having assigned task. " f"Resetting the task and setting cooldown"
+            )
+            cooldown_violation = False
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+
+        if miner.is_on_cooldown():
+            if cooldown_violation:
+                miner.cooldown_violations += 1
+            bt.logging.debug(
+                f"[{uid}] asked for a new task while on a cooldown. " f"Total violations: {miner.cooldown_violations}"
+            )
+            synapse.cooldown_until = miner.cooldown_until
+            synapse.cooldown_violations = miner.cooldown_violations
+            return synapse
+
         is_strong_miner = self.metagraph_sync.is_strong_miner(uid)
 
         organic_task = self.task_registry.get_next_task(synapse.dendrite.hotkey, is_strong_miner=is_strong_miner)
@@ -236,22 +258,6 @@ class Validator:
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if uid is None:
             return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
-
-        miner = self.miners[uid]
-        if miner.is_task_expired(self.config.generation.task_timeout):
-            bt.logging.debug(f"[{uid}] asked for a new task while having expired task. New task will be assigned")
-            miner.reset_task()
-
-        if miner.assigned_task is not None:
-            return True, (
-                f"[{uid}] asked for a new task while having assigned task. "
-                f"Nothing to worry about unless spams a lot"
-            )
-
-        if miner.is_on_cooldown():
-            return True, (
-                f"[{uid}] asked for a new task while on a cooldown. " f"Nothing to worry about unless spams a lot"
-            )
 
         return False, ""
 
@@ -284,7 +290,9 @@ class Validator:
             self.config.validation.endpoint, synapse.task.prompt, synapse.results
         )
         if validation_score is None:
-            validation_score = SCORE_ON_VALIDATION_FAILURE
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+            return self._add_feedback(synapse, miner, validation_failed=True)
+
         fidelity_score = self._get_fidelity_score(validation_score)
 
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
@@ -313,11 +321,13 @@ class Validator:
         miner: MinerData,
         fidelity_score: float = 0.0,
         current_time: int | None = None,
+        validation_failed: bool = False,
     ) -> SubmitResults:
         if current_time is None:
             current_time = int(time.time())
         reward = miner.calculate_reward(current_time)
         synapse.feedback = Feedback(
+            validation_failed=validation_failed,
             task_fidelity_score=fidelity_score,
             average_fidelity_score=miner.fidelity_score,
             generations_within_8_hours=len(miner.observations),

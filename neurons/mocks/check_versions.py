@@ -23,9 +23,7 @@ async def main() -> None:
     versions = typing.cast(
         list[GetVersion],
         await dendrite.forward(
-            axons=[metagraph.axons[uid] for uid in validators],
-            synapse=GetVersion(),
-            deserialize=False,
+            axons=[metagraph.axons[uid] for uid in validators], synapse=GetVersion(), deserialize=False, timeout=30
         ),
     )
 

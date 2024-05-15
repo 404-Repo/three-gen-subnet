@@ -3,7 +3,7 @@ import bittensor as bt
 from common.protocol import Version
 
 
-NEURONS_VERSION = Version(major=0, minor=2, patch=0)
+NEURONS_VERSION = Version(major=0, minor=3, patch=0)
 
 
 def compare_versions(miner: Version, validator: Version, validator_hotkey: str) -> None:

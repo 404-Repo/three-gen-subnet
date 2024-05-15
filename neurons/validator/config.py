@@ -86,7 +86,7 @@ def read_config() -> bt.config:
         "--generation.task_cooldown",
         type=int,
         help="Cooldown period between tasks from the same miner (in seconds).",
-        default=60,
+        default=120,
     )
 
     parser.add_argument(

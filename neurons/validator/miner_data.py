@@ -24,6 +24,9 @@ class MinerData(BaseModel):
     cooldown_until: int = 0
     """Miner aren't allowed to pull tasks form this validator during the cooldown."""
 
+    cooldown_violations: int = 0
+    """Number of times a miner has failed to respect the mandatory cooling period."""
+
     def reset_task(self, cooldown: int | None = None) -> None:
         self.assigned_task = None
         self.assignment_time = None
