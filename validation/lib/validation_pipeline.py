@@ -21,8 +21,7 @@ class Validator:
     def validate(self, images: list, prompt: str):
         print("[INFO] Starting validation ...")
         dists = []
-        self.__negative_prompts.append(prompt)
-        prompts = self.__negative_prompts
+        prompts = self.__negative_prompts + [prompt,]
         for img, _ in zip(images, tqdm.trange(len(images), disable=True)):
             inputs = self.__processor(text=prompts, images=[img], return_tensors="pt", padding=True)
             results = self.__model(**inputs)
