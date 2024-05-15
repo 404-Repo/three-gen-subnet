@@ -9,15 +9,15 @@ import torch
 from api import Generate, StatusCheck
 from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
-from common import create_neuron_dir
+from common import create_neuron_dir, owner
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 from pydantic import BaseModel
 from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
+from validator import fidelity_check
 from validator.dataset import Dataset
-from validator.fidelity_check import validate
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
@@ -26,7 +26,7 @@ from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
-SCORE_ON_VALIDATION_FAILURE = 0.0
+SCORE_ON_VALIDATION_FAILURE = 0.5
 
 
 class Validator:
@@ -108,6 +108,7 @@ class Validator:
             priority_fn=self.prioritize_submitting_results,
         ).attach(
             forward_fn=self.get_version,
+            blacklist_fn=self.blacklist_getting_version,
         )
 
         if self.config.public_api.enabled:
@@ -213,6 +214,28 @@ class Validator:
             return synapse
 
         miner = self.miners[uid]
+        if miner.is_task_expired(self.config.generation.task_timeout):
+            bt.logging.debug(f"[{uid}] asked for a new task while having expired task. New task will be assigned")
+            miner.reset_task()
+
+        cooldown_violation = True
+        if miner.assigned_task is not None:
+            bt.logging.debug(
+                f"[{uid}] asked for a new task while having assigned task. " f"Resetting the task and setting cooldown"
+            )
+            cooldown_violation = False
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+
+        if miner.is_on_cooldown():
+            if cooldown_violation:
+                miner.cooldown_violations += 1
+            bt.logging.debug(
+                f"[{uid}] asked for a new task while on a cooldown. " f"Total violations: {miner.cooldown_violations}"
+            )
+            synapse.cooldown_until = miner.cooldown_until
+            synapse.cooldown_violations = miner.cooldown_violations
+            return synapse
+
         is_strong_miner = self.metagraph_sync.is_strong_miner(uid)
 
         organic_task = self.task_registry.get_next_task(synapse.dendrite.hotkey, is_strong_miner=is_strong_miner)
@@ -235,22 +258,6 @@ class Validator:
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if uid is None:
             return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
-
-        miner = self.miners[uid]
-        if miner.is_task_expired(self.config.generation.task_timeout):
-            bt.logging.debug(f"[{uid}] asked for a new task while having expired task. New task will be assigned")
-            miner.reset_task()
-
-        if miner.assigned_task is not None:
-            return True, (
-                f"[{uid}] asked for a new task while having assigned task. "
-                f"Nothing to worry about unless spams a lot"
-            )
-
-        if miner.is_on_cooldown():
-            return True, (
-                f"[{uid}] asked for a new task while on a cooldown. " f"Nothing to worry about unless spams a lot"
-            )
 
         return False, ""
 
@@ -279,9 +286,13 @@ class Validator:
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
             return self._add_feedback(synapse, miner)
 
-        validation_score = await validate(self.config.validation.endpoint, synapse.task.prompt, synapse.results)
+        validation_score = await fidelity_check.validate(
+            self.config.validation.endpoint, synapse.task.prompt, synapse.results
+        )
         if validation_score is None:
-            validation_score = SCORE_ON_VALIDATION_FAILURE
+            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+            return self._add_feedback(synapse, miner, validation_failed=True)
+
         fidelity_score = self._get_fidelity_score(validation_score)
 
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
@@ -310,11 +321,13 @@ class Validator:
         miner: MinerData,
         fidelity_score: float = 0.0,
         current_time: int | None = None,
+        validation_failed: bool = False,
     ) -> SubmitResults:
         if current_time is None:
             current_time = int(time.time())
         reward = miner.calculate_reward(current_time)
         synapse.feedback = Feedback(
+            validation_failed=validation_failed,
             task_fidelity_score=fidelity_score,
             average_fidelity_score=miner.fidelity_score,
             generations_within_8_hours=len(miner.observations),
@@ -365,9 +378,23 @@ class Validator:
 
         return float(self.metagraph.S[uid])
 
-    def get_version(self, synapse: GetVersion) -> GetVersion:
+    async def get_version(self, synapse: GetVersion) -> GetVersion:
         synapse.version = VALIDATOR_VERSION
+        synapse.validation_version = await fidelity_check.version(self.config.validation.endpoint)
         return synapse
+
+    def blacklist_getting_version(self, synapse: GetVersion) -> Tuple[bool, str]:  # noqa: UP006, UP035
+        uid = self._get_neuron_uid(synapse.dendrite.hotkey)
+        if uid is None:
+            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
+
+        if synapse.dendrite.hotkey != owner.HOTKEY and not self._is_enough_stake_to_set_weights(uid):
+            return True, (
+                f"Version check allowed for validators only. "
+                f"Request from {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
+            )
+
+        return False, ""
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
@@ -379,8 +406,9 @@ class Validator:
                 f" Please register the hotkey using `btcli subnets register` before trying again."
             )
 
-    def _is_enough_stake_to_set_weights(self) -> bool:
-        return bool(self.metagraph.S[self.uid].item() >= self.config.neuron.min_stake_to_set_weights)
+    def _is_enough_stake_to_set_weights(self, uid: int | None = None) -> bool:
+        uid_to_check = self.uid if uid is None else uid
+        return bool(self.metagraph.S[uid_to_check].item() >= self.config.neuron.min_stake_to_set_weights)
 
     def _get_neuron_uid(self, hotkey: str) -> int | None:
         for neuron in self.metagraph.neurons:

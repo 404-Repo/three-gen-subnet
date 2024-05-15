@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import time
 import typing
+from base64 import b64encode
 from pathlib import Path
 
 import bittensor as bt
@@ -48,6 +49,8 @@ async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_ui
         ),
     )
 
+    bt.logging.info(f"Response: {response}")
+
     return response.task
 
 
@@ -57,7 +60,9 @@ async def submit_results(
     with Path("content_pcl.h5").open("r") as f:  # noqa
         results = f.read()
 
-    synapse = SubmitResults(task=task, results=results, submit_time=0, signature="mock")
+    message = f'{0}{task.prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.ss58_address}'
+    signature = dendrite.keypair.sign(message)
+    synapse = SubmitResults(task=task, results=results, submit_time=0, signature=b64encode(signature))
     response = typing.cast(
         SubmitResults,
         await dendrite.call(

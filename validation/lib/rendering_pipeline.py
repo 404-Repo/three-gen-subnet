@@ -157,7 +157,7 @@ class Renderer:
         for d in data_arr:
             total_memory_bytes += sys.getsizeof(d)
 
-        if total_memory_bytes <= memory_limit:
+        if total_memory_bytes < memory_limit:
             # print("\n[INFO] Total VRAM available: ", memory_limit / 1024**3, " Gb")
             # print("[INFO] Total VRAM allocated: ", (torch.cuda.memory_allocated()+torch.cuda.memory_reserved()) / 1024**3, " Gb")
             # print("[INFO] Total data size to load to VRAM: ", total_memory_bytes/1024**3, " Gb\n")

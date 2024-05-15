@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the process names as variables
-VALIDATION_PROCESS="validation"
-VALIDATOR_PROCESS="validator"
+VALIDATION_CONFIG="validation/validation.config.js"
+VALIDATOR_CONFIG="neurons/validator.config.js"
 
 # Define the directory and script names
 script_dir="$(dirname "${BASH_SOURCE[0]}")"
@@ -30,7 +30,15 @@ cd "../validation" || exit 1
 source_script "update_env.sh"
 
 # Return to the base directory
-cd "$base_dir" || exit 1
+cd ".." || exit 1
+
+# Extract the validation process name from the validation config file
+validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
+if [ -z "$validation_process" ]; then
+    echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
+    exit 1
+fi
+
 
 # Function to check if a pm2 process is running successfully
 is_process_running() {
@@ -38,7 +46,7 @@ is_process_running() {
 
     # Get the status of the process
     local status
-    status=$(pm2 info "$process_name" | grep -i "status" | awk '{print $4}')
+    status=$(pm2 info "$validation_process" | grep -i "status" | awk '{print $4}')
 
     if [[ "$status" == "online" ]] || [[ "$status" == "launching" ]]; then
         return 0
@@ -54,6 +62,10 @@ restart_with_retry() {
     local attempt=0
 
     while (( attempt < max_attempts )); do
+        pm2 stop "$process_name"
+
+        sleep 10 # Adding a delay to allow process to stop completely
+
         pm2 restart "$process_name"
 
         sleep 10 # Adding a delay to allow process to restart
@@ -72,7 +84,7 @@ restart_with_retry() {
 }
 
 # Restart validation process up to 5 times
-restart_with_retry "$VALIDATION_PROCESS" 5
+restart_with_retry "$VALIDATION_CONFIG" 5
 
 # Restart validator process
-pm2 restart "$VALIDATOR_PROCESS"
+pm2 restart "$VALIDATOR_CONFIG"

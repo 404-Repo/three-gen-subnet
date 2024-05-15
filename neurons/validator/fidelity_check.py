@@ -29,3 +29,31 @@ async def validate(endpoint: str, prompt: str, data: str) -> float | None:
             bt.logging.error(f"An unexpected error occurred: {e} ({endpoint})")
 
     return None
+
+
+async def version(endpoint: str) -> str:
+    version_url = urllib.parse.urljoin(endpoint, "/version/")
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(version_url) as response:
+                if response.status == 200:
+                    endpoint_version = await response.text()
+                    bt.logging.debug(f"Validation endpoint version: {endpoint_version}")
+                    return endpoint_version
+                else:
+                    bt.logging.error(f"Validation failed with code: {response.status}")
+                    return f"{response.status}:{response.reason}"
+        except aiohttp.ClientConnectorError:
+            bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {endpoint}.")
+            return "can't reach endpoint"
+        except TimeoutError:
+            bt.logging.error(f"The request to the endpoint timed out: {endpoint}")
+            return "request timeout"
+        except aiohttp.ClientError as e:
+            bt.logging.error(f"An unexpected client error occurred: {e} ({endpoint})")
+            return "unexpected error"
+        except Exception as e:
+            bt.logging.error(f"An unexpected error occurred: {e} ({endpoint})")
+
+    return "unexpected error"

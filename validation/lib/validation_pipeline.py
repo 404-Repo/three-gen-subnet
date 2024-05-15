@@ -23,7 +23,7 @@ class Validator:
         dists = []
         self._negative_prompts.append(prompt)
         prompts = self._negative_prompts
-        for img, _ in zip(images, tqdm.trange(len(images))):
+        for img, _ in zip(images, tqdm.trange(len(images), disable=True)):
             inputs = self._processor(text=prompts, images=[img], return_tensors="pt", padding=True)
             results = self._model(**inputs)
             logits_per_image = results["logits_per_image"]  # this is the image-text similarity score
