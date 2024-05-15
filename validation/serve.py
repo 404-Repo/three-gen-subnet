@@ -1,10 +1,11 @@
 import argparse
+import gc
 from time import time
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
-
+import torch
 
 from lib.validation_pipeline import Validator
 from lib.rendering_pipeline import Renderer
@@ -64,6 +65,9 @@ async def validate(request: RequestData) -> ResponseData:
     t2 = time()
     print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec")
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return ResponseData(score=score)
 
