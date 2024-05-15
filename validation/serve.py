@@ -26,7 +26,7 @@ args, _ = get_args()
 
 
 class RequestData(BaseModel):
-    prompt: str
+    prompt: constr(max_length=1024)
     data: constr(max_length=100 * 1024 * 1024)
 
 
