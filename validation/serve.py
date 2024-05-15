@@ -1,12 +1,16 @@
 import argparse
+import gc
 from time import time
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+import torch
 import uvicorn
 
 from lib.validation_pipeline import Validator
 from lib.rendering_pipeline import Renderer
+
+VERSION = "1.0.0"
 
 
 def get_args():
@@ -60,8 +64,22 @@ async def validate(request: RequestData) -> ResponseData:
     print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec")
 
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    t3 = time()
+    print(f"[INFO] Garbage collection took: {t3 - t2} sec")
+
     return ResponseData(score=score)
 
 
+@app.get("/version/", response_model=str)
+async def version() -> str:
+    """
+    Returns current endpoint version.
+    """
+    return str(VERSION)
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=args.port)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, backlog=256)

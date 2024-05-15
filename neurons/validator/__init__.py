@@ -9,7 +9,7 @@ import torch
 from api import Generate, StatusCheck
 from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
-from common import create_neuron_dir
+from common import create_neuron_dir, owner
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 from pydantic import BaseModel
@@ -23,7 +23,6 @@ from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
 from validator.task_registry import TaskRegistry
 from validator.version import VALIDATOR_VERSION
-
 
 NEURONS_LIMIT = 256
 SCORE_ON_VALIDATION_FAILURE = 0.0
@@ -108,6 +107,7 @@ class Validator:
             priority_fn=self.prioritize_submitting_results,
         ).attach(
             forward_fn=self.get_version,
+            blacklist_fn=self.blacklist_getting_version,
         )
 
         if self.config.public_api.enabled:
@@ -305,11 +305,11 @@ class Validator:
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
     def _add_feedback(
-        self,
-        synapse: SubmitResults,
-        miner: MinerData,
-        fidelity_score: float = 0.0,
-        current_time: int | None = None,
+            self,
+            synapse: SubmitResults,
+            miner: MinerData,
+            fidelity_score: float = 0.0,
+            current_time: int | None = None,
     ) -> SubmitResults:
         if current_time is None:
             current_time = int(time.time())
@@ -367,20 +367,33 @@ class Validator:
 
     def get_version(self, synapse: GetVersion) -> GetVersion:
         synapse.version = VALIDATOR_VERSION
+        synapse.validation_version = fidelity_check.version(self.config.validation.endpoint)
         return synapse
+
+    def blacklist_getting_version(self, synapse: GetVersion) -> Tuple[bool, str]:  # noqa: UP006, UP035
+        uid = self._get_neuron_uid(synapse.dendrite.hotkey)
+        if uid is None:
+            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
+
+        if synapse.dendrite.hotkey != owner.HOTKEY or not self._is_enough_stake_to_set_weights(uid):
+            return True, (f"Version check allowed for validators only. "
+                          f"Request from {synapse.dendrite.hotkey} ({synapse.dendrite.ip})")
+
+        return False, ""
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
-            netuid=self.config.netuid,
-            hotkey_ss58=self.wallet.hotkey.ss58_address,
+                netuid=self.config.netuid,
+                hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
             raise RuntimeError(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
                 f" Please register the hotkey using `btcli subnets register` before trying again."
             )
 
-    def _is_enough_stake_to_set_weights(self) -> bool:
-        return bool(self.metagraph.S[self.uid].item() >= self.config.neuron.min_stake_to_set_weights)
+    def _is_enough_stake_to_set_weights(self, uid=None) -> bool:
+        uid_to_check = self.uid if uid is None else uid
+        return bool(self.metagraph.S[uid_to_check].item() >= self.config.neuron.min_stake_to_set_weights)
 
     def _get_neuron_uid(self, hotkey: str) -> int | None:
         for neuron in self.metagraph.neurons:
