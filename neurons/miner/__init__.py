@@ -73,7 +73,7 @@ class Miner:
     async def run(self) -> None:
         bt.logging.debug("Starting the workers.")
 
-        for endpoint in [self.config.generation.endpoint]:
+        for endpoint in self.config.generation.endpoints:
             asyncio.create_task(worker_routine(endpoint, self.wallet, self.metagraph, self.validator_selector))
 
         bt.logging.debug("Starting the miner.")
