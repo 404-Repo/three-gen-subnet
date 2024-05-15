@@ -1,5 +1,7 @@
 import base64
 import io
+import sys
+
 import torch
 import numpy as np
 import skvideo.io as video
@@ -11,7 +13,16 @@ from lib.gaussian_splatting_renderer import GSRenderer, BasicCamera
 
 
 class Renderer:
+    """ Rendering pipeline for the input data """
     def __init__(self, img_width, img_height, device="cuda"):
+        """
+
+        Parameters
+        ----------
+        img_width  - the width of the rendering image
+        img_height - the height of the rendering image
+        device - string, device that will be used for rendering
+        """
         self._device = torch.device(device)
         self._img_width = img_width
         self._img_height = img_height
@@ -20,6 +31,18 @@ class Renderer:
         self._renderer = None
 
     def render_gaussian_splatting_views(self, views: int = 10, cam_rad=1.5, cam_elev=0):
+        """ Function for rendering Gaussian Splats
+
+        Parameters
+        ----------
+        views   - the amount of views to render
+        cam_rad - the radius of the sphere on which the rendering camera will be placed
+        cam_elev - default camera elevation
+
+        Returns
+        -------
+        list of rendered images
+        """
         print("[INFO] Start scoring the response.")
 
         assert len(self._data_dict.keys()) > 0
@@ -58,17 +81,54 @@ class Renderer:
 
     @staticmethod
     def render_video_to_images(video_file: str):
+        """ Function for converting video to the list of images
+
+        Parameters
+        ----------
+        video_file - the video file that will be converted to the list of images
+
+        Returns
+        -------
+        a list with images
+        """
         video_data = video.vread(video_file)
         images = [Image.fromarray(video_data[i, :, :, :]) for i in range(video_data.shape[0])]
         return images
 
     def init_gaussian_splatting_renderer(self, data: str, sh_degree: int = 3, white_background: bool = True, radius: float = 1.0):
+        """ Function for initializing the Gaussian Splatting rendering
+
+        Parameters
+        ----------
+        data             - input data stored as bytes
+        sh_degree        - degree of spherical harmonics
+        white_background - boolean variable that defines whether to use or not white background
+        radius           - the radius of the initial sphere
+
+        Returns
+        -------
+        True if the data fits the VRAM and initialisation was successful
+        False otherwise
+        """
+
         self._renderer = GSRenderer(sh_degree, white_background, radius)
         gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
+        gpu_available_memory = gpu_memory_free - torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
         self._unpacking_data(data)
-        return self._check_memory_footprint(self._data_dict, gpu_memory_free)
+        return self._check_memory_footprint(self._data_dict, gpu_available_memory)
 
     def _unpacking_data(self, data: str):
+        """ Function that unpacks input data from bytes to dictionary
+
+        Parameters
+        ----------
+        data - packed data, bytes
+
+        Returns
+        -------
+        unpacked data in the dictionary format
+        """
+
         pcl_raw = base64.b64decode(data)
         pcl_buffer = io.BytesIO(pcl_raw)
         self._data_dict = self._hdf5_loader.unpack_point_cloud_from_io_buffer(pcl_buffer)
@@ -95,13 +155,17 @@ class Renderer:
 
         total_memory_bytes = 0
         for d in data_arr:
-            total_memory_bytes += d.nbytes
+            total_memory_bytes += sys.getsizeof(d)
 
         if total_memory_bytes <= memory_limit:
+            # print("\n[INFO] Total VRAM available: ", memory_limit / 1024**3, " Gb")
+            # print("[INFO] Total VRAM allocated: ", (torch.cuda.memory_allocated()+torch.cuda.memory_reserved()) / 1024**3, " Gb")
+            # print("[INFO] Total data size to load to VRAM: ", total_memory_bytes/1024**3, " Gb\n")
             return True
         else:
-            print("\n[INFO] Total VRAM available: ", memory_limit / int(1e+9), " Gb")
-            print("[INFO] Total data size to load to VRAM: ", total_memory_bytes / int(1e+9), " Gb")
+            print("\n[INFO] Total VRAM: ", memory_limit / 1024**3, " Gb")
+            print("[INFO] Total VRAM allocated: ", (torch.cuda.memory_allocated()+torch.cuda.memory_reserved()) / 1024**3, " Gb")
+            print("[INFO] Total data size to load to VRAM: ", total_memory_bytes / 1024**3, " Gb")
             print("[INFO] Input data size exceeds the available VRAM free memory!")
             print("[INFO] Input data will not be further processed.\n")
             return False
