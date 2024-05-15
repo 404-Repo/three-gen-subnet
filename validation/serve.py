@@ -2,7 +2,7 @@ import argparse
 from time import time
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, constr
 import uvicorn
 
 from lib.validation_pipeline import Validator
@@ -21,8 +21,8 @@ args, _ = get_args()
 
 
 class RequestData(BaseModel):
-    prompt: str
-    data: str
+    prompt: constr(max_length=1024)
+    data: constr(max_length=100 * 1024 * 1024)  # Approximating 10MB limit
 
 
 class ResponseData(BaseModel):
