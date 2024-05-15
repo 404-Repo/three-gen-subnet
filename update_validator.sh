@@ -33,7 +33,12 @@ source_script "switch_to_uvicorn.sh"
 # Return to the base directory
 cd "$base_dir" || exit 1
 
-validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
+# Extract the validation process name from the validation config file
+validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$base_dir/$VALIDATION_CONFIG")
+if [ -z "$validation_process" ]; then
+    echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
+    exit 1
+fi
 
 # Function to check if a pm2 process is running successfully
 is_process_running() {
