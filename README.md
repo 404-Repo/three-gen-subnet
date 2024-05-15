@@ -23,6 +23,9 @@
 6. [Running the Validator](#running-the-validator)
    1. [Validation Endpoint](#validation-endpoint)
    2. [Validation Neuron](#validator-neuron)
+7. [Prompt Generation](#prompt-generation)
+   1. [Prompt Generators](#prompt-generators)
+   2. [Prompt Collector](#prompt-collector)
 
 ---
 ## Project Structure
@@ -163,3 +166,47 @@ You can also test the validator using the mock script. Navigate to the `mocks` f
 ```commandline
 PYTHONPATH=$PWD/.. python mock_miner.py --subtensor.network finney --netuid 17 --wallet.name default --wallet.hotkey default --logging.trace
 ```
+
+
+## Prompt Generation
+
+Our subnet supports prompt generation from two main sources: organic traffic via Public API 
+and continuously updated datasets. By default, it regularly fetches new batches of prompts from our service. 
+For real-time prompt generation, we currently utilize two different LLM models: 
+`llama3-8b-instruct` and `gemma-1.1-7b-instruct`.
+
+To ensure suitability for 3D generation, our system employs a carefully tailored input 
+[prompt-instruction](https://github.com/404-Repo/text-prompt-generator/blob/LLM1_online_prompt_generator/launching_config.yml). 
+This instruction forces the LLM to select objects for prompt generation from one of the 13 object categories identified 
+based on our industry knowledge and research of gaming asset store trends. 
+These selections can be updated in the future to better align with more specific datasets or marketplace curation.
+
+To achieve true decentralization, you can switch to running the prompt generation locally and change the 
+`--dataset.prompter.endpoint` parameter. 
+
+Our prompter solution consists of two services: the generator and the collector.
+
+### Prompt Generators
+
+Multiple instances of prompt generators continuously produce small batches of prompts and send them to the 
+collector service. You can and should launch multiple generator services to maintain a robust and dynamic system.
+
+To set up the prompt generators:
+- Generate an API key for the collector service.
+- Configure the prompt generators to send batches of prompts to the collector using this API key.
+
+For more details and to get started with prompt generators, visit the following URL:
+- [Prompt Generators Repository](https://github.com/404-Repo/text-prompt-generator)
+
+### Prompt Collector
+
+The prompt collector accumulates prompts from multiple generators and serves fresh large batches of prompts to 
+validators upon request. Validators fetch these batches every hour by default, but this interval can be customized.
+
+To set up the prompt collector:
+- Use the same API key generated for the prompt generators.
+- Configure firewall rules to secure the collector service.
+
+For more details and to get started with the prompt collector, visit the following URL:
+- [Prompt Collector Repository](https://github.com/404-Repo/get-prompts)
+
