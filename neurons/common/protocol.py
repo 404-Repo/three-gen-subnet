@@ -47,4 +47,7 @@ class SubmitResults(bt.Synapse):
 
 
 class GetVersion(bt.Synapse):
-    version: int = 0
+    """Neuron version request."""
+
+    version: int = 0  # neuron version
+    validation_version: str = ""  # validation endpoint version

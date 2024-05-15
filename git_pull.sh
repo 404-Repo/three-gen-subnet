@@ -9,9 +9,9 @@ self_script="git_pull.sh"
 cd "$script_dir" || exit
 
 # Stash changes to update_validator.sh
-if [ -f "$update_validator_script" ]; then
-    git stash push -m "Stash update_validator.sh" "$update_validator_script"
-fi
+#if [ -f "$update_validator_script" ]; then
+#    git stash push -m "Stash update_validator.sh" "$update_validator_script"
+#fi
 
 # Fetch the latest changes and update
 git fetch origin main
@@ -24,10 +24,10 @@ if [ -f "$self_script" ]; then
 fi
 
 # Apply the previously stashed changes if they exist
-stash_id=$(git stash list | grep "Stash update_validator.sh" | cut -d: -f1 | head -n1)
-if [ -n "$stash_id" ]; then
-    git stash apply "$stash_id"
-fi
+#stash_id=$(git stash list | grep "Stash update_validator.sh" | cut -d: -f1 | head -n1)
+#if [ -n "$stash_id" ]; then
+#    git stash apply "$stash_id"
+#fi
 
 # In case 'update_validator.sh' was deleted upstream, check before changing permissions
 if [ -f "$update_validator_script" ]; then

@@ -2,6 +2,7 @@ import time
 import weakref
 
 import bittensor as bt
+from common import owner
 
 
 class ValidatorSelector:
@@ -18,7 +19,7 @@ class ValidatorSelector:
         # Subnet owner's validator will be asked more often for tasks to provide enough throughput.
         # Once the testing is done and more validators provide public API, this code will be removed.
         self._ask_owner_in = 5  # turns
-        self._owner_hotkey = "5E7eSeRr2aHzCV7SkY4a2Pi5NXHrU4anZz3phEQgn4HCen2B"
+        self._owner_hotkey = owner.HOTKEY
         if self._owner_hotkey not in metagraph.hotkeys:
             self._owner_uid = None
         else:
