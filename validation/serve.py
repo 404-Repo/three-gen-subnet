@@ -1,8 +1,10 @@
 import argparse
+import gc
 from time import time
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+import torch
 import uvicorn
 
 from lib.validation_pipeline import Validator
@@ -54,11 +56,17 @@ async def validate(request: RequestData) -> ResponseData:
     renderer = Renderer(512, 512)
     renderer.init_gaussian_splatting_renderer()
     images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
-    score = app.state.validator.validate(images, request.prompt)
+
+    validator = Validator()
+    validator.preload_scoring_model()
+    score = validator.validate(images, request.prompt)
 
     t2 = time()
     print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec")
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return ResponseData(score=score)
 
