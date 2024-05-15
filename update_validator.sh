@@ -29,11 +29,6 @@ source_script "update_env.sh"
 cd "../validation" || exit 1
 source_script "update_env.sh"
 
-(
-    # shellcheck disable=SC1090
-    source "switch_to_uvicorn.sh"
-)
-
 # Return to the base directory
 cd ".." || exit 1
 

@@ -4,7 +4,7 @@ from time import time
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, constr
 import torch
 import uvicorn
 
@@ -27,7 +27,7 @@ args, _ = get_args()
 
 class RequestData(BaseModel):
     prompt: str
-    data: str
+    data: constr(max_length=100 * 1024 * 1024)
 
 
 class ResponseData(BaseModel):
