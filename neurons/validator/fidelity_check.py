@@ -18,7 +18,7 @@ async def validate(endpoint: str, prompt: str, data: str) -> float | None:
 
                     return validation_score
                 else:
-                    bt.logging.error(f"Validation failed with code: {response.status}")
+                    bt.logging.error(f"Validation failed: [{response.status}] {response.reason}")
         except aiohttp.ClientConnectorError:
             bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {endpoint}.")
         except TimeoutError:
