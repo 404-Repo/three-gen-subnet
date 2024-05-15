@@ -5,11 +5,11 @@ from transformers import CLIPProcessor, CLIPModel
 
 class Validator:
     def __init__(self):
-        self.__model = None
-        self.__processor = None
-        self.__false_neg_thres = 0.4
+        self._model = None
+        self._processor = None
+        self._false_neg_thres = 0.4
 
-        self.__negative_prompts = [
+        self._negative_prompts = [
             "empty",
             "nothing",
             "false",
@@ -21,11 +21,11 @@ class Validator:
     def validate(self, images: list, prompt: str):
         print("[INFO] Starting validation ...")
         dists = []
-        self.__negative_prompts.append(prompt)
-        prompts = self.__negative_prompts
+        self._negative_prompts.append(prompt)
+        prompts = self._negative_prompts
         for img, _ in zip(images, tqdm.trange(len(images))):
-            inputs = self.__processor(text=prompts, images=[img], return_tensors="pt", padding=True)
-            results = self.__model(**inputs)
+            inputs = self._processor(text=prompts, images=[img], return_tensors="pt", padding=True)
+            results = self._model(**inputs)
             logits_per_image = results["logits_per_image"]  # this is the image-text similarity score
             probs = (
                 logits_per_image.softmax(dim=1).cpu().detach().numpy()
@@ -33,9 +33,9 @@ class Validator:
             dists.append(probs[0][-1])
 
         dists = np.sort(dists)
-        count_false_detection = np.sum(dists < self.__false_neg_thres)
+        count_false_detection = np.sum(dists < self._false_neg_thres)
         if count_false_detection < len(dists):
-            dists = dists[dists > self.__false_neg_thres]
+            dists = dists[dists > self._false_neg_thres]
 
         print("[INFO] Done.")
 
@@ -45,7 +45,7 @@ class Validator:
         print("[INFO] Preloading CLIP model for validation.")
 
         model = CLIPModel.from_pretrained(scoring_model)
-        self.__model = model.to(dev)
-        self.__processor = CLIPProcessor.from_pretrained(scoring_model)
+        self._model = model.to(dev)
+        self._processor = CLIPProcessor.from_pretrained(scoring_model)
 
         print("[INFO] Done.")
