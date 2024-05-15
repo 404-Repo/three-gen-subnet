@@ -18,9 +18,6 @@ class Renderer:
         self.__hdf5_loader = HDF5Loader()
         self.__renderer = None
 
-    def render_mesh_views(self):
-        pass
-
     def render_gaussian_splatting_views(self, data: str, views: int = 10, cam_rad=1.5, cam_elev=0, save_images: bool = False):
         print("[INFO] Start scoring the response.")
 
@@ -60,9 +57,6 @@ class Renderer:
             img = Image.fromarray(img)
             rendered_images.append(img)
         return rendered_images
-
-    def render_nerf_views(self):
-        pass
 
     @staticmethod
     def render_video_to_images(video_file: str):
