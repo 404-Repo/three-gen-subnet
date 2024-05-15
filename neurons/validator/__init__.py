@@ -375,7 +375,7 @@ class Validator:
         if uid is None:
             return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
 
-        if synapse.dendrite.hotkey != owner.HOTKEY or not self._is_enough_stake_to_set_weights(uid):
+        if synapse.dendrite.hotkey != owner.HOTKEY and not self._is_enough_stake_to_set_weights(uid):
             return True, (f"Version check allowed for validators only. "
                           f"Request from {synapse.dendrite.hotkey} ({synapse.dendrite.ip})")
 
