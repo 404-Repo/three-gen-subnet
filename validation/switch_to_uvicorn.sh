@@ -23,20 +23,19 @@ echo "Backup of $input_file created as $backup_file"
 
 # Extract the port and interpreter from the original config
 port=$(grep -oP '(?<=args: .--port )\d+' "$input_file")
-interpreter=$(grep -oP '(?<=interpreter: ").+?(?=")' "$input_file")
+interpreter=$(grep -oP "(?<=interpreter: ').+?(?=')" "$input_file")
 
 # Output the new configuration to the original file
 cat <<EOL > "$output_file"
 module.exports = {
-    apps: [
-        {
-            name: "validation",
-            script: "uvicorn",
-            args: "serve:app --host 0.0.0.0 --port $port --backlog 256 --workers 4",
-            interpreter: "$interpreter",
-            cron_restart: "0 */4 * * *"  // Restart every 4 hours
-        }
-    ]
+  apps: [
+    {
+      name: 'validation',
+      script: 'uvicorn',
+      args: 'serve:app --host 0.0.0.0 --port $port --backlog 256 --workers 4',
+      interpreter: '$interpreter',
+    }
+  ]
 };
 EOL
 
