@@ -2,7 +2,6 @@ import time
 import weakref
 
 import bittensor as bt
-
 from common import owner
 
 

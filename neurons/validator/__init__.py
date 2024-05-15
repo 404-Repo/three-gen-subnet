@@ -16,13 +16,14 @@ from pydantic import BaseModel
 from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
+from validator import fidelity_check
 from validator.dataset import Dataset
-from validator.fidelity_check import validate
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.rate_limiter import RateLimiter
 from validator.task_registry import TaskRegistry
 from validator.version import VALIDATOR_VERSION
+
 
 NEURONS_LIMIT = 256
 SCORE_ON_VALIDATION_FAILURE = 0.0
@@ -279,7 +280,9 @@ class Validator:
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
             return self._add_feedback(synapse, miner)
 
-        validation_score = await validate(self.config.validation.endpoint, synapse.task.prompt, synapse.results)
+        validation_score = await fidelity_check.validate(
+            self.config.validation.endpoint, synapse.task.prompt, synapse.results
+        )
         if validation_score is None:
             validation_score = SCORE_ON_VALIDATION_FAILURE
         fidelity_score = self._get_fidelity_score(validation_score)
@@ -305,11 +308,11 @@ class Validator:
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
     def _add_feedback(
-            self,
-            synapse: SubmitResults,
-            miner: MinerData,
-            fidelity_score: float = 0.0,
-            current_time: int | None = None,
+        self,
+        synapse: SubmitResults,
+        miner: MinerData,
+        fidelity_score: float = 0.0,
+        current_time: int | None = None,
     ) -> SubmitResults:
         if current_time is None:
             current_time = int(time.time())
@@ -365,9 +368,9 @@ class Validator:
 
         return float(self.metagraph.S[uid])
 
-    def get_version(self, synapse: GetVersion) -> GetVersion:
+    async def get_version(self, synapse: GetVersion) -> GetVersion:
         synapse.version = VALIDATOR_VERSION
-        synapse.validation_version = fidelity_check.version(self.config.validation.endpoint)
+        synapse.validation_version = await fidelity_check.version(self.config.validation.endpoint)
         return synapse
 
     def blacklist_getting_version(self, synapse: GetVersion) -> Tuple[bool, str]:  # noqa: UP006, UP035
@@ -376,22 +379,24 @@ class Validator:
             return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
 
         if synapse.dendrite.hotkey != owner.HOTKEY and not self._is_enough_stake_to_set_weights(uid):
-            return True, (f"Version check allowed for validators only. "
-                          f"Request from {synapse.dendrite.hotkey} ({synapse.dendrite.ip})")
+            return True, (
+                f"Version check allowed for validators only. "
+                f"Request from {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
+            )
 
         return False, ""
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
-                netuid=self.config.netuid,
-                hotkey_ss58=self.wallet.hotkey.ss58_address,
+            netuid=self.config.netuid,
+            hotkey_ss58=self.wallet.hotkey.ss58_address,
         ):
             raise RuntimeError(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
                 f" Please register the hotkey using `btcli subnets register` before trying again."
             )
 
-    def _is_enough_stake_to_set_weights(self, uid=None) -> bool:
+    def _is_enough_stake_to_set_weights(self, uid: int | None = None) -> bool:
         uid_to_check = self.uid if uid is None else uid
         return bool(self.metagraph.S[uid_to_check].item() >= self.config.neuron.min_stake_to_set_weights)
 

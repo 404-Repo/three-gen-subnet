@@ -1,11 +1,9 @@
 import argparse
 import asyncio
-import time
 import typing
-from pathlib import Path
 
 import bittensor as bt
-from common.protocol import Feedback, PullTask, SubmitResults, Task, Version, GetVersion
+from common.protocol import GetVersion
 
 
 async def main() -> None:
@@ -22,11 +20,14 @@ async def main() -> None:
     validators.append(0)
     bt.logging.info(f"Active validators: {validators}")
 
-    versions = typing.cast(list[GetVersion], await dendrite.forward(
-        axons=[metagraph.axons[uid] for uid in validators],
-        synapse=GetVersion(),
-        deserialize=False,
-    ))
+    versions = typing.cast(
+        list[GetVersion],
+        await dendrite.forward(
+            axons=[metagraph.axons[uid] for uid in validators],
+            synapse=GetVersion(),
+            deserialize=False,
+        ),
+    )
 
     for version in versions:
         bt.logging.info(
@@ -34,7 +35,8 @@ async def main() -> None:
             f"{metagraph.hotkeys.index(version.axon.hotkey)} | "
             f"{version.version} | "
             f"{version.validation_version} | "
-            f"{version.dendrite.status_message} ")
+            f"{version.dendrite.status_message} "
+        )
 
 
 async def get_config() -> bt.config:
