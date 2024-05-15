@@ -22,7 +22,7 @@ args, _ = get_args()
 
 class RequestData(BaseModel):
     prompt: constr(max_length=1024)
-    data: constr(max_length=100 * 1024 * 1024)  # Approximating 10MB limit
+    data: constr(max_length=100 * 1024 * 1024)  # Approximating 100MB limit
 
 
 class ResponseData(BaseModel):
