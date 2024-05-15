@@ -61,7 +61,7 @@ async def validate(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation process.
 
     """
-    print("[INFO] Start validating the input 3D data.")
+    print(f"[INFO] Start validating the input 3D data. Data size: {len(request.data)}")
     print(f"[INFO] Input prompt: {request.prompt}")
     t1 = time()
 

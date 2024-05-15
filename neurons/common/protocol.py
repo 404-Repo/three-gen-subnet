@@ -19,10 +19,11 @@ class Task(BaseModel):
 
 
 class Feedback(BaseModel):
-    task_fidelity_score: float  # Calculated fidelity score for the given task.
-    average_fidelity_score: float  # Average of all computed fidelity scores.
-    generations_within_8_hours: int  # Total accepted generations (non-zero fidelity score) within the last 8 hours.
-    current_miner_reward: float  # Recent miners reward value.
+    validation_failed: bool = False  # Set if validation failed.
+    task_fidelity_score: float = 0.0  # Calculated fidelity score for the given task.
+    average_fidelity_score: float = 0.0  # Average of all computed fidelity scores.
+    generations_within_8_hours: int = 0  # Total accepted generations (non-zero fidelity score) within the last 8 hours.
+    current_miner_reward: float = 0  # Recent miners reward value.
 
 
 class PullTask(bt.Synapse):
@@ -31,6 +32,9 @@ class PullTask(bt.Synapse):
     version: Version | None = None  # Current validator version.
     task: Task | None = None  # Task to be filled by validator.
     submit_before: int = 0  # Allocated time to submit the results.
+
+    cooldown_until: int = 0  # UTC time indicating when the miner is allowed to pull the next task from this validator.
+    cooldown_violations: int = 0  # Number of times a miner has failed to respect the mandatory cooling period.
 
 
 class SubmitResults(bt.Synapse):
