@@ -3,7 +3,7 @@ import gc
 from time import time
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, constr
 import torch
 import uvicorn
@@ -11,7 +11,7 @@ import uvicorn
 from lib.validation_pipeline import Validator
 from lib.rendering_pipeline import Renderer
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 
 def get_args():
@@ -61,8 +61,12 @@ async def validate(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation process.
 
     """
-    print(f"[INFO] Start validating the input 3D data. Data size: {len(request.data)}")
+    gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
+
+    print(f"[INFO] Start validating the input 3D data. Data size: {len(request.data)}. "
+          f"Memory: {gpu_memory_free} / {gpu_memory_total}")
     print(f"[INFO] Input prompt: {request.prompt}")
+
     t1 = time()
 
     try:
@@ -70,19 +74,27 @@ async def validate(request: RequestData) -> ResponseData:
         renderer.init_gaussian_splatting_renderer()
         images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
         score = app.state.validator.validate(images, request.prompt)
+
+        print(f"[INFO] Score: {score}. Prompt: {request.prompt}")
+        error = None
     except Exception as e:
-        print(f"[ERROR] Validation failed with: {e}")
+        gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
+        print(f"[ERROR] Validation failed with: {e}. Memory: {gpu_memory_free} / {gpu_memory_total}")
+        error = e
         score = 0.0
 
     t2 = time()
-    print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec")
 
     gc.collect()
     torch.cuda.empty_cache()
+    gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
 
     t3 = time()
-    print(f"[INFO] Garbage collection took: {t3 - t2} sec")
+    print(f"[INFO] Garbage collection took: {t3 - t2} sec. Memory: {gpu_memory_free} / {gpu_memory_total}")
+
+    if error is not None:
+        raise HTTPException(status_code=500, detail=str(error))
 
     return ResponseData(score=score)
 

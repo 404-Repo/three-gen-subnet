@@ -60,7 +60,7 @@ async def submit_results(
     with Path("content_pcl.h5").open("r") as f:  # noqa
         results = f.read()
 
-    message = f'{0}{task.prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.ss58_address}'
+    message = f"{0}{task.prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.ss58_address}"
     signature = dendrite.keypair.sign(message)
     synapse = SubmitResults(task=task, results=results, submit_time=0, signature=b64encode(signature))
     response = typing.cast(
