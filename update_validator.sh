@@ -38,7 +38,7 @@ source_script "update_env.sh"
 cd ".." || exit 1
 
 # Extract the validation process name from the validation config file
-validation_process=$(grep -oP "(?<=name: ').+?(?=')" "../$VALIDATION_CONFIG")
+validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
 if [ -z "$validation_process" ]; then
     echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
     exit 1
