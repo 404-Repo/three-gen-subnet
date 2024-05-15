@@ -42,11 +42,24 @@ async def _complete_one_task(
     validator_selector.set_cooldown(validator_uid, int(time.time()) + 60)
 
     pull = await _pull_task(dendrite, metagraph, validator_uid)
-    if pull.task is None:
+    if pull.dendrite.status_code != 200:
         bt.logging.warning(
             f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
         )
         validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+        return
+
+    if pull.task is None:
+        if pull.cooldown_until == 0:
+            bt.logging.warning(f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: Unknown.")
+            validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+        else:
+            cooldown_left = max(0, int(pull.cooldown_until - time.time()))
+            bt.logging.debug(
+                f"Miner is on cooldown for the next: {cooldown_left} sec. "
+                f"Total cooldown violations: {pull.cooldown_violations}"
+            )
+            validator_selector.set_cooldown(validator_uid, pull.cooldown_until)
         return
 
     bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}. Version: {pull.version}")
@@ -112,9 +125,8 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     feedback = submit.feedback
     if submit.task is None or feedback is None:
         return
-    bt.logging.debug(
-        f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {feedback.task_fidelity_score}"
-    )
+    score = "failed" if feedback.validation_failed else feedback.task_fidelity_score
+    bt.logging.debug(f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {score}")
     bt.logging.debug(
         f"Average score: {feedback.average_fidelity_score}. "
         f"Accepted results (last 8h): {feedback.generations_within_8_hours}. "
