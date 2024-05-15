@@ -33,7 +33,7 @@ source_script "switch_to_uvicorn.sh"
 # Return to the base directory
 cd "$base_dir" || exit 1
 
-validation_process=$(grep -oP '(?<=name: .)[^"]*' "$VALIDATION_CONFIG")
+validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
 
 # Function to check if a pm2 process is running successfully
 is_process_running() {
