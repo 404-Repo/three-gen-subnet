@@ -11,7 +11,7 @@ import uvicorn
 from lib.validation_pipeline import Validator
 from lib.rendering_pipeline import Renderer
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 
 def get_args():
