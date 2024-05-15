@@ -2,6 +2,7 @@ import argparse
 import gc
 from time import time
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 import torch
@@ -33,10 +34,19 @@ class ResponseData(BaseModel):
     score: float
 
 
-@app.on_event("startup")
-def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
     app.state.validator = Validator()
     app.state.validator.preload_scoring_model()
+
+    yield
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+app.router.lifespan_context = lifespan
 
 
 @app.post("/validate/", response_model=ResponseData)
@@ -55,10 +65,14 @@ async def validate(request: RequestData) -> ResponseData:
     print(f"[INFO] Input prompt: {request.prompt}")
     t1 = time()
 
-    renderer = Renderer(512, 512)
-    renderer.init_gaussian_splatting_renderer()
-    images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
-    score = app.state.validator.validate(images, request.prompt)
+    try:
+        renderer = Renderer(512, 512)
+        renderer.init_gaussian_splatting_renderer()
+        images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
+        score = app.state.validator.validate(images, request.prompt)
+    except Exception as e:
+        print(f"[ERROR] Validation failed with: {e}")
+        score = 0.0
 
     t2 = time()
     print(f"[INFO] Score: {score}")
