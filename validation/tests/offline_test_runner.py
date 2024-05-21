@@ -59,7 +59,6 @@ def validate(renderer, validator,  data: str, prompt: str):
     score = validator.validate(images, prompt)
 
     t2 = time()
-    print(f"[INFO] Score: {score}")
     print(f"[INFO] Validation took: {t2 - t1} sec\n\n")
 
     return images, score
