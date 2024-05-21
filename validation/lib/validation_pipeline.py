@@ -5,10 +5,10 @@ from sklearn.ensemble import IsolationForest
 
 
 class Validator:
-    def __init__(self):
+    def __init__(self, debug: bool = False):
         self._model = None
         self._processor = None
-        self._false_neg_thres = 0.4
+        self._debug = debug
 
         self._negative_prompts = [
             "empty",
@@ -20,7 +20,8 @@ class Validator:
         ]
 
     def validate(self, images: list, prompt: str):
-        print("[INFO] Starting validation ...")
+        if not self._debug:
+            print("[INFO] Starting validation ...")
         dists = []
         prompts = self._negative_prompts + [prompt,]
         for img, _ in zip(images, tqdm.trange(len(images), disable=True)):
@@ -39,14 +40,16 @@ class Validator:
         clf.fit(dists)
         preds = clf.predict(dists)
         outliers = np.where(preds == -1)[0]
-        new_dists = np.delete(dists, outliers)
-        score = np.median(new_dists)
+        filtered_dists = np.delete(dists, outliers)
+        score = np.median(filtered_dists)
 
-        print("data: ", dists.reshape(-1, 1))
-        print("outliers: ", dists[outliers])
-        print("score: ", score)
+        if self._debug:
+            print("data: ", dists.T)
+            print("outliers: ", dists[outliers])
+            print("score: ", score)
 
-        print("[INFO] Done.")
+        if not self._debug:
+            print("[INFO] Done.")
 
         return score
 
