@@ -72,7 +72,7 @@ async def validate(request: RequestData) -> ResponseData:
     try:
         renderer = Renderer(512, 512)
         renderer.init_gaussian_splatting_renderer()
-        images = renderer.render_gaussian_splatting_views(request.data, 10, 5.0)
+        images = renderer.render_gaussian_splatting_views(request.data, 15, 5.0)
         score = app.state.validator.validate(images, request.prompt)
 
         print(f"[INFO] Score: {score}. Prompt: {request.prompt}")
