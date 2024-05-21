@@ -173,12 +173,14 @@ if __name__ == '__main__':
                 prompt = prompts[j]
 
             data_io_encoded = base64.b64encode(data_io.getbuffer())
-            images = validate(renderer, validator, data_io_encoded, prompt)
+            images, _ = validate(renderer, validator, data_io_encoded, prompt)
 
             if save_images:
                 path = os.path.join(os.curdir, "renders")
                 if not os.path.exists(path):
                     os.mkdir(path)
+                path = os.path.join(path, file_name)
+                os.mkdir(path)
 
                 for ind, img in enumerate(images):
                     img_path = os.path.join(path, file_name + "_image_" + str(ind)+".png")
