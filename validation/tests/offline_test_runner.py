@@ -135,7 +135,7 @@ if __name__ == '__main__':
     renderer.init_gaussian_splatting_renderer()
 
     # preparing validator
-    validator = Validator()
+    validator = Validator(debug=True)
     validator.preload_scoring_model()
 
     # preparing HDF5 loader
