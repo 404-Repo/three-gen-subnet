@@ -45,7 +45,7 @@ class Validator:
 
         if self._debug:
             print("data: ", dists.T)
-            print("outliers: ", dists[outliers])
+            print("outliers: ", dists[outliers].T)
             print("score: ", score)
 
         if not self._debug:
