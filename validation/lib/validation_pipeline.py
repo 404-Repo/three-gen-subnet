@@ -1,6 +1,6 @@
 import numpy as np
 import tqdm
-from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoProcessor, AutoModelForZeroShotImageClassification
 from sklearn.ensemble import IsolationForest
 
 
@@ -44,20 +44,19 @@ class Validator:
         score = np.median(filtered_dists)
 
         if self._debug:
-            print("data: ", dists.T)
-            print("outliers: ", dists[outliers].T)
-            print("score: ", score)
+            print("[DEBUG] data: ", dists.T)
+            print("[DEBUG] outliers: ", dists[outliers].T)
+            print("[DEBUG] score: ", score)
 
         if not self._debug:
             print("[INFO] Done.")
 
         return score
 
-    def preload_scoring_model(self, scoring_model: str = "openai/clip-vit-base-patch16", dev="cuda"):
+    def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b", dev="cuda"):
         print("[INFO] Preloading CLIP model for validation.")
 
-        model = CLIPModel.from_pretrained(scoring_model)
-        self._model = model.to(dev)
-        self._processor = CLIPProcessor.from_pretrained(scoring_model)
+        self._processor = AutoProcessor.from_pretrained(scoring_model)
+        self._model = AutoModelForZeroShotImageClassification.from_pretrained(scoring_model).to(dev)
 
         print("[INFO] Done.")
