@@ -12,7 +12,6 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 sys.path.insert(0, parentdir+"/lib")
 
-
 import torch
 
 from lib.rendering_pipeline import Renderer
@@ -92,11 +91,13 @@ def match_promtps(prompts_in: list, file_names: list):
     matched list of prompts
     """
     prompts = []
-    for filename in file_names:
-        # Check if any prompt is in the filename
-        if any(prompt in filename for prompt in prompts_in):
-            prompts.append(filename)
-        return prompts
+    for file_path in file_names:
+        filename = os.path.basename(file_path)
+        for prompt in prompts_in:
+            if any(word in filename.split("_") for word in prompt.split(" ")):
+                prompts.append(prompt)
+                break
+    return prompts
 
 
 if __name__ == '__main__':
@@ -115,10 +116,13 @@ if __name__ == '__main__':
     else:
         raise Validator("No prompts were given by either 'prompts_file' or 'prompts' fields in the config! Nothing to be processed.")
 
-    if len(prompts_in) > 0:
+    if len(prompts_in) == len(h5_files):
         prompts = match_promtps(prompts_in, h5_files)
-    else:
+    elif len(prompts_in) == 1:
         prompts = prompts_in
+    else:
+        raise ValueError("The amount of provided prompts should be the same as the amount of input files or "
+                         "it should be 1 prompt for all files.")
 
     # prompts = ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon",]
     save_images = config_data["save_images"]
@@ -145,9 +149,11 @@ if __name__ == '__main__':
 
             # loading h5 file
             file_name, _ = os.path.splitext(os.path.basename(h5_file))
-            file_name = file_name.split("_")[0]
+            file_name = file_name.strip("_pcl")
             file_path = os.path.abspath(h5_file)
             file_path = os.path.dirname(file_path)
+
+            print("[INFO] file path: ", h5_file)
 
             data_dict = hdf5_loader.load_point_cloud_from_h5(file_name, file_path)
 
