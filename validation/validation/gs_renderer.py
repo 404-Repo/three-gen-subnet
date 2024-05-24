@@ -7,7 +7,7 @@ from PIL import Image
 from diff_gaussian_rasterization import (GaussianRasterizationSettings,
                                          GaussianRasterizer)
 
-from gs_camera import OrbitCamera
+from validation.gs_camera import OrbitCamera
 
 
 class GaussianRenderer:
