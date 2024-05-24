@@ -20,7 +20,10 @@
 #  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
+
 import numpy as np
+import torch
+
 
 C0 = 0.28209479177387814
 C1 = 0.4886025119029199
@@ -108,12 +111,8 @@ def eval_sh(deg, sh, dirs):
                     )
     return result
 
+
 # *********************************************** END of Copyright  **************************************************
-
-
-import torch
-
-
 def preproceses_dream_gaussian_output(data: dict, camera_position: torch.tensor):
     """ Function for converting dream gaussian project output to the format that new
     rendering pipeline can processor
