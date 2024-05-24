@@ -31,7 +31,7 @@ class RequestData(BaseModel):
     data: constr(max_length=100 * 1024 * 1024)
     # 0 - dream graussian prj data
     # 1 - LGM / other prj data
-    data_ver: int
+    data_ver: int = 0
 
 
 class ResponseData(BaseModel):
