@@ -28,3 +28,15 @@ fi
 echo "Updating the 'three-gen-validation' environment using '$ENV_FILE'."
 conda env update --name three-gen-validation --file "$ENV_FILE" --prune
 echo "Environment update completed successfully."
+
+CUDA_HOME=${CONDA_PREFIX}
+
+conda activate three-gen-validation
+
+echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
+mkdir -p ./extras/diff-gaussian-rasterization
+git clone https://github.com/ashawkey/diff-gaussian-rasterization ./extras/diff-gaussian-rasterization
+
+git clone --branch 0.9.9.0 https://github.com/g-truc/glm.git ./extras/diff-gaussian-rasterization/third_party/glm
+pip install ./extras/diff-gaussian-rasterization
+rm -rf ./extras
