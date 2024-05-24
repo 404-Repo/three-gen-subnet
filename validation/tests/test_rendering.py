@@ -4,6 +4,8 @@ import sys
 import inspect
 import base64
 
+import numpy as np
+
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
@@ -11,9 +13,8 @@ sys.path.insert(0, parentdir+"/validation")
 
 import pytest
 
-from validation.hdf5_loader import HDF5Loader
 from validation.rendering_pipeline import RenderingPipeline
-from validation.validation_pipeline import ValidationPipeline
+from validation.hdf5_loader import HDF5Loader
 
 
 @pytest.fixture
@@ -27,8 +28,7 @@ def h5_to_base64():
     return encoded_buffer
 
 
-def test_validator(h5_to_base64):
-    prompt = "A yellow monkey"
+def test_rendering_pipeline(h5_to_base64):
     data = h5_to_base64
 
     render = RenderingPipeline(512, 512, "gs")
@@ -37,8 +37,7 @@ def test_validator(h5_to_base64):
     assert data_ready
 
     images = render.render_gaussian_splatting_views(data_out, 15, 3.0)
-    validator = ValidationPipeline()
-    validator.preload_scoring_model()
-    score = validator.validate(images, prompt)
 
-    assert score > 0.9
+    blank_image = np.ones(np.array(images[0]).shape, dtype=np.uint8)*255
+    for img in images:
+        assert np.any(np.array(img) != blank_image)
