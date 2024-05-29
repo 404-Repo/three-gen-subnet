@@ -12,7 +12,7 @@ import uvicorn
 from validation.validation_pipeline import ValidationPipeline
 from validation.rendering_pipeline import RenderingPipeline
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 
 def get_args():
