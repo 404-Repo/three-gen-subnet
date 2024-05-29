@@ -11,6 +11,7 @@ fi
 
 # Attempt to find Conda's base directory and source it (required for `conda activate`)
 CONDA_BASE=$(conda info --base)
+PATH="${CONDA_BASE}/bin/":$PATH
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 # Create environment and activate it
