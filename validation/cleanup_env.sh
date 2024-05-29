@@ -1,8 +1,13 @@
-rm -rf ./extras/diff_gaussian_rasterization/third_party
-rm -rf ./extras/diff_gaussian_rasterization/build
-rm -rf ./extras/diff_gaussian_rasterization/diff_gaussian_rasterization.egg-info
+#!/bin/bash
 
-rm -rf ./extras/simple-knn/build
-rm -rf ./extras/simple-knn/simple_knn.egg-info
+folder_path="./extras"
+
+if [ -d "$folder_path" ]; then
+    # Folder exists, delete it
+    echo "Deleting folder: $folder_path"
+    rm -rf "$folder_path"
+    echo "Folder deleted successfully."
+fi
 
 conda env remove --name three-gen-validation
+

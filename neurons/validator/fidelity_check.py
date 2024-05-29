@@ -4,12 +4,14 @@ import aiohttp
 import bittensor as bt
 
 
-async def validate(endpoint: str, prompt: str, data: str) -> float | None:
+async def validate(endpoint: str, prompt: str, data: str, data_ver: int) -> float | None:
     validate_url = urllib.parse.urljoin(endpoint, "/validate/")
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(validate_url, json={"prompt": prompt, "data": data}) as response:
+            async with session.post(
+                validate_url, json={"prompt": prompt, "data": data, "data_ver": data_ver}
+            ) as response:
                 if response.status == 200:
                     results = await response.json()
 

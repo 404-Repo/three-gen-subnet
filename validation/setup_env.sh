@@ -17,15 +17,19 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
+
 CUDA_HOME=${CONDA_PREFIX}
 
 echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
-mkdir -p ./extras/diff_gaussian_rasterization/third_party
-git clone --branch 0.9.9.0 https://github.com/g-truc/glm.git ./extras/diff_gaussian_rasterization/third_party/glm
-pip install ./extras/diff_gaussian_rasterization
+mkdir -p ./extras/diff-gaussian-rasterization
+git clone --depth 1 https://github.com/ashawkey/diff-gaussian-rasterization/ ./extras/diff-gaussian-rasterization
+cd ./extras/diff-gaussian-rasterization
+git checkout d986da0d4cf2dfeb43b9a379b6e9fa0a7f3f7eea
 
-echo -e "\n\n[INFO] Installing simple-knn package\n"
-pip install ./extras/simple-knn
+cd ../../
+git clone --branch 0.9.9.0 https://github.com/g-truc/glm.git ./extras/diff-gaussian-rasterization/third_party/glm
+pip install ./extras/diff-gaussian-rasterization
+rm -rf ./extras
 
 # Store the path of the Conda interpreter
 CONDA_INTERPRETER_PATH=$(which python)

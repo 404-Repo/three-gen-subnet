@@ -1,17 +1,45 @@
 import io
+import os
 import numpy as np
 import h5py as h5
 
 
 class HDF5Loader:
+    """ Class for storing Gaussian Splatting data in HDF5 file format. """
     def __init__(self):
         pass
 
-    def _create_dataset(self, group: h5.Group, dataset_name: str, data: np.ndarray):
+    @staticmethod
+    def _create_dataset(group: h5.Group, dataset_name: str, data: np.ndarray):
+        """ Function for creating a dataset
+
+        Parameters
+        ----------
+        group: HDF5 group object where the dataset will create the dataset
+        dataset_name: the name of the dataset that will be created
+        data: the data that will be stored in the created dataset
+
+        Returns
+        -------
+        group object with created & stored dataset
+        """
         group.create_dataset(dataset_name, data.shape, data.dtype, data, compression="gzip", compression_opts=9)
         return group
 
-    def _get_dataset(self, group: h5.Group, dataset_name: str):
+    @staticmethod
+    def _get_dataset(group: h5.Group, dataset_name: str):
+        """ Function for getting data from the given group using dataset name
+
+        Parameters
+        ----------
+        group: HDF5 group object where the dataset is stored
+        dataset_name: the name of the dataset that will be accessed and returned
+
+        Returns
+        -------
+        a numpy array with requested dataset
+        """
+
         data = group.get(dataset_name)
         return np.array(data, dtype=data.dtype)
 
@@ -29,7 +57,24 @@ class HDF5Loader:
         h5file_name: str,
         h5file_path: str,
     ):
-        h5_fpath = h5file_path + "/" + h5file_name + "_pcl.h5"
+        """ Function for saving the Gaussian Splatting (GS) data to the HDF5 file in a compressed way
+
+        Parameters
+        ----------
+        points:  numpy array with points (point cloud data)
+        normals: numpy array with normals data (point cloud related) (optional)
+        features_dc: numpy array with diffusion colour features (usually colours)
+        features_rest: numpy array with other colour related features (optional)
+        opacities: numpy array with computed opacities
+        scale: numpy array with computed scales
+        rotation: numpy array with computed GS rotations
+        sh_degree: GS degree (integer, optional, default is 0)
+        h5file_name: the name of the HDF file
+        h5file_path: the path where to store the HDF file
+
+        """
+
+        h5_fpath = os.path.join(h5file_path, h5file_name + ".h5")
         file = h5.File(h5_fpath, mode="w")
 
         self._create_dataset(file, "points", points)
@@ -44,7 +89,18 @@ class HDF5Loader:
         file.close()
 
     def load_point_cloud_from_h5(self, h5file_name: str, h5file_path: str):
-        h5_fpath = h5file_path + "/" + h5file_name + "_pcl.h5"
+        """ Function for loading data from the the HDF5 file
+
+        Parameters
+        ----------
+        h5file_name: the name of the HDF file
+        h5file_path: the path where to store the HDF file
+
+        Returns
+        -------
+        a dictionary with loaded data
+        """
+        h5_fpath = os.path.join(h5file_path, h5file_name + ".h5")
         file = h5.File(h5_fpath, mode="r")
 
         points = self._get_dataset(file, "points")
@@ -80,6 +136,23 @@ class HDF5Loader:
         rotation: np.ndarray,
         sh_degree: int,
     ):
+        """ Function for packing Gaussian Splatting (GS) data to a bytes buffer in a compressed way
+
+        Parameters
+        ----------
+        points:  numpy array with points (point cloud data)
+        normals: numpy array with normals data (point cloud related) (optional)
+        features_dc: numpy array with diffusion colour features (usually colours)
+        features_rest: numpy array with other colour related features (optional)
+        opacities: numpy array with computed opacities
+        scale: numpy array with computed scales
+        rotation: numpy array with computed GS rotations
+        sh_degree: GS degree (integer, optional, default is 0)
+
+        Returns
+        -------
+        buffer stored as bytes
+        """
         buffer = io.BytesIO()
         with h5.File(buffer, "w", driver="fileobj") as file:
             self._create_dataset(file, "points", points)
@@ -93,6 +166,16 @@ class HDF5Loader:
         return buffer
 
     def unpack_point_cloud_from_io_buffer(self, buffer: io.BytesIO):
+        """ Function for unpacking Gaussian Splatting (GS) data from bytes buffer
+
+        Parameters
+        ----------
+        buffer: data packed in the bytes buffer
+
+        Returns
+        -------
+        a dictionary with loaded data
+        """
         with h5.File(buffer, "r", driver="fileobj") as file:
             points = self._get_dataset(file, "points")
             normals = self._get_dataset(file, "normals")
