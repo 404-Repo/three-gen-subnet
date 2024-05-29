@@ -29,11 +29,13 @@ echo "Updating the 'three-gen-validation' environment using '$ENV_FILE'."
 conda env update --name three-gen-validation --file "$ENV_FILE" --prune
 echo "Environment update completed successfully."
 
+conda activate three-gen-validation
+conda info --env
+
 CUDA_HOME=${CONDA_PREFIX}
 
-conda activate three-gen-validation
-
 echo -e "\n\n[INFO] Installing diff-gaussian-rasterization package\n"
+
 git clone --depth 1 https://github.com/ashawkey/diff-gaussian-rasterization/ ./extras/diff-gaussian-rasterization
 cd ./extras/diff-gaussian-rasterization
 git checkout d986da0d4cf2dfeb43b9a379b6e9fa0a7f3f7eea
