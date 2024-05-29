@@ -17,7 +17,7 @@ else
 fi
 
 CONDA_BASE=$(conda info --base)
-export PATH="${CONDA_BASE}/bin/":$PATH
+PATH="${CONDA_BASE}/bin/":$PATH
 
 # Ensure the conda_env_validation.yml is present
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")

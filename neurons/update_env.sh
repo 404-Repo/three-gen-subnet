@@ -17,7 +17,7 @@ else
 fi
 
 CONDA_BASE=$(conda info --base)
-export PATH="${CONDA_BASE}/bin/":$PATH
+PATH="${CONDA_BASE}/bin/":$PATH
 
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 ENV_FILE="$SCRIPT_DIR/conda_env_neurons.yml"
