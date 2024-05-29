@@ -31,7 +31,7 @@ async def main() -> None:
 
     bt.logging.info("Faking the generation time for 10 seconds")
 
-    await asyncio.sleep(10.0)
+    await asyncio.sleep(20.0)
 
     bt.logging.info("Submitting results")
 
@@ -42,11 +42,10 @@ async def main() -> None:
 
 async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Task | None:
     synapse = PullTask(version=Version(major=0, minor=0, patch=1))
+    axon = metagraph.axons[validator_uid]
     response = typing.cast(
         PullTask,
-        await dendrite.call(
-            target_axon=metagraph.axons[validator_uid], synapse=synapse, deserialize=False, timeout=12.0
-        ),
+        await dendrite.call(target_axon=axon, synapse=synapse, deserialize=False, timeout=12.0),
     )
 
     bt.logging.info(f"Response: {response}")
@@ -60,13 +59,15 @@ async def submit_results(
     with Path("monkey.h5").open("r") as f:  # noqa
         results = f.read()
 
+    axon = metagraph.axons[validator_uid]
+
     message = f"{0}{task.prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.ss58_address}"
     signature = dendrite.keypair.sign(message)
     synapse = SubmitResults(task=task, results=results, submit_time=0, signature=b64encode(signature))
     response = typing.cast(
         SubmitResults,
         await dendrite.call(
-            target_axon=metagraph.axons[validator_uid],
+            target_axon=axon,
             synapse=synapse,
             deserialize=False,
             timeout=300.0,
