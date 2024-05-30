@@ -30,20 +30,28 @@ class OrganicTask(BaseModel):
     strong_miner_assigned: bool = False
     # True if the strong miner is amongst assigned miners.
     first_results_time: float = 0
+
     # Time of the first acceptable results
 
+    def get_best_results(self) -> AssignedMiner | None:
+        best: AssignedMiner | None = None
+        for miner in self.assigned.values():
+            if miner.results is None:
+                continue
+            if best is None:
+                best = miner
+                continue
+            if miner.score > best.score:
+                best = miner
+        return best
 
-def _get_best_results(task: OrganicTask) -> AssignedMiner | None:
-    best: AssignedMiner | None = None
-    for miner in task.assigned.values():
-        if miner.results is None:
-            continue
-        if best is None:
-            best = miner
-            continue
-        if miner.score > best.score:
-            best = miner
-    return best
+    def should_be_assigned(self, strong_miner: bool, copies: int) -> bool:
+        return (strong_miner and not self.strong_miner_assigned) or len(self.assigned) < copies
+
+    def all_miners_finished(self, copies: int) -> bool:
+        return all(miner.finished for miner in self.assigned.values()) and not self.should_be_assigned(
+            strong_miner=True, copies=copies
+        )
 
 
 def _set_future_result(future: asyncio.Future, results: AssignedMiner | None) -> None:
@@ -128,7 +136,7 @@ class TaskRegistry:
             task = self._tasks.get(task_id, None)
             if task is None:
                 return None
-            return _get_best_results(task)
+            return task.get_best_results()
 
     def get_next_task(self, hotkey: str, is_strong_miner: bool = True) -> OrganicTask | None:
         """
@@ -147,15 +155,11 @@ class TaskRegistry:
             if task is None:
                 continue
 
-            if task.first_results_time > 0:
-                # At least one miner has generated acceptable results. Too late to assign the task to other miners.
-                continue
-
             if task.create_time + self._task_timeout < current_time:
                 # Too early to remove the task, too late to assign the task
                 continue
 
-            if (not is_strong_miner or task.strong_miner_assigned) and (len(task.assigned) >= self._copies):
+            if not task.should_be_assigned(is_strong_miner, self._copies):
                 continue
 
             if hotkey in task.assigned:
@@ -221,9 +225,9 @@ class TaskRegistry:
             )
             self._set_first_future(miner, task.id)
 
-        if all(miner.finished for miner in task.assigned.values()):
+        if task.all_miners_finished(self._copies):
             bt.logging.debug(f"All miners submitted results for the task ({task_id}): {task.prompt}")
-            best_results = _get_best_results(task)
+            best_results = task.get_best_results()
             self._set_best_future(best_results, task.id)
 
     def _set_first_future(self, miner: AssignedMiner | None, task_id: str) -> None:
@@ -255,7 +259,7 @@ class TaskRegistry:
         bt.logging.trace(f"[{hotkey}] failed the task ({task_id}): {task.prompt}.")
 
         miner.finished = True
-        if all(miner.finished for miner in task.assigned.values()):
+        if task.all_miners_finished(self._copies):
             self._set_first_future(None, task_id)
             self._set_best_future(None, task_id)
 
