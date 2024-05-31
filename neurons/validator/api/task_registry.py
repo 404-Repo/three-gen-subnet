@@ -260,8 +260,9 @@ class TaskRegistry:
 
         miner.finished = True
         if task.all_miners_finished(self._copies):
-            self._set_first_future(None, task_id)
-            self._set_best_future(None, task_id)
+            best_results = task.get_best_results()
+            self._set_first_future(best_results, task_id)
+            self._set_best_future(best_results, task_id)
 
     def clean_task(self, task_id: str) -> None:
         """
