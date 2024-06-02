@@ -31,7 +31,7 @@ class PromptData(BaseModel):
     prompt: str
 
 
-@router.get(
+@router.post(
     "/generate/",
     response_description="Binary data",
     responses={
