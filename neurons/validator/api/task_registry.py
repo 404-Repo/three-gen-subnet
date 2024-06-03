@@ -228,6 +228,7 @@ class TaskRegistry:
         bt.logging.trace(f"[{hotkey}] completed the task ({task_id}): {task.prompt}. Score: {score:.2f}")
 
         miner.results = results
+        miner.score = score
         miner.finished = True
 
         if task.first_results_time == 0:
