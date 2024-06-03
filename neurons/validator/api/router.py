@@ -192,3 +192,4 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
         status=TaskStatus.BEST_RESULTS, results=TaskResults(assets=best_results.results, score=best_results.score)
     )
     await websocket.send_text(update.json())
+    await websocket.close()
