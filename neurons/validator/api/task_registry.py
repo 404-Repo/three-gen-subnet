@@ -4,7 +4,7 @@ import uuid
 from collections import deque
 
 import bittensor as bt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class AssignedMiner(BaseModel):
@@ -14,24 +14,33 @@ class AssignedMiner(BaseModel):
     finished: bool = False
 
 
-class OrganicTask(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    # Unique id
-    create_time: float = Field(default_factory=time.time)
-    # Task registration time.
-    prompt: str
-    # Prompt to use for generation.
+class OrganicTask:
+    def __init__(self, prompt: str) -> None:
+        self.prompt = prompt
+        """Prompt to use for generation."""
 
-    assigned: dict[str, AssignedMiner] = Field(default_factory=dict)
-    # Miners assigned for the job.
-    assigned_time: float = 0.0
-    # First assignment time.
+        self.id = str(uuid.uuid4())
+        """Unique id"""
 
-    strong_miner_assigned: bool = False
-    # True if the strong miner is amongst assigned miners.
-    first_results_time: float = 0
+        self.create_time = time.time()
+        """Task registration time."""
 
-    # Time of the first acceptable results
+        self.assigned: dict[str, AssignedMiner] = {}
+        """Miners assigned for the job."""
+        self.assigned_time = 0.0
+        """First assignment time."""
+
+        self.strong_miner_assigned = False
+        """True if the strong miner is amongst assigned miners."""
+        self.first_results_time = 0.0
+        """Time of the first acceptable results"""
+
+        self.start_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
+        """Future is set when the task gets assigned the first time."""
+        self.first_results_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
+        """Future is set when the first acceptable results are generated."""
+        self.best_results_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
+        """Future is set when all assigned miners submit their results."""
 
     def get_best_results(self) -> AssignedMiner | None:
         best: AssignedMiner | None = None
@@ -54,9 +63,12 @@ class OrganicTask(BaseModel):
         )
 
 
-def _set_future_result(future: asyncio.Future, results: AssignedMiner | None) -> None:
-    if not future.done() and not future.cancelled():
-        future.set_result(results)
+def _set_future(future: asyncio.Future[AssignedMiner | None], miner: AssignedMiner | None) -> None:
+    def do_set(f: asyncio.Future, results: AssignedMiner | None) -> None:
+        if not f.done() and not f.cancelled():
+            f.set_result(results)
+
+    future.get_loop().call_soon_threadsafe(do_set, future, miner)
 
 
 class TaskRegistry:
@@ -74,10 +86,6 @@ class TaskRegistry:
         The TaskRegistry manages organic task received by this validator.
         """
         self._tasks: dict[str, OrganicTask] = {}
-        self._first_results_futures: dict[str, asyncio.Future[AssignedMiner | None]] = {}
-        # Set when the first acceptable results received. The first results are set.
-        self._best_results_futures: dict[str, asyncio.Future[AssignedMiner | None]] = {}
-        # Set when there will be no more results and the best results are picked. The best results are set.
         self._queue: deque[str] = deque()
         self._queue_size = queue_size
         self._copies = copies
@@ -103,35 +111,37 @@ class TaskRegistry:
 
         task = OrganicTask(prompt=prompt)
         self._tasks[task.id] = task
-
-        first_future = asyncio.get_event_loop().create_future()
-        self._first_results_futures[task.id] = first_future
-
-        best_future = asyncio.get_event_loop().create_future()
-        self._best_results_futures[task.id] = best_future
         self._queue.append(task.id)
 
         bt.logging.trace(f"New organic task added ({task.id}): {task.prompt}")
 
         return task.id
 
+    async def get_started(self, task_id: str) -> AssignedMiner | None:
+        """
+        Wait for the task to be assigned.
+        """
+        if task_id not in self._tasks:
+            return None
+        return await self._tasks[task_id].start_future
+
     async def get_first_results(self, task_id: str) -> AssignedMiner | None:
         """
         Wait for the first acceptable results and returns it.
         """
-        if task_id not in self._first_results_futures:
+        if task_id not in self._tasks:
             return None
-        return await self._first_results_futures[task_id]
+        return await self._tasks[task_id].first_results_future
 
     async def get_best_results(self, task_id: str) -> AssignedMiner | None:
         """
         Wait for the best received results and returns it.
         """
-        if task_id not in self._best_results_futures:
+        if task_id not in self._tasks:
             return None
 
         try:
-            return await asyncio.wait_for(self._best_results_futures[task_id], self._wait_after_first_copy)
+            return await asyncio.wait_for(self._tasks[task_id].best_results_future, self._wait_after_first_copy)
         except TimeoutError:
             task = self._tasks.get(task_id, None)
             if task is None:
@@ -166,11 +176,14 @@ class TaskRegistry:
                 continue
 
             task.strong_miner_assigned = task.strong_miner_assigned or is_strong_miner
-            task.assigned[hotkey] = AssignedMiner(hotkey=hotkey)
+            miner = AssignedMiner(hotkey=hotkey)
+            task.assigned[hotkey] = miner
 
             if task.assigned_time == 0:
                 bt.logging.debug(f"{current_time - task.create_time} seconds between task created and task assigned")
                 task.assigned_time = current_time
+
+                _set_future(task.start_future, miner)
 
             bt.logging.trace(f"Next task to give: {task.id}")
 
@@ -223,22 +236,12 @@ class TaskRegistry:
                 f"{task.first_results_time - task.create_time} "
                 f"seconds between task started and first acceptable results received"
             )
-            self._set_first_future(miner, task.id)
+            _set_future(task.first_results_future, miner)
 
         if task.all_miners_finished(self._copies):
             bt.logging.debug(f"All miners submitted results for the task ({task_id}): {task.prompt}")
             best_results = task.get_best_results()
-            self._set_best_future(best_results, task.id)
-
-    def _set_first_future(self, miner: AssignedMiner | None, task_id: str) -> None:
-        first_future = self._first_results_futures.get(task_id, None)
-        if first_future is not None:
-            first_future.get_loop().call_soon_threadsafe(_set_future_result, first_future, miner)
-
-    def _set_best_future(self, miner: AssignedMiner | None, task_id: str) -> None:
-        best_future = self._best_results_futures.get(task_id, None)
-        if best_future is not None:
-            best_future.get_loop().call_soon_threadsafe(_set_future_result, best_future, miner)
+            _set_future(task.best_results_future, best_results)
 
     def fail_task(self, task_id: str, hotkey: str) -> None:
         """
@@ -261,8 +264,8 @@ class TaskRegistry:
         miner.finished = True
         if task.all_miners_finished(self._copies):
             best_results = task.get_best_results()
-            self._set_first_future(best_results, task_id)
-            self._set_best_future(best_results, task_id)
+            _set_future(task.first_results_future, best_results)
+            _set_future(task.best_results_future, best_results)
 
     def clean_task(self, task_id: str) -> None:
         """
@@ -272,5 +275,3 @@ class TaskRegistry:
         - task_id (str): The unique identifier of the task.
         """
         self._tasks.pop(task_id, None)
-        self._first_results_futures.pop(task_id, None)
-        self._best_results_futures.pop(task_id, None)

@@ -71,9 +71,9 @@ class ApiKeyManager:
     def is_registered(self, api_key: str) -> bool:
         return api_key in self._api_keys
 
-    def is_allowed(self, api_key: str) -> tuple[bool, str]:
+    def is_allowed(self, api_key: str) -> bool:
         if api_key not in self._api_keys:
-            return False, "API key not found"
+            return False
 
         api_data = self._api_keys[api_key]
 
@@ -82,13 +82,16 @@ class ApiKeyManager:
 
         if current_time - first_request_time > api_data.period:
             self._requests[api_key] = (1, current_time)
-            return True, ""
+            return True
 
         if request_count >= api_data.max_requests:
-            return False, "Request limit reached"
+            return False
 
         self._requests[api_key] = (request_count + 1, first_request_time)
-        return True, ""
+        return True
+
+    def get_name(self, api_key: str) -> str:
+        return self._api_keys[api_key].name
 
     def start_periodic_sync(self, interval: int) -> None:
         def sync_job() -> None:
@@ -98,12 +101,3 @@ class ApiKeyManager:
 
         thread = threading.Thread(target=sync_job, daemon=True)
         thread.start()
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-
-    manager = ApiKeyManager(Path("api_keys.db"))
-    allowed, reason = manager.is_allowed("some_api_key")
-    print(allowed, reason)
-    manager._sync()
