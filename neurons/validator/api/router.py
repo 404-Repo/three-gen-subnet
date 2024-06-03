@@ -124,7 +124,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     await task_registry.get_started(task_id)
 
     update = TaskUpdate(status=TaskStatus.STARTED)
-    await websocket.send_json(update.json())
+    await websocket.send_text(update.json())
 
     first_results = await task_registry.get_first_results(task_id)
     if first_results is None:
@@ -142,7 +142,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
             status=TaskStatus.FIRST_RESULTS,
             results=TaskResults(assets=first_results.results, score=first_results.score),
         )
-        await websocket.send_json(update.json())
+        await websocket.send_text(update.json())
 
     best_results = await task_registry.get_best_results(task_id)
     if best_results is None:
@@ -160,4 +160,4 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     update = TaskUpdate(
         status=TaskStatus.BEST_RESULTS, results=TaskResults(assets=best_results.results, score=best_results.score)
     )
-    await websocket.send_json(update.json())
+    await websocket.send_text(update.json())
