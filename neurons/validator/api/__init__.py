@@ -23,7 +23,9 @@ class PublicAPIServer:
         self.app.state.api_key_manager = self.api_key_manager
 
         log_level = "trace" if bt.logging.__trace_on__ else "critical"
-        self.fast_config = uvicorn.Config(self.app, host="0.0.0.0", port=self.port, log_level=log_level)  # noqa: S104
+        self.fast_config = uvicorn.Config(
+            self.app, host="0.0.0.0", port=self.port, log_level=log_level, ws_max_size=104857600  # noqa: S104
+        )
         self.fast_server = FastAPIThreadedServer(config=self.fast_config)
         self.app.include_router(router)
 

@@ -84,6 +84,37 @@ async def generate(
 
 @router.websocket("/ws/generate/")
 async def websocket_generate(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint to manage 3D generation tasks.
+
+    This endpoint requires an initial authentication message with a valid API key.
+    Once authenticated, the client can send a prompt and receive task statuses.
+
+    ```
+    Initial message format:
+    {
+        "api_key": "your_api_key"
+    }
+
+    Subsequent message format for prompt:
+    {
+        "prompt": "3D model prompt",
+        "send_first_results": true/false
+    }
+    ```
+
+    Server responses for task updates:
+    ```
+    {
+        "status": "started/first_results/best_results",
+        "results": {
+            "score": float,
+            "assets": "base64_encoded_string"
+        }
+    }
+    ```
+    """
+
     await websocket.accept()
 
     message = await websocket.receive_text()

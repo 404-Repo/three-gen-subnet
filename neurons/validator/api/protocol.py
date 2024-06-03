@@ -25,7 +25,6 @@ class TaskStatus(str, Enum):
         STARTED (str): Indicates the generation process has started.
         FIRST_RESULTS (str): Indicates the first intermediate results have been generated.
         BEST_RESULTS (str): Indicates all miners have completed the job and the best results are available.
-        FAILED (str): Indicates the miners failed to provide acceptable results.
     """
 
     STARTED = "started"
