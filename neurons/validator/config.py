@@ -90,6 +90,13 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
+        "--generation.cooldown_penalty",
+        type=int,
+        help="Penalty cooldown if miner submits unacceptable results.",
+        default=90,
+    )
+
+    parser.add_argument(
         "--validation.endpoint",
         type=str,
         help="Specifies the URL of the endpoint responsible for scoring 3D assets. "
