@@ -294,11 +294,12 @@ class Validator:
 
         fidelity_score = self._get_fidelity_score(validation_score)
 
-        miner.reset_task(cooldown=self.config.generation.task_cooldown)
-
         if fidelity_score == 0:
             bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
+            miner.reset_task(cooldown=self.config.generation.task_cooldown + self.config.generation.cooldown_penalty)
             return self._add_feedback(synapse, miner)
+
+        miner.reset_task(cooldown=self.config.generation.task_cooldown)
 
         if self.storage is not None:
             asyncio.create_task(self.storage.store(StoredData.from_results(synapse)))
