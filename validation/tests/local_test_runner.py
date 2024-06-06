@@ -164,7 +164,7 @@ if __name__ == '__main__':
             file_path = os.path.abspath(h5_file)
             file_path = os.path.dirname(file_path)
 
-            print("[INFO] file path: ", h5_file)
+            logger.info(f" HDF5 File path: {h5_file}")
 
             data_dict = hdf5_loader.load_point_cloud_from_h5(file_name, file_path)
 
