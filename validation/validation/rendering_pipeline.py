@@ -110,7 +110,7 @@ class RenderingPipeline:
             return False
 
     def render_gaussian_splatting_views(self, data: dict,
-                                        views: int = 15,
+                                        views: int = 16,
                                         cam_rad: float = 3.5,
                                         cam_fov: float = 49.1,
                                         cam_znear: float = 0.01,
@@ -140,31 +140,36 @@ class RenderingPipeline:
         camera = OrbitCamera(self._img_width, self._img_height, cam_fov, cam_znear, cam_zfar)
 
         rendered_images = []
-        step = 360 // views
+        random_angles_number = views // 2
+        step = 360 // random_angles_number
+        elevations = np.random.randint(self._cam_min_elev_angle, self._cam_max_elev_angle, random_angles_number)
 
-        for azimuth in range(0, 360, step):
-            elevation = np.random.randint(self._cam_min_elev_angle, self._cam_max_elev_angle)
-            camera.compute_transform_orbit(elevation, azimuth, cam_rad)
+        for i in range(2):
+            for azimuth, elev in zip(range(0, 360, step), elevations):
+                if i == 0:
+                    camera.compute_transform_orbit(0, azimuth, cam_rad)
+                else:
+                    camera.compute_transform_orbit(elev, azimuth, cam_rad)
 
-            if data_ver == 0:
-                data_in = preproceses_dream_gaussian_output(data, camera.camera_position)
-            elif data_ver == 1:
-                data_in = data
-            else:
-                data_in = data
-                logger.warning(f" The maximum data version for processing is < 1 >. Fall back to it. "
-                               f"Rendering results might be unpredictable.")
+                if data_ver == 0:
+                    data_in = preproceses_dream_gaussian_output(data, camera.camera_position)
+                elif data_ver == 1:
+                    data_in = data
+                else:
+                    data_in = data
+                    logger.warning(f" The maximum data version for processing is < 1 >. Fall back to it. "
+                                   f"Rendering results might be unpredictable.")
 
-            rendered_image, rendered_alpha, rendered_depth = self._render.render(camera,
-                                                                                 data_in,
-                                                                                 scale_modifier=np.clip(gs_scale, 0, 1))
+                rendered_image, rendered_alpha, rendered_depth = self._render.render(camera,
+                                                                                     data_in,
+                                                                                     scale_modifier=np.clip(gs_scale, 0, 1))
 
-            image = rendered_image.permute(1, 2, 0)
-            image = image.detach().cpu().numpy() * 255
-            image = image.astype(dtype=np.uint8)
+                image = rendered_image.permute(1, 2, 0)
+                image = image.detach().cpu().numpy() * 255
+                image = image.astype(dtype=np.uint8)
 
-            pil_image = Image.fromarray(image)
-            rendered_images.append(pil_image)
+                pil_image = Image.fromarray(image)
+                rendered_images.append(pil_image)
 
         logger.info(" Done.")
         return rendered_images
