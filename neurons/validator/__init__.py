@@ -333,7 +333,7 @@ class Validator:
             generations_within_8_hours=len(miner.observations),
             current_miner_reward=reward,
         )
-        synapse.cooldown_until = current_time + self.config.generation.task_cooldown
+        synapse.cooldown_until = miner.cooldown_until
         return synapse
 
     @staticmethod
