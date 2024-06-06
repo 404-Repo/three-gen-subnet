@@ -74,7 +74,7 @@ async def validate(request: RequestData) -> ResponseData:
         renderer = RenderingPipeline(512, 512, mode="gs")
         data_ready, data_out = renderer.prepare_data(request.data)
         if data_ready:
-            images = renderer.render_gaussian_splatting_views(data_out, 15, 4.0, data_ver=request.data_ver)
+            images = renderer.render_gaussian_splatting_views(data_out, 16, 4.0, data_ver=request.data_ver)
             score = app.state.validator.validate(images, request.prompt)
         else:
             score = 0
