@@ -16,7 +16,7 @@ density_thresh: 1
 ### Output
 outdir: logs
 mesh_format: obj
-save_path: ???
+save_path: tmp
 
 ### Training
 # use mvdream instead of sd 2.1
@@ -37,13 +37,13 @@ warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 1000
+iters: 200
 # whether to linearly anneal timestep
 anneal_timestep: True
 # training iterations for stage 2
 iters_refine: 50
 # training camera radius
-radius: 3.5 #2.5
+radius: 2.5
 # training camera fovy
 fovy: 49.1
 # training camera min elevation
@@ -75,7 +75,7 @@ feature_lr: 0.01
 opacity_lr: 0.05
 scaling_lr: 0.005
 rotation_lr: 0.005
-percent_dense: 0.015 # 0.01
+percent_dense:  0.01 # 0.015
 density_start_iter: 0
 density_end_iter: 3000
 densification_interval: 50

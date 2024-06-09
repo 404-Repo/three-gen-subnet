@@ -13,6 +13,8 @@ from diff_gaussian_rasterization import (
 from simple_knn._C import distCUDA2
 
 from .SphericalHarmonics import eval_sh, SH2RGB, RGB2SH
+from mesh_utils import decimate_mesh, clean_mesh
+from mesh import Mesh
 
 
 def inverse_sigmoid(x):
@@ -164,7 +166,27 @@ class GaussianModel:
         self.spatial_lr_scale = 0
         self.setup_functions()
 
-    def save_ply(self, buffer):
+    # def save_ply(self, buffer):
+    #     xyz = self._xyz.detach().cpu().numpy()
+    #     normals = np.zeros_like(xyz)
+    #     f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+    #     f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+    #     opacities = self._opacity.detach().cpu().numpy()
+    #     scale = self._scaling.detach().cpu().numpy()
+    #     rotation = self._rotation.detach().cpu().numpy()
+
+    #     dtype_full = [(attribute, "f4") for attribute in self.construct_list_of_attributes()]
+
+    #     elements = np.empty(xyz.shape[0], dtype=dtype_full)
+    #     attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+    #     elements[:] = list(map(tuple, attributes))
+    #     el = PlyElement.describe(elements, "vertex")
+    #     PlyData([el]).write(buffer)
+    
+    def save_ply(self, path):
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
         xyz = self._xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
         f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
@@ -173,13 +195,14 @@ class GaussianModel:
         scale = self._scaling.detach().cpu().numpy()
         rotation = self._rotation.detach().cpu().numpy()
 
-        dtype_full = [(attribute, "f4") for attribute in self.construct_list_of_attributes()]
+        dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes()]
 
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
         attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
         elements[:] = list(map(tuple, attributes))
-        el = PlyElement.describe(elements, "vertex")
-        PlyData([el]).write(buffer)
+        el = PlyElement.describe(elements, 'vertex')
+        PlyData([el]).write(path)
+
 
     def capture(self):
         return (
@@ -659,6 +682,39 @@ class GaussianModel:
             viewspace_point_tensor.grad[update_filter, :2], dim=-1, keepdim=True
         )
         self.denom[update_filter] += 1
+##########################################################################################################################
+#**********************************************************************************************************************
+
+    def extract_mesh(self, path, density_thresh=1, resolution=128, decimate_target=1e5):
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        occ = self.extract_fields(resolution).detach().cpu().numpy()
+
+        import mcubes
+        vertices, triangles = mcubes.marching_cubes(occ, density_thresh)
+        vertices = vertices / (resolution - 1.0) * 2 - 1
+
+        # transform back to the original space
+        vertices = vertices / self.scale + self.center.detach().cpu().numpy()
+
+        vertices, triangles = clean_mesh(vertices, triangles, remesh=True, remesh_size=0.015)
+        if decimate_target > 0 and triangles.shape[0] > decimate_target:
+            vertices, triangles = decimate_mesh(vertices, triangles, decimate_target)
+
+        v = torch.from_numpy(vertices.astype(np.float32)).contiguous().cuda()
+        f = torch.from_numpy(triangles.astype(np.int32)).contiguous().cuda()
+
+        print(
+            f"[INFO] marching cubes result: {v.shape} ({v.min().item()}-{v.max().item()}), {f.shape}"
+        )
+
+        mesh = Mesh(v=v, f=f, device='cuda')
+        return mesh
+
+
+#**********************************************************************************************************************
+##########################################################################################################################
 
 
 def getProjectionMatrix(znear, zfar, fovX, fovY):

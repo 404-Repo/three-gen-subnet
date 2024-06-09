@@ -89,16 +89,41 @@ async def generate_video(
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),
 ):
+    
     start_time = time()
     gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
     processed_data = gaussian_processor.train(models, opt.iters)
     print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
 
+
     video_utils = VideoUtils(video_res, video_res, 5, 5, 10, -30, 10)
     buffer = video_utils.render_video(*processed_data)
+
 
     return StreamingResponse(content=buffer, media_type="video/mp4")
 
 
+# @app.post("/generate/")
+# async def generate(
+#     prompt: str = Form(),
+#     config: OmegaConf = Depends(get_config),
+#     models: list = Depends(get_models),
+# ):
+#     buffer = await _generate(models, config, prompt)
+#     buffer = base64.b64encode(buffer.getbuffer()).decode("utf-8")
+#     return Response(content=buffer, media_type="application/octet-stream")
+
+
+# async def _generate(models: list, opt: OmegaConf, prompt: str) -> BytesIO:
+#     start_time = time()
+#     gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
+#     processed_data = gaussian_processor.train(models, opt.iters)
+#     hdf5_loader = HDF5Loader.HDF5Loader()
+#     buffer = hdf5_loader.pack_point_cloud_to_io_buffer(*processed_data)
+#     print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
+#     return buffer
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=args.port)
+    # update reload 
+    # uvicorn.run(app, host="0.0.0.0", port=args.port, reload=True)

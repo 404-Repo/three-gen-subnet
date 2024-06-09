@@ -19,3 +19,41 @@ xformers==0.0.23
 gradio==4.19.2
 open-clip-torch==2.24.0
 plyfile==1.0.3
+
+tqdm
+rich
+ninja
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+opencv-python
+imageio
+imageio-ffmpeg
+omegaconf
+
+torch
+einops
+plyfile
+pygltflib
+
+# for gui
+dearpygui
+
+# for stable-diffusion
+huggingface_hub
+diffusers
+accelerate
+transformers
+
+# for dmtet and mesh export
+xatlas
+trimesh
+PyMCubes
+pymeshlab
+
+rembg[gpu,cli]
+
+# gradio demo
+gradio
