@@ -9,7 +9,6 @@ from validation.io.base import BaseWriter
 
 
 class HDF5Writer(BaseWriter):
-
     @staticmethod
     def _create_dataset(group: h5.Group, dataset_name: str, data: np.ndarray):
         """Function for creating a dataset
