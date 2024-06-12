@@ -25,7 +25,7 @@ pip install -r requirements.txt
 CONDA_INTERPRETER_PATH=$(which python)
 
 # Generate the validation.config.js file for PM2 with specified configurations
-cat <<EOF > ../validation.config.js
+cat <<EOF > validation.config.js
 module.exports = {
   apps : [{
     name: 'validation',
