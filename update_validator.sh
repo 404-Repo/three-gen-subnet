@@ -42,7 +42,7 @@ validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
 if [ -z "$validation_process" ]; then
     echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
     exit 1
-#fi
+fi
 
 
 # Function to check if a pm2 process is running successfully
