@@ -18,7 +18,7 @@ conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
 
-CUDA_HOME=${CONDA_PREFIX}
+#CUDA_HOME=${CONDA_PREFIX}
 #pip install -r requirements.txt
 
 # Store the path of the Conda interpreter
