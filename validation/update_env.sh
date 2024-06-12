@@ -18,6 +18,7 @@ fi
 
 CONDA_BASE=$(conda info --base)
 PATH="${CONDA_BASE}/bin/":$PATH
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 # Ensure the conda_env_validation.yml is present
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
@@ -34,9 +35,9 @@ conda env update --name three-gen-validation --file "$ENV_FILE" --prune
 conda activate three-gen-validation
 conda info --env
 
-CUDA_HOME=${CONDA_PREFIX}
+#CUDA_HOME=${CONDA_PREFIX}
 # pip install -r requirements.txt
-pip install --upgrade -r requirements.txt
+#pip install --upgrade -r requirements.txt
 
 echo "Environment update completed successfully."
 
