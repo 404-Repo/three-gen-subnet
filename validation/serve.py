@@ -18,7 +18,7 @@ from validation.validation_pipeline import ValidationPipeline
 from validation.rendering.rendering_pipeline import RenderingPipeline
 from validation.memory import enough_gpu_mem_available
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 
 def get_args():
@@ -37,7 +37,7 @@ class RequestData(BaseModel):
     data: constr(max_length=1000 * 1024 * 1024)
     # 0 - dream graussian prj data
     # 1 - LGM / other prj data
-    data_ver: int
+    data_ver: int = 0
 
 
 class ResponseData(BaseModel):
@@ -89,7 +89,7 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
 
     # Render images
     renderer = RenderingPipeline(512, 512, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 15, 4.0, data_ver=data_ver)
+    images = renderer.render_gaussian_splatting_views(data_dict, 16, 4.0, data_ver=data_ver)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
