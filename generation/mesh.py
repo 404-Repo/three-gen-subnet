@@ -47,6 +47,9 @@ class Mesh:
     @classmethod
     def load(cls, path=None, resize=True, renormal=True, retex=False, front_dir='+z', **kwargs):
         # assume init with kwargs
+        # path = "/home/xuananh/work/three-gen-subnet/generation/logs/tmp_mesh.obj"
+        path = "./logs/tmp_mesh.obj"
+        
         if path is None:
             mesh = cls(**kwargs)
         # obj supports face uv
@@ -60,6 +63,7 @@ class Mesh:
         print(f"\n\n ************* ")
         print(f"[Mesh loading] path: {path}")
         print(type(mesh))
+        
         # import pdg; pdb.set_trace();
         
         print(f"[Mesh loading] v: {mesh.v.shape}, f: {mesh.f.shape}")
@@ -627,3 +631,4 @@ class Mesh:
         albedo = self.albedo.detach().cpu().numpy()
         albedo = (albedo * 255).astype(np.uint8)
         cv2.imwrite(albedo_path, cv2.cvtColor(albedo, cv2.COLOR_RGB2BGR))
+

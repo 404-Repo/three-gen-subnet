@@ -42,3 +42,4 @@ def test_validator(h5_to_base64):
     score = validator.validate(images, prompt)
 
     assert score > 0.9
+

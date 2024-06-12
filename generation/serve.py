@@ -54,6 +54,28 @@ async def _generate(models: list, opt: OmegaConf, prompt: str) -> BytesIO:
     return buffer
 
 
+@app.post("/generate_2/")
+async def generate_2(
+    prompt: str = Form(),
+    config: OmegaConf = Depends(get_config),
+    models: list = Depends(get_models),
+):
+    buffer = await _generate_2(models, config, prompt)
+    buffer = base64.b64encode(buffer.getbuffer()).decode("utf-8")
+    return Response(content=buffer, media_type="application/octet-stream")
+
+
+async def _generate_2(models: list, opt: OmegaConf, prompt: str) -> BytesIO:
+    start_time = time()
+    gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
+    _ = gaussian_processor.train(models, opt.iters)
+    processed_data = gaussian_processor.train_2(models, opt.iters_refine)
+    hdf5_loader = HDF5Loader.HDF5Loader()
+    buffer = hdf5_loader.pack_point_cloud_to_io_buffer(*processed_data)
+    print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
+    return buffer
+
+
 @app.post("/generate_raw/")
 async def generate_raw(
     prompt: str = Form(),
@@ -66,7 +88,7 @@ async def generate_raw(
 
 @app.post("/generate_model/")
 async def generate_model(
-    prompt: str = Form(),
+    prompt: str = Form(),   
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),
 ) -> Response:
@@ -93,6 +115,25 @@ async def generate_video(
     start_time = time()
     gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
     processed_data = gaussian_processor.train(models, opt.iters)
+    print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
+
+    video_utils = VideoUtils(video_res, video_res, 5, 5, 10, -30, 10)
+    buffer = video_utils.render_video(*processed_data)
+
+    return StreamingResponse(content=buffer, media_type="video/mp4")
+
+@app.post("/generate_video_beauty/")
+async def generate_video_beauty(
+    prompt: str = Form(),
+    video_res: int = Form(1088),
+    opt: OmegaConf = Depends(get_config),
+    models: list = Depends(get_models),
+):
+    
+    start_time = time()
+    gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
+    _ = gaussian_processor.train(models, opt.iters)
+    processed_data = gaussian_processor.train_2(models, opt.iters_refine)
     print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
 
 
