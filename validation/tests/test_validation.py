@@ -29,7 +29,7 @@ def test_validator(h5data):
     data = h5data
     render = RenderingPipeline(512, 512, "gs")
 
-    images = render.render_gaussian_splatting_views(data, 16, 3.0)
+    images = render.render_gaussian_splatting_views(data, 16, 3.0, data_ver=2)
     validator = ValidationPipeline()
     validator.preload_scoring_model()
     score = validator.validate(images, prompt)

@@ -28,7 +28,7 @@ def h5data():
 def test_rendering_pipeline(h5data):
     data = h5data
     render = RenderingPipeline(512, 512, "gs")
-    images = render.render_gaussian_splatting_views(data, 16, 3.0)
+    images = render.render_gaussian_splatting_views(data, 16, 3.0, data_ver=2)
 
     blank_image = np.ones(np.array(images[0]).shape, dtype=np.uint8) * 255
     for img in images:
