@@ -1,18 +1,24 @@
 import argparse
+import base64
+import io
 import gc
 from time import time
 
 from loguru import logger
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, constr
 import torch
 import uvicorn
 
+from validation.io.base import BaseLoader
+from validation.io.hdf5 import HDF5Loader
+from validation.io.ply import PlyLoader
 from validation.validation_pipeline import ValidationPipeline
-from validation.rendering_pipeline import RenderingPipeline
+from validation.rendering.rendering_pipeline import RenderingPipeline
+from validation.memory import enough_gpu_mem_available
 
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 
 
 def get_args():
@@ -28,10 +34,10 @@ args, _ = get_args()
 
 class RequestData(BaseModel):
     prompt: constr(max_length=1024)
-    data: constr(max_length=100 * 1024 * 1024)
-    # 0 - dream graussian prj data
-    # 1 - LGM / other prj data
+    data: constr(max_length=500 * 1024 * 1024)
     data_ver: int = 0
+    # 0 - Dream Gaussian native format (default value)
+    # 1+ - Preparation for PLY support
 
 
 class ResponseData(BaseModel):
@@ -40,7 +46,6 @@ class ResponseData(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_scoring_model()
 
@@ -53,10 +58,52 @@ async def lifespan(app: FastAPI):
 app.router.lifespan_context = lifespan
 
 
+def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
+    logger.info(f"Validating start. Prompt: {prompt}")
+
+    t1 = time()
+
+    logger.info(" Preloading input data.")
+
+    pcl_raw = base64.b64decode(data)
+    pcl_buffer = io.BytesIO(pcl_raw)
+    data_dict = loader.from_buffer(pcl_buffer)
+    t2 = time()
+
+    logger.info(f"Loading data took {t2 - t1} sec.")
+
+    if not enough_gpu_mem_available(data_dict):
+        return 0.0
+
+    renderer = RenderingPipeline(512, 512, mode="gs")
+    images = renderer.render_gaussian_splatting_views(data_dict, 16, 4.0, data_ver=data_ver)
+
+    t3 = time()
+    logger.info(f"Image Rendering took: {t3 - t2} sec.")
+
+    score = app.state.validator.validate(images, prompt)
+
+    logger.info(f" Score: {score}. Prompt: {prompt}")
+    t4 = time()
+    logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
+
+    return score
+
+
+def _cleanup():
+    """Call garbage collection"""
+    t1 = time()
+    gc.collect()
+    torch.cuda.empty_cache()
+    gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
+    t2 = time()
+    logger.info(f"Garbage collection took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
+
+
 @app.post("/validate/", response_model=ResponseData)
 async def validate(request: RequestData) -> ResponseData:
     """
-    Validates the input prompt and data to produce scores.
+    Validates the input prompt and HDF5 data to produce scores.
 
     Parameters:
     - request (RequestData): An instance of RequestData containing the input prompt and data.
@@ -65,39 +112,45 @@ async def validate(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation process.
 
     """
-    logger.info(f" Start validating the input 3D data.")
-    logger.info(f" Input prompt: {request.prompt}")
-
-    t1 = time()
+    prompt = request.prompt
+    data = request.data
+    version = int(request.data_ver)
+    loader = HDF5Loader()
+    score = 0.0
 
     try:
-        renderer = RenderingPipeline(512, 512, mode="gs")
-        data_ready, data_out = renderer.prepare_data(request.data)
-        if data_ready:
-            images = renderer.render_gaussian_splatting_views(data_out, 15, 4.0, data_ver=request.data_ver)
-            score = app.state.validator.validate(images, request.prompt)
-        else:
-            score = 0
-
-        logger.info(f" Score: {score}. Prompt: {request.prompt}")
-        error = None
+        score = _validate(prompt, data, version, loader)
     except Exception as e:
-        logger.error(f" Validation failed with: {e}.")
-        error = e
-        score = 0.0
+        logger.exception(e)
+    finally:
+        _cleanup()
 
-    t2 = time()
-    logger.info(f" Validation took: {t2 - t1} sec")
+    return ResponseData(score=score)
 
-    gc.collect()
-    torch.cuda.empty_cache()
-    gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
 
-    t3 = time()
-    logger.info(f" Garbage collection took: {t3 - t2} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
+@app.post("/validate_ply/", response_model=ResponseData)
+async def validate_ply(request: RequestData) -> ResponseData:
+    """
+    Validates the input prompt and PLY data to produce scores.
 
-    if error is not None:
-        raise HTTPException(status_code=500, detail=str(error))
+    Parameters:
+    - request (RequestData): An instance of RequestData containing the input prompt and data.
+
+    Returns:
+    - ResponseData: An instance of ResponseData containing the scores generated from the validation process.
+
+    """
+    prompt = request.prompt
+    data = request.data
+    loader = PlyLoader()
+    score = 0.0
+
+    try:
+        score = _validate(prompt, data, 256, loader)
+    except Exception as e:
+        logger.exception(e)
+    finally:
+        _cleanup()
 
     return ResponseData(score=score)
 

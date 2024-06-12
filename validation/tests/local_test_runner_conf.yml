@@ -21,10 +21,10 @@ img_height: 512
 iterations: 10
 
 # amount of rendering views:
-views: 15
+views: 16
 
 # radius of the camera orbit
-cam_rad: 5.0
+cam_rad: 4.0
 
 # the scaling factor for rendering the gaussian splatting model
 gs_scale: 1.0

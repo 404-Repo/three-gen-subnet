@@ -1,13 +1,15 @@
 #!/bin/bash
 
-folder_path="./extras"
+# Get the name of the active environment
+active_env=$(conda info --envs | grep '*' | awk '{print $1}')
 
-if [ -d "$folder_path" ]; then
-    # Folder exists, delete it
-    echo "Deleting folder: $folder_path"
-    rm -rf "$folder_path"
-    echo "Folder deleted successfully."
+# Check if the active environment is 'base'
+if [ "$active_env" == "base" ]; then
+  echo "The active environment is 'base'."
+else
+  CONDA_BASE=$(conda info --base)
+  source "${CONDA_BASE}/etc/profile.d/conda.sh"
+  conda deactivate
 fi
 
 conda env remove --name three-gen-validation
-

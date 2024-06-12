@@ -3,17 +3,12 @@ channels:
   - defaults
   - conda-forge
   - nvidia
+  - pytorch
   
 dependencies:
   - python=3.10
   - pip
   - cuda-toolkit=12.1.1
-  - cmake=3.28.2
-  - gcc=11.4
-  - gcc_linux-64=11.4
-  - mesa-libegl-devel-cos7-x86_64=18.3.4
-  - mesa-libgl-devel-cos7-x86_64=18.3.4
-  - libglvnd-devel-cos7-x86_64=1.0.1
-  - libpq=16.1
+  - cudnn=8.9
   - pip:
-    - -r requirements.txt
+      - -r requirements.txt

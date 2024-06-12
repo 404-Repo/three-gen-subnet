@@ -20,10 +20,7 @@
 #  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
-
 import numpy as np
-import torch
-
 
 C0 = 0.28209479177387814
 C1 = 0.4886025119029199
@@ -113,9 +110,14 @@ def eval_sh(deg, sh, dirs):
 
 
 # *********************************************** END of Copyright  **************************************************
-def preproceses_dream_gaussian_output(data: dict, camera_position: torch.tensor):
-    """ Function for converting dream gaussian project output to the format that new
-    rendering pipeline can processor
+
+
+import torch
+
+
+def preprocess_dream_gaussian_output(data: dict, camera_position: torch.Tensor):
+    """Function for converting dream gaussian project output to the format that new
+    rendering pipeline can process
 
     Parameters
     ----------
@@ -159,3 +161,16 @@ def preproceses_dream_gaussian_output(data: dict, camera_position: torch.tensor)
     out_dict["sh_degree"] = data["sh_degree"]
 
     return out_dict
+
+
+def sigmoid(x):
+    """
+    Apply the sigmoid function element-wise to the input array.
+
+    Args:
+    x (np.ndarray): Input array.
+
+    Returns:
+    np.ndarray: The output array with the sigmoid function applied element-wise.
+    """
+    return 1 / (1 + np.exp(-x))

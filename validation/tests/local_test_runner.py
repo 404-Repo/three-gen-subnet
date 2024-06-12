@@ -3,7 +3,6 @@ import glob
 import os
 import sys
 import inspect
-import base64
 import yaml
 from typing import List
 from time import time
@@ -11,18 +10,19 @@ from time import time
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
-sys.path.insert(0, parentdir+"/validation")
+sys.path.insert(0, parentdir + "/validation")
 
 import torch
 from loguru import logger
 
-from validation.rendering_pipeline import RenderingPipeline
+from validation.memory import enough_gpu_mem_available
+from validation.rendering.rendering_pipeline import RenderingPipeline
 from validation.validation_pipeline import ValidationPipeline
-from validation.hdf5_loader import HDF5Loader
+from validation.io.hdf5 import HDF5Loader
 
 
 def get_all_h5_file_names(folder_path: str):
-    """ Function for getting all file names from the folder
+    """Function for getting all file names from the folder
 
     Parameters
     ----------
@@ -32,22 +32,24 @@ def get_all_h5_file_names(folder_path: str):
     -------
     a list with file names
     """
-    h5_files = glob.glob(os.path.join(folder_path, '**/*.h5'), recursive=True)
+    h5_files = glob.glob(os.path.join(folder_path, "**/*.h5"), recursive=True)
     if len(h5_files) == 0:
         raise RuntimeWarning(f"No HDF5 files were found in <{folder_path}>. Nothing to process!")
 
     return h5_files
 
 
-def validate(renderer: RenderingPipeline,
-             validator: ValidationPipeline,
-             data_dict: dict,
-             prompt: str,
-             views: int,
-             cam_rad: float,
-             gs_scale: float,
-             data_ver: int):
-    """ Function for validating the input data
+def validate(
+    renderer: RenderingPipeline,
+    validator: ValidationPipeline,
+    data_dict: dict,
+    prompt: str,
+    views: int,
+    cam_rad: float,
+    gs_scale: float,
+    data_ver: int,
+):
+    """Function for validating the input data
 
     Parameters
     ----------
@@ -79,7 +81,7 @@ def validate(renderer: RenderingPipeline,
 
 
 def load_config():
-    """ Function that loads the data from config file
+    """Function that loads the data from config file
 
     Returns
     -------
@@ -92,7 +94,7 @@ def load_config():
 
 
 def match_promtps(prompts_in: List[str], file_names: List[str]):
-    """ Function that matches input prompts with the name of the files
+    """Function that matches input prompts with the name of the files
 
     Parameters
     ----------
@@ -113,7 +115,7 @@ def match_promtps(prompts_in: List[str], file_names: List[str]):
     return prompts
 
 
-if __name__ == '__main__':
+def main():
     # loading config file
     config_data = load_config()
 
@@ -127,15 +129,19 @@ if __name__ == '__main__':
     elif len(config_data["prompts"]) > 0:
         prompts_in = config_data["prompts"]
     else:
-        raise ValueError("No prompts were given by either 'prompts_file' or 'prompts' fields in the config! Nothing to be processed.")
+        raise ValueError(
+            "No prompts were given by either 'prompts_file' or 'prompts' fields in the config! Nothing to be processed."
+        )
 
     if len(prompts_in) == len(h5_files):
         prompts = match_promtps(prompts_in, h5_files)
     elif len(prompts_in) == 1:
         prompts = prompts_in
     else:
-        raise ValueError("The amount of provided prompts should be the same as the amount of input files or "
-                         "it should be 1 prompt for all files.")
+        raise ValueError(
+            "The amount of provided prompts should be the same as the amount of input files or "
+            "it should be 1 prompt for all files."
+        )
 
     # prompts = ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon",]
     save_images = config_data["save_images"]
@@ -158,26 +164,14 @@ if __name__ == '__main__':
     # running validation loop
     for i in range(int(config_data["iterations"])):
         for j, h5_file in enumerate(h5_files):
-
             # loading h5 file
             file_name, _ = os.path.splitext(os.path.basename(h5_file))
             file_path = os.path.abspath(h5_file)
             file_path = os.path.dirname(file_path)
 
-            print("[INFO] file path: ", h5_file)
+            logger.info(f" File Path: {h5_file}")
 
-            data_dict = hdf5_loader.load_point_cloud_from_h5(file_name, file_path)
-
-            # preparing data
-            data_io = hdf5_loader.pack_point_cloud_to_io_buffer(data_dict["points"],
-                                                                data_dict["normals"],
-                                                                data_dict["features_dc"],
-                                                                data_dict["features_rest"],
-                                                                data_dict["opacities"],
-                                                                data_dict["scale"],
-                                                                data_dict["rotation"],
-                                                                data_dict["sh_degree"])
-            data_io_encoded = base64.b64encode(data_io.getbuffer())
+            data_dict = hdf5_loader.from_file(file_name, file_path)
 
             # prompts preparing
             if len(prompts) == 1:
@@ -186,26 +180,32 @@ if __name__ == '__main__':
                 assert len(prompts) == len(h5_files)
                 prompt = prompts[j]
 
-            # preloading data
-            res, data_dict = renderer.prepare_data(data_io_encoded)
-            if res:
-                images, _ = validate(renderer,
-                                     validator,
-                                     data_dict,
-                                     prompt,
-                                     config_data["views"],
-                                     config_data["cam_rad"],
-                                     config_data["gs_scale"],
-                                     config_data["data_ver"])
+            if not enough_gpu_mem_available(data_dict):
+                return
 
-                if save_images:
-                    path = os.path.join(os.curdir, "renders")
-                    if not os.path.exists(path):
-                        os.mkdir(path)
-                    path = os.path.join(path, file_name)
+            images, _ = validate(
+                renderer,
+                validator,
+                data_dict,
+                prompt,
+                config_data["views"],
+                config_data["cam_rad"],
+                config_data["gs_scale"],
+                config_data["data_ver"],
+            )
+
+            if save_images:
+                path = os.path.join(os.curdir, "renders")
+                if not os.path.exists(path):
                     os.mkdir(path)
+                path = os.path.join(path, file_name)
+                os.mkdir(path)
 
-                    renderer.save_rendered_images(images, file_name, path)
+                renderer.save_rendered_images(images, file_name, path)
 
         gc.collect()
         torch.cuda.empty_cache()
+
+
+if __name__ == "__main__":
+    main()

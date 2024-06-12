@@ -10,9 +10,10 @@ from sklearn.ensemble import IsolationForest
 
 
 class ValidationPipeline:
-    """ Class with implementation of the validation algorithm """
+    """Class with implementation of the validation algorithm"""
+
     def __init__(self, debug: bool = False):
-        """ Constructor
+        """Constructor
 
         Parameters
         ----------
@@ -35,7 +36,7 @@ class ValidationPipeline:
         ]
 
     def validate(self, images: List[Image.Image], prompt: str):
-        """ Function for validating the input data
+        """Function for validating the input data
 
         Parameters
         ----------
@@ -50,7 +51,9 @@ class ValidationPipeline:
             logger.info(" Validating input data.")
 
         dists = []
-        prompts = self._negative_prompts + [prompt,]
+        prompts = self._negative_prompts + [
+            prompt,
+        ]
         for img, _ in zip(images, tqdm.trange(len(images), disable=True)):
             inputs = self._processor(text=prompts, images=[img], return_tensors="pt", padding=True)
             inputs.to(self._device)
@@ -89,7 +92,7 @@ class ValidationPipeline:
         return score
 
     def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b"):
-        """ Function for preloading the MetaClip model
+        """Function for preloading the MetaClip model
 
         Parameters
         ----------

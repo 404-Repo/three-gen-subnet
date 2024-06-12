@@ -2,15 +2,19 @@ import torch
 import numpy as np
 
 
-class OrbitCamera():
-    """ Class that defines the camera object. """
-    def __init__(self, img_width: int,
-                 img_height: int,
-                 fov_y: float = 49.1,
-                 z_near: float = 0.01,
-                 z_far: float = 100,
-                 degrees: bool = True):
-        """ Constructor
+class OrbitCamera:
+    """Class that defines the camera object."""
+
+    def __init__(
+        self,
+        img_width: int,
+        img_height: int,
+        fov_y: float = 49.1,
+        z_near: float = 0.01,
+        z_far: float = 100,
+        degrees: bool = True,
+    ):
+        """Constructor
 
         Parameters
         ----------
@@ -39,78 +43,74 @@ class OrbitCamera():
 
     @property
     def camera_to_world_tr(self):
-        """ Matrix with camera to world transform """
+        """Matrix with camera to world transform"""
         return self._cam_to_world_tr
 
     @property
-    def world_view_transform(self):
-        """ Matrix with transform from camera space to world space """
-        return torch.inverse(self._cam_to_world_tr).transpose(0, 1).to(self._device)
-
-    @property
-    def full_projection_transform(self):
-        """ Matrix with full camera projection transform """
-        return self.world_view_transform @ self.get_projection_matrix()
+    def world_to_camera_transform(self):
+        """Matrix with transform from world space to camera space"""
+        # return torch.inverse(self._cam_to_world_tr).transpose(0, 1).to(self._device)
+        R = self._cam_to_world_tr[:3, :3].transpose(0, 1)
+        T = -R @ self._cam_to_world_tr[:3, 3].unsqueeze(1)
+        Tr = torch.cat((R, T), dim=1)
+        result = torch.eye(4)
+        result[:3, :4] = Tr
+        return result.to(self._device)
 
     @property
     def camera_position(self):
-        """ A vector with current camera position """
+        """A vector with current camera position"""
         return -self._cam_to_world_tr[:3, 3]
 
     @property
     def tan_half_fov(self):
-        """ A tan of the half value of the field of view value """
+        """A tan of the half value of the field of view value"""
         return np.tan(0.5 * self._fov_y)
 
     @property
     def fov(self):
-        """ Field pof view in radians """
+        """Field pof view in radians"""
         return self._fov_y
 
     @property
     def image_height(self):
-        """ The height of the camera image """
+        """The height of the camera image"""
         return self._img_height
 
     @property
     def image_width(self):
-        """  The width of the camera image """
+        """The width of the camera image"""
         return self._img_width
 
     @property
     def z_near(self):
-        """ The value of the near camera plane """
+        """The value of the near camera plane"""
         return self._z_near
 
     @property
     def z_far(self):
-        """ The value of the far camera plane """
+        """The value of the far camera plane"""
         return self._z_far
 
-    def get_projection_matrix(self):
-        """ Function for computing the projection matrix for the camera """
-        tan_half_fov = self.tan_half_fov
+    @property
+    def intrinsics(self):
+        """Function for computing the intrinsics for the camera"""
+        focal_x = self._img_width / (2 * self.tan_half_fov)
+        focal_y = self._img_height / (2 * self.tan_half_fov)
 
-        P = torch.zeros(4, 4)
-        P[0, 0] = 1.0 / tan_half_fov
-        P[1, 1] = 1.0 / tan_half_fov
-        P[2, 2] = (self._z_far + self._z_near) / (self._z_far - self._z_near)
-        P[3, 2] = -(self._z_far * self._z_near) / (self._z_far - self._z_near)
-        P[2, 3] = 1
+        Ks = torch.eye(3)
+        Ks[0, 0] = focal_x
+        Ks[1, 1] = focal_y
+        Ks[0, 2] = self._img_width // 2
+        Ks[1, 2] = self._img_height // 2
+        return Ks.to(self._device)
 
-        return P.to(self._device)
-
-    def get_intrinsics(self):
-        """ Function for computing the intrinsics for the camera """
-        focal = self._img_height / (2 * self.tan_half_fov)
-        return np.array([focal, focal, self._img_width // 2, self._img_height // 2], dtype=np.float32)
-
-    def set_camera_to_world_transform(self, transform: torch.tensor):
-        """ Function for setting up the camera to world transform """
+    def set_camera_to_world_transform(self, transform: torch.Tensor):
+        """Function for setting up the camera to world transform"""
         self._cam_to_world_tr = transform
 
     def look_at(self, camera_pos: torch.Tensor, target_pos: torch.Tensor, opengl_conv: bool = True):
-        """ Function for computing the rotation matrix for the camera
+        """Function for computing the rotation matrix for the camera
 
         Parameters
         ----------
@@ -138,13 +138,16 @@ class OrbitCamera():
         R = torch.stack((right_vector, up_vector, forward_vector), dim=1)
         return R
 
-    def compute_transform_orbit(self, elevation: float,
-                                azimuth: float,
-                                radius: float,
-                                is_degree: bool = True,
-                                target_pos: torch.Tensor = None,
-                                opengl_conv: bool = True):
-        """ Function for computing orbit transform for the current camera
+    def compute_transform_orbit(
+        self,
+        elevation: float,
+        azimuth: float,
+        radius: float,
+        is_degree: bool = True,
+        target_pos: torch.Tensor | None = None,
+        opengl_conv: bool = True,
+    ):
+        """Function for computing orbit transform for the current camera
 
         Parameters
         ----------
@@ -168,6 +171,7 @@ class OrbitCamera():
             target_pos = torch.zeros([3], dtype=torch.float32)
 
         campos = torch.tensor([x, y, z], dtype=torch.float32) + target_pos
+
         T = torch.eye(4, dtype=torch.float32)
         T[:3, :3] = self.look_at(campos, target_pos, opengl_conv)
         T[:3, 3] = campos
@@ -177,7 +181,7 @@ class OrbitCamera():
 
     @staticmethod
     def _length(x: torch.Tensor, eps: float = 1e-20):
-        """ Function for computing the length of the input vector
+        """Function for computing the length of the input vector
 
         Parameters
         ----------
@@ -191,7 +195,7 @@ class OrbitCamera():
         return torch.sqrt(torch.clamp(torch.dot(x, x), min=eps))
 
     def _safe_normalize(self, x: torch.Tensor, eps: float = 1e-20):
-        """ Function for computing the normalization of the input vector
+        """Function for computing the normalization of the input vector
 
         Parameters
         ----------

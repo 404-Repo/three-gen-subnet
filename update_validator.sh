@@ -26,27 +26,23 @@ source_script() {
 # Skipping env update for this update
 
 cd "$base_dir/neurons" || exit 1
-#source_script "update_env.sh"
+source_script "update_env.sh"
 
 # Navigate to the validation directory and source update script
 
-# Skipping env update for this update
-
 cd "../validation" || exit 1
-#source_script "update_env.sh"
+source_script "update_env.sh"
 
 # Return to the base directory
 cd ".." || exit 1
 
 # Extract the validation process name from the validation config file
 
-# Skipping validation restart for this update
-
-#validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
-#if [ -z "$validation_process" ]; then
-#    echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
-#    exit 1
-#fi
+validation_process=$(grep -oP "(?<=name: ').+?(?=')" "$VALIDATION_CONFIG")
+if [ -z "$validation_process" ]; then
+    echo "Error: Could not find the validation process name in $VALIDATION_CONFIG"
+    exit 1
+fi
 
 
 # Function to check if a pm2 process is running successfully
@@ -93,10 +89,7 @@ restart_with_retry() {
 }
 
 # Restart validation process up to 5 times
-
-# Skipping validation restart for this update
-
-#restart_with_retry "$VALIDATION_CONFIG" 5
+restart_with_retry "$VALIDATION_CONFIG" 5
 
 # Restart validator process
 pm2 restart "$VALIDATOR_CONFIG"
