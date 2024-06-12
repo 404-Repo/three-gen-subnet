@@ -35,9 +35,9 @@ args, _ = get_args()
 class RequestData(BaseModel):
     prompt: constr(max_length=1024)
     data: constr(max_length=500 * 1024 * 1024)
-    # 0 - dream graussian prj data
-    # 1 - LGM / other prj data
     data_ver: int = 0
+    # 0 - Dream Gaussian native format (default value)
+    # 1+ - Preparation for PLY support
 
 
 class ResponseData(BaseModel):
@@ -46,7 +46,6 @@ class ResponseData(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_scoring_model()
 
@@ -60,45 +59,33 @@ app.router.lifespan_context = lifespan
 
 
 def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
-    """
-    Validates the input prompt and data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation process.
-
-    """
-    logger.info(f" Start validating the input 3D data.")
-    logger.info(f" Input prompt: {prompt}")
+    logger.info(f"Validating start. Prompt: {prompt}")
 
     t1 = time()
 
-    # Load data
     logger.info(" Preloading input data.")
+
     pcl_raw = base64.b64decode(data)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
     t2 = time()
-    logger.info(f"Loading data took: {t2 - t1} sec.")
 
-    # Check required memory
+    logger.info(f"Loading data took {t2 - t1} sec.")
+
     if not enough_gpu_mem_available(data_dict):
         return 0.0
 
-    # Render images
     renderer = RenderingPipeline(512, 512, mode="gs")
     images = renderer.render_gaussian_splatting_views(data_dict, 16, 4.0, data_ver=data_ver)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
-    # Validate images
     score = app.state.validator.validate(images, prompt)
+
     logger.info(f" Score: {score}. Prompt: {prompt}")
     t4 = time()
-    logger.info(f"Validation took: {t4 - t3} sec.")
+    logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
 
     return score
 
@@ -159,7 +146,7 @@ async def validate_ply(request: RequestData) -> ResponseData:
     score = 0.0
 
     try:
-        score = _validate(prompt, data, 1, loader)
+        score = _validate(prompt, data, 256, loader)
     except Exception as e:
         logger.exception(e)
     finally:

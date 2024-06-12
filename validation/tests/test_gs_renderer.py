@@ -29,7 +29,7 @@ def test_gs_renderer_hdf5():
 
     renderer = GaussianRenderer()
     image, _, _ = renderer.render(camera, data, scale_modifier=1.0)
-    img_np = image.detach().cpu().numpy()*255
+    img_np = image.detach().cpu().numpy() * 255
     # img = Image.fromarray(img_np.astype(dtype=np.uint8))
     # img.save("test_render.png")
 
@@ -47,7 +47,7 @@ def test_gs_renderer_ply():
 
     renderer = GaussianRenderer()
     image, _, _ = renderer.render(camera, data, scale_modifier=1.0)
-    img_np = image.detach().cpu().numpy()*255
+    img_np = image.detach().cpu().numpy() * 255
     # img = Image.fromarray(img_np.astype(dtype=np.uint8))
     # img.save("test_render_ply.png")
 
