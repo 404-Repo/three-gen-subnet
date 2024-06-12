@@ -34,7 +34,7 @@ args, _ = get_args()
 
 class RequestData(BaseModel):
     prompt: constr(max_length=1024)
-    data: constr(max_length=1000 * 1024 * 1024)
+    data: constr(max_length=500 * 1024 * 1024)
     # 0 - dream graussian prj data
     # 1 - LGM / other prj data
     data_ver: int = 0
