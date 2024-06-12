@@ -35,7 +35,8 @@ conda activate three-gen-validation
 conda info --env
 
 CUDA_HOME=${CONDA_PREFIX}
-pip install -r requirements.txt
+# pip install -r requirements.txt
+pip install --upgrade -r requirements.txt
 
 echo "Environment update completed successfully."
 
