@@ -14,6 +14,7 @@ fi
 
 # Attempt to find Conda's base directory and source it (required for `conda activate`)
 CONDA_BASE=$(conda info --base)
+PATH="${CONDA_BASE}/bin/":$PATH
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 active_env=$(conda info --envs | grep '*' | awk '{print $1}')
@@ -32,8 +33,5 @@ conda env remove --name three-gen-validation -y
 conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
-
-#CUDA_HOME=${CONDA_PREFIX}
-#pip install -r requirements.txt
 
 echo "Environment update completed successfully."

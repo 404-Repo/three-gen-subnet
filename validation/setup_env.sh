@@ -11,15 +11,13 @@ fi
 
 # Attempt to find Conda's base directory and source it (required for `conda activate`)
 CONDA_BASE=$(conda info --base)
+PATH="${CONDA_BASE}/bin/":$PATH
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 # Create conda environment and activate it
 conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
-
-#CUDA_HOME=${CONDA_PREFIX}
-#pip install -r requirements.txt
 
 # Store the path of the Conda interpreter
 CONDA_INTERPRETER_PATH=$(which python)
