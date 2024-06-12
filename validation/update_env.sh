@@ -26,7 +26,7 @@ else
 fi
 
 # Delete previous conda environment
-conda env remove --name three-gen-validation
+conda env remove --name three-gen-validation -y
 
 # Re-create conda environment and activate it
 conda env create -f conda_env_validation.yml
