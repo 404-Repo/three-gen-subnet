@@ -6,14 +6,14 @@ set -e
 # Inform user the script has started
 echo "Starting environment update script..."
 
-# Check for Conda installation and initialize Conda in script
-if [ -z "$(which conda)" ]; then
+# Attempt to find Conda's base directory and source it (required for `conda activate`)
+CONDA_BASE=$(conda info --base)
+
+if [ -z "${CONDA_BASE}" ]; then
     echo "Conda is not installed or not in the PATH"
     exit 1
 fi
 
-# Attempt to find Conda's base directory and source it (required for `conda activate`)
-CONDA_BASE=$(conda info --base)
 PATH="${CONDA_BASE}/bin/":$PATH
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
