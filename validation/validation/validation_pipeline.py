@@ -10,10 +10,9 @@ from sklearn.ensemble import IsolationForest
 
 
 class ValidationPipeline:
-    """Class with implementation of the validation algorithm"""
-
+    """ Class with implementation of the validation algorithm """
     def __init__(self, debug: bool = False):
-        """Constructor
+        """ Constructor
 
         Parameters
         ----------
@@ -36,7 +35,7 @@ class ValidationPipeline:
         ]
 
     def validate(self, images: List[Image.Image], prompt: str):
-        """Function for validating the input data
+        """ Function for validating the input data
 
         Parameters
         ----------
@@ -51,9 +50,7 @@ class ValidationPipeline:
             logger.info(" Validating input data.")
 
         dists = []
-        prompts = self._negative_prompts + [
-            prompt,
-        ]
+        prompts = self._negative_prompts + [prompt,]
         for img, _ in zip(images, tqdm.trange(len(images), disable=True)):
             inputs = self._processor(text=prompts, images=[img], return_tensors="pt", padding=True)
             inputs.to(self._device)
@@ -67,23 +64,24 @@ class ValidationPipeline:
 
             dists.append(probs[0][-1])
 
-        dists = np.sort(dists)
-        dists = dists.reshape(-1, 1)
+        dists_sorted = np.sort(dists)
+        dists_sorted = dists_sorted.reshape(-1, 1)
 
         # searching for the anomalies
         # Set contamination to expected proportion of outliers
         clf = IsolationForest(contamination=0.1)
-        clf.fit(dists)
-        preds = clf.predict(dists)
+        clf.fit(dists_sorted)
+        preds = clf.predict(dists_sorted)
 
         # removing found outliers from the input dists array
         outliers = np.where(preds == -1)[0]
-        filtered_dists = np.delete(dists, outliers)
+        filtered_dists = np.delete(dists_sorted, outliers)
         score = np.median(filtered_dists)
 
         if self._debug:
-            logger.debug(f" data: {dists.T}")
-            logger.debug(f" outliers: {dists[outliers].T}")
+            logger.debug(f" data: {dists}")
+            logger.debug(f" data (sorted): {dists_sorted.T}")
+            logger.debug(f" outliers: {dists_sorted[outliers].T}")
             logger.debug(f" score: {score}")
 
         if not self._debug:
@@ -92,7 +90,7 @@ class ValidationPipeline:
         return score
 
     def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b"):
-        """Function for preloading the MetaClip model
+        """ Function for preloading the MetaClip model
 
         Parameters
         ----------
