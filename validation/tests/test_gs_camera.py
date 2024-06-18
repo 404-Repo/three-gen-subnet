@@ -32,7 +32,9 @@ def test_camera_properties():
     xc = 256 // 2
     yc = 128 // 2
 
-    Ks_ref = torch.tensor([[focal_x, 0, xc], [0, focal_y, yc], [0, 0, 1]], dtype=torch.float32).to(device)
+    Ks_ref = torch.tensor([[focal_x, 0, xc],
+                           [0, focal_y, yc],
+                           [0, 0, 1]], dtype=torch.float32).to(device)
 
     assert torch.allclose(Ks, Ks_ref)
 
@@ -69,3 +71,4 @@ def test_camera_orbiting():
         dtype=torch.float32,
     )
     assert torch.allclose(camera_world2, camera_tr2_ref, atol=1e-4)
+

@@ -47,21 +47,19 @@ class GaussianRenderer:
         background_col = self._bg_color if bg_color is None else bg_color
         background = background_col.unsqueeze(0)
 
-        rendered_colors, rendered_alpha, meta = rasterization(
-            means3D,
-            rotations,
-            scales,
-            opacity,
-            rgbs,
-            camera_view_proj,
-            camera_intr,
-            camera.image_width,
-            camera.image_height,
-            camera.z_near,
-            camera.z_far,
-            backgrounds=background,
-            render_mode="RGB+D",
-        )
+        rendered_colors, rendered_alpha, meta = rasterization(means3D,
+                                                              rotations,
+                                                              scales,
+                                                              opacity,
+                                                              rgbs,
+                                                              camera_view_proj,
+                                                              camera_intr,
+                                                              camera.image_width,
+                                                              camera.image_height,
+                                                              camera.z_near,
+                                                              camera.z_far,
+                                                              backgrounds=background,
+                                                              render_mode="RGB+D")
 
         assert rendered_colors.shape == (1, camera.image_height, camera.image_width, 4)
         assert rendered_alpha.shape == (1, camera.image_height, camera.image_width, 1)

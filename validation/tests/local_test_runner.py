@@ -164,6 +164,7 @@ def main():
     # running validation loop
     for i in range(int(config_data["iterations"])):
         for j, h5_file in enumerate(h5_files):
+
             # loading h5 file
             file_name, _ = os.path.splitext(os.path.basename(h5_file))
             file_path = os.path.abspath(h5_file)

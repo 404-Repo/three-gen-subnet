@@ -51,7 +51,7 @@ class OrbitCamera:
         """Matrix with transform from world space to camera space"""
         # return torch.inverse(self._cam_to_world_tr).transpose(0, 1).to(self._device)
         R = self._cam_to_world_tr[:3, :3].transpose(0, 1)
-        T = -R @ self._cam_to_world_tr[:3, 3].unsqueeze(1)
+        T = - R @ self._cam_to_world_tr[:3, 3].unsqueeze(1)
         Tr = torch.cat((R, T), dim=1)
         result = torch.eye(4)
         result[:3, :4] = Tr
