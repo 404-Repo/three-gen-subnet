@@ -18,7 +18,7 @@ from validation.validation_pipeline import ValidationPipeline
 from validation.rendering.rendering_pipeline import RenderingPipeline
 from validation.memory import enough_gpu_mem_available
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 
 def get_args():

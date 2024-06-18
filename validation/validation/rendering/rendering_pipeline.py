@@ -61,8 +61,8 @@ class RenderingPipeline:
         cam_znear: the position of the near camera plane along Z-axis
         cam_zfar: the position of the far camera plane along Z-axis
         gs_scale: the scale of the Gaussians that will be used during rendering
-        data_ver: version of the input data format: 0 - corresponds to dream gaussian
-                                                    1 - corresponds to new data format (default)
+        data_ver: version of the input data format: 0 - default dream gaussian format
+                                                    1+ - preparation for PLY
 
         Returns
         -------
@@ -84,16 +84,10 @@ class RenderingPipeline:
                 else:
                     camera.compute_transform_orbit(elev, azimuth, cam_rad)
 
-                if data_ver == 0:
+                if data_ver <= 1:
                     data_in = preprocess_dream_gaussian_output(data, camera.camera_position)
-                elif data_ver == 1:
-                    data_in = data
                 else:
                     data_in = data
-                    logger.warning(
-                        f" The maximum data version for processing is < 1 >. Fall back to it. "
-                        f"Rendering results might be unpredictable."
-                    )
 
                 rendered_image, rendered_alpha, rendered_depth = self._render.render(
                     camera, data_in, scale_modifier=np.clip(gs_scale, 0, 1)
