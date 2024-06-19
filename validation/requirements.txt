@@ -7,7 +7,7 @@ scikit-video==1.1.*
 scikit-learn==1.5.*
 loguru==0.7.*
 meshio==5.3.*
-gsplat==1.*
 ninja==1.11.*
 fastapi==0.111.*
 uvicorn==0.30.*
+git+https://github.com/nerfstudio-project/gsplat.git@v1.0.0
