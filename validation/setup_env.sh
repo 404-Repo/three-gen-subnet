@@ -19,6 +19,9 @@ conda env create -f conda_env_validation.yml
 conda activate three-gen-validation
 conda info --env
 
+CUDA_HOME=${CONDA_PREFIX}
+pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.0.0
+
 # Store the path of the Conda interpreter
 CONDA_INTERPRETER_PATH=$(which python)
 
