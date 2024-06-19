@@ -10,4 +10,3 @@ meshio==5.3.*
 ninja==1.11.*
 fastapi==0.111.*
 uvicorn==0.30.*
-git+https://github.com/nerfstudio-project/gsplat.git@v1.0.0
