@@ -10,6 +10,7 @@ sys.path.insert(0, parentdir + "/validation")
 import pytest
 import numpy as np
 from PIL import Image
+from loguru import logger
 
 from validation.rendering.gs_camera import OrbitCamera
 from validation.rendering.gs_renderer import GaussianRenderer
@@ -35,7 +36,13 @@ def test_gs_renderer_hdf5():
 
     img_ref_file = os.path.join(test_data_folder, "test_render_hdf5.png")
     img_ref = Image.open(img_ref_file)
-    assert np.allclose(img_np.astype(dtype=np.uint8), np.array(img_ref))
+    try:
+        assert np.allclose(img_np.astype(dtype=np.uint8), np.array(img_ref))
+    except Exception as e:
+        img_path = os.path.join(test_data_folder, "test_image_hdf5.png")
+        img_ref.save(img_path)
+        logger.warning(f"Generated image is saved, path: {img_path}")
+        raise ValueError(f"Generated and stored images are not the same: {e}")
 
 
 def test_gs_renderer_ply():
@@ -53,4 +60,11 @@ def test_gs_renderer_ply():
 
     img_ref_file = os.path.join(test_data_folder, "test_render_ply.png")
     img_ref = Image.open(img_ref_file)
-    assert np.allclose(img_np.astype(dtype=np.uint8), np.array(img_ref))
+
+    try:
+        assert np.allclose(img_np.astype(dtype=np.uint8), np.array(img_ref))
+    except Exception as e:
+        img_path = os.path.join(test_data_folder, "test_image_ply.png")
+        img_ref.save(img_path)
+        logger.warning(f"Generated image is saved, path: {img_path}")
+        raise ValueError(f"Generated and stored images are not the same: {e}")
