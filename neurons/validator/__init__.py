@@ -286,7 +286,7 @@ class Validator:
             return self._add_feedback(synapse, miner)
 
         validation_score = await fidelity_check.validate(
-            self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_ver
+            self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
         )
         if validation_score is None:
             miner.reset_task(cooldown=self.config.generation.task_cooldown)

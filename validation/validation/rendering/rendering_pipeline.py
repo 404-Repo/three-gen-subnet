@@ -31,8 +31,8 @@ class RenderingPipeline:
         self._img_height = img_height
 
         # min and maximum elevation angles for the camera position during rendering
-        self._cam_min_elev_angle = -15
-        self._cam_max_elev_angle = 15
+        self._cam_min_elev_angle = -17
+        self._cam_max_elev_angle = 17
 
         if mode == "gs":
             self._render = GaussianRenderer()
@@ -99,8 +99,8 @@ class RenderingPipeline:
                 pil_image = Image.fromarray(image)
                 rendered_images.append(pil_image)
 
-            logger.info(" Done.")
-            return rendered_images
+        logger.info(" Done.")
+        return rendered_images
 
     @staticmethod
     def render_video_to_images(video_file: str):

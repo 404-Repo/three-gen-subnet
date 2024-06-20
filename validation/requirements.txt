@@ -1,14 +1,12 @@
 h5py==3.10.*
 numpy==1.26.*
 torch==2.3.*
-torchvision==0.*
 transformers==4.41.*
 pytest==8.2.*
 scikit-video==1.1.*
 scikit-learn==1.5.*
 loguru==0.7.*
-plyfile==1.0.*
-gsplat==1.*
+meshio==5.3.*
 ninja==1.11.*
 fastapi==0.111.*
 uvicorn==0.30.*

@@ -4,8 +4,11 @@ import aiohttp
 import bittensor as bt
 
 
-async def validate(endpoint: str, prompt: str, data: str, data_ver: int) -> float | None:
-    validate_url = urllib.parse.urljoin(endpoint, "/validate/")
+async def validate(endpoint: str, prompt: str, data: str, data_format: str, data_ver: int) -> float | None:
+    if data_format == "ply":
+        validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
+    else:
+        validate_url = urllib.parse.urljoin(endpoint, "/validate/")
 
     async with aiohttp.ClientSession() as session:
         try:

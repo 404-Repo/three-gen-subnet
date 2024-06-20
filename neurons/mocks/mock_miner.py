@@ -57,7 +57,7 @@ async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_ui
 async def submit_results(
     dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, task: Task
 ) -> tuple[Feedback | None, int]:
-    with Path("content_pcl.h5").open("r") as f:  # noqa
+    with Path("monkey.h5").open("r") as f:  # noqa
         results = f.read()
 
     message = f"{0}{task.prompt}{metagraph.hotkeys[validator_uid]}{dendrite.keypair.ss58_address}"

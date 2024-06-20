@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -14,13 +15,20 @@ async def main() -> None:
     with Path(config.data).open() as f:  # noqa
         data = f.read()
 
-    jobs = [validate(config.validation.endpoint, config.prompt, data) for _x in range(1)]
+    # with Path(config.data).open("rb") as f:  # noqa
+    #     data = base64.b64encode(f.read()).decode("utf-8")
+
+    start_time = time.time()
+    jobs = [validate(config.validation.endpoint, config.prompt, data) for _ in range(1)]
     scores = await asyncio.gather(*jobs)
     bt.logging.info(f"Validation scores: {scores}")
+    bt.logging.info(f"Validation time: {time.time() - start_time}")
 
 
 async def validate(endpoint: str, prompt: str, data: str) -> float | None:
     validate_url = urllib.parse.urljoin(endpoint, "/validate/")
+
+    # validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
 
     bt.logging.info(f"Url: {validate_url}, prompt: {prompt}, results size: {len(data)}")
 
@@ -62,13 +70,13 @@ async def get_config() -> bt.config:
         "--data",
         type=str,
         help="Path to the file with generated results.",
-        default="content_pcl.h5",
+        default="monkey.h5",
     )
     parser.add_argument(
         "--prompt",
         type=str,
         help="Prompt used for generation.",
-        default="tourmaline tassel earring",
+        default="baby monkey",
     )
     return bt.config(parser)
 

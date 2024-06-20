@@ -2,8 +2,8 @@ import io
 from pathlib import Path
 from typing import Dict
 
+import meshio
 import numpy as np
-from plyfile import PlyData
 import torch
 
 from validation.io.base import BaseLoader
@@ -53,34 +53,32 @@ class PlyLoader(BaseLoader):
         -------
         a dictionary with loaded data
         """
-        plydata = PlyData.read(source)
+        plydata = meshio.read(source, file_format="ply")
+        points = plydata.points
+        pdata = plydata.point_data
 
-        points = np.vstack([plydata["vertex"]["x"], plydata["vertex"]["y"], plydata["vertex"]["z"]]).T
-        opacities = sigmoid(np.array(plydata["vertex"]["opacity"]))
-
-        SH_C0 = 0.28209479177387814
-        features_dc = np.array(
-            [
-                0.5 + SH_C0 * plydata["vertex"]["f_dc_0"],
-                0.5 + SH_C0 * plydata["vertex"]["f_dc_1"],
-                0.5 + SH_C0 * plydata["vertex"]["f_dc_2"],
-            ]
-        ).T
-
-        scale = np.exp(
-            np.vstack([plydata["vertex"]["scale_0"], plydata["vertex"]["scale_1"], plydata["vertex"]["scale_2"]]).T
-        )
-
+        opacities = sigmoid(np.array(pdata["opacity"]))
         rotation = np.vstack(
             [
-                plydata["vertex"]["rot_0"],
-                plydata["vertex"]["rot_1"],
-                plydata["vertex"]["rot_2"],
-                plydata["vertex"]["rot_3"],
+                pdata["rot_0"],
+                pdata["rot_1"],
+                pdata["rot_2"],
+                pdata["rot_3"],
             ]
         ).T
         rotation = torch.tensor(rotation).contiguous()
         rotation = torch.nn.functional.normalize(rotation)
+
+        scale = np.exp(np.vstack([pdata["scale_0"], pdata["scale_1"], pdata["scale_2"]]).T)
+
+        SH_C0 = 0.28209479177387814
+        features_dc = np.array(
+            [
+                0.5 + SH_C0 * pdata["f_dc_0"],
+                0.5 + SH_C0 * pdata["f_dc_1"],
+                0.5 + SH_C0 * pdata["f_dc_2"],
+            ]
+        ).T
 
         normals = np.zeros(points.shape)
         features_rest = np.array([])

@@ -67,23 +67,24 @@ class ValidationPipeline:
 
             dists.append(probs[0][-1])
 
-        dists = np.sort(dists)
-        dists = dists.reshape(-1, 1)
+        dists_sorted = np.sort(dists)
+        dists_sorted = dists_sorted.reshape(-1, 1)
 
         # searching for the anomalies
         # Set contamination to expected proportion of outliers
         clf = IsolationForest(contamination=0.1)
-        clf.fit(dists)
-        preds = clf.predict(dists)
+        clf.fit(dists_sorted)
+        preds = clf.predict(dists_sorted)
 
         # removing found outliers from the input dists array
         outliers = np.where(preds == -1)[0]
-        filtered_dists = np.delete(dists, outliers)
+        filtered_dists = np.delete(dists_sorted, outliers)
         score = np.median(filtered_dists)
 
         if self._debug:
-            logger.debug(f" data: {dists.T}")
-            logger.debug(f" outliers: {dists[outliers].T}")
+            logger.debug(f" data: {dists}")
+            logger.debug(f" data (sorted): {dists_sorted.T}")
+            logger.debug(f" outliers: {dists_sorted[outliers].T}")
             logger.debug(f" score: {score}")
 
         if not self._debug:
