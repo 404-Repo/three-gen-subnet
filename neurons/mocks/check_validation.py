@@ -34,7 +34,7 @@ async def validate(endpoint: str, prompt: str, data: str) -> float | None:
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(validate_url, json={"prompt": prompt, "data": data, "data_ver": 2}) as response:
+            async with session.post(validate_url, json={"prompt": prompt, "data": data}) as response:
                 if response.status == 200:
                     results = await response.json()
 
