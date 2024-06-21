@@ -9,9 +9,9 @@ sys.path.insert(0, parentdir + "/validation")
 
 import pytest
 
-from validation.io.hdf5 import HDF5Loader, HDF5Writer
-from validation.rendering.rendering_pipeline import RenderingPipeline
-from validation.validation_pipeline import ValidationPipeline
+from validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.rendering.rendering_pipeline import RenderingPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
 @pytest.fixture
@@ -28,10 +28,10 @@ def test_validator(h5data):
     prompt = "A yellow monkey"
     data = h5data
     render = RenderingPipeline(512, 512, "gs")
-
     images = render.render_gaussian_splatting_views(data, 16, 3.0, data_ver=2)
+
     validator = ValidationPipeline()
-    validator.preload_scoring_model()
+    validator.preload_model()
     score = validator.validate(images, prompt)
 
     assert score > 0.9
