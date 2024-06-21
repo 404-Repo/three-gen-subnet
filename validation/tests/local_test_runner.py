@@ -15,10 +15,10 @@ import torch
 import pandas as pd
 from loguru import logger
 
-from validation.validation_lib.memory import enough_gpu_mem_available
-from validation.validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation.validation_lib.validation.validation_pipeline import ValidationPipeline
-from validation.validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.memory import enough_gpu_mem_available
+from validation_lib.rendering.rendering_pipeline import RenderingPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.io.hdf5 import HDF5Loader
 
 
 def get_all_h5_file_names(folder_path: str):
