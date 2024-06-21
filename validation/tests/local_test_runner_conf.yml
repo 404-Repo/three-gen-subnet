@@ -11,7 +11,7 @@ prompts_file: ""
 prompts: []
 
 # flag that allows to save rendering images per input GS for debugging purposes
-save_images: False
+save_images: True
 
 # parameters that defines image size during the rendering
 img_width: 512
@@ -24,12 +24,9 @@ iterations: 10
 views: 16
 
 # radius of the camera orbit
-cam_rad: 4.0
-
-# the scaling factor for rendering the gaussian splatting model
-gs_scale: 1.0
+cam_rad: 3.6
 
 # data version
-# 0 - corresponds to dream gaussian
-# 1 - corresponds to new data format (default)
-data_ver: 1
+# 0-1 - corresponds to dream gaussian
+# 2 - corresponds to new data format (default)
+data_ver: 2
