@@ -34,7 +34,7 @@ def get_models(config: OmegaConf = Depends(get_config)):
 
 
 @app.post("/generate/")
-async def generate_model(
+async def generate(
     prompt: str = Form(),
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),

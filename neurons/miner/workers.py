@@ -108,7 +108,9 @@ async def _submit_results(
     prompt = pull.task.prompt if pull.task is not None else None
     message = f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
-    synapse = SubmitResults(task=pull.task, results=results, submit_time=submit_time, signature=signature)
+    synapse = SubmitResults(
+        task=pull.task, results=results, data_format="ply", submit_time=submit_time, signature=signature
+    )
     response = typing.cast(
         SubmitResults,
         await dendrite.call(
