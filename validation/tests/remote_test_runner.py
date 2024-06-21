@@ -1,10 +1,14 @@
+import os
+import inspect
+
 import requests
 import json
 import argparse
 import base64
 
+CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 DEFAULT_PROMPT = "A hamburger"
-DEFAULT_FILEPATH = "./tests/resources/hamburger.ply"
+DEFAULT_FILEPATH = os.path.join(CURRENT_DIR, "resources/hamburger.ply")
 DEFAULT_URL = "http://localhost:10006/validate_ply/"
 DEFAULT_VERSION = 0
 
