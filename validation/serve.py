@@ -18,7 +18,7 @@ from validation_lib.validation.validation_pipeline import ValidationPipeline
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.memory import enough_gpu_mem_available
 
-VERSION = "1.3.0"
+VERSION = "1.6.0"
 
 
 def get_args():
@@ -34,10 +34,10 @@ args, _ = get_args()
 
 class RequestData(BaseModel):
     prompt: constr(max_length=1024)
-    data: constr(max_length=1000 * 1024 * 1024)
-    # 0 - dream graussian prj data
-    # 1 - LGM / other prj data
-    data_ver: int
+    data: constr(max_length=500 * 1024 * 1024)
+    data_ver: int = 0
+    # 0 - Dream Gaussian native format (default value)
+    # 1+ - Preparation for PLY support
 
 
 class ResponseData(BaseModel):
@@ -70,8 +70,8 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
     - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
 
     """
-    logger.info(f" Start validating the input 3D data.")
-    logger.info(f" Input prompt: {prompt}")
+
+    logger.info(f"Validating started. Prompt: {prompt}")
 
     t1 = time()
 
@@ -81,6 +81,7 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
     t2 = time()
+
     logger.info(f"Loading data took: {t2 - t1} sec.")
 
     # Check required memory
@@ -97,8 +98,9 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
     # Validate images
     score = app.state.validator.validate(images, prompt)
     logger.info(f" Score: {score}. Prompt: {prompt}")
+
     t4 = time()
-    logger.info(f"Validation took: {t4 - t3} sec.")
+    logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
 
     return score
 
@@ -106,9 +108,11 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
 def _cleanup():
     """Call garbage collection"""
     t1 = time()
+
     gc.collect()
     torch.cuda.empty_cache()
     gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
+
     t2 = time()
     logger.info(f"Garbage collection took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
 
@@ -159,7 +163,7 @@ async def validate_ply(request: RequestData) -> ResponseData:
     score = 0.0
 
     try:
-        score = _validate(prompt, data, 2, loader)
+        score = _validate(prompt, data, 256, loader)
     except Exception as e:
         logger.exception(e)
     finally:
