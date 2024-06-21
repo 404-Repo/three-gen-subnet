@@ -5,7 +5,7 @@ from typing import Dict
 import numpy as np
 import h5py as h5
 
-from validation.io.base import BaseLoader
+from validation_lib.io.base import BaseLoader
 
 
 class HDF5Loader(BaseLoader):
