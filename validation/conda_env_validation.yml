@@ -11,4 +11,4 @@ dependencies:
   - cuda-toolkit=12.1.1
   - cudnn=8.9
   - pip:
-      - -r requirements.txt
+    - -r requirements.txt
