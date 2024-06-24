@@ -21,11 +21,13 @@ async def work() -> None:
                     if update.status == TaskStatus.STARTED:
                         print("Task started")
                     elif update.status == TaskStatus.FIRST_RESULTS:
-                        print(f"First results. Score: {update.results.score}. Size: {len(update.results.assets)}")
+                        score = update.results.score if update.results else None
+                        assets = update.results.assets or "" if update.results else ""
+                        print(f"First results. Score: {score}. Size: {len(assets)}")
                     elif update.status == TaskStatus.BEST_RESULTS:
-                        print(f"Best results. Score: {update.results.score}. Size: {len(update.results.assets)}")
-                    else:
-                        print("Wrong status")
+                        score = update.results.score if update.results else None
+                        assets = update.results.assets or "" if update.results else ""
+                        print(f"Best results. Score: {score}. Size: {len(assets)}")
                 elif msg.type == WSMsgType.ERROR:
                     print(f"WebSocket connection closed with exception: {ws.exception()}")
 

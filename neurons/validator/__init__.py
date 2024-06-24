@@ -187,7 +187,6 @@ class Validator:
             bt.logging.debug(f"[{uid}] pulls organic task ({task.prompt} | {task.id})")
         else:
             task = Task(prompt=self.dataset.get_random_prompt())
-            # task = Task(prompt="tourmaline tassel earring")
             bt.logging.debug(f"[{uid}] pulls synthetic task ({task.prompt} | {task.id})")
 
         miner.assign_task(task)
@@ -223,31 +222,38 @@ class Validator:
         if synapse.results == "":
             bt.logging.debug(f"[{uid}] submitted empty results")
 
-            miner.reset_task(cooldown=self.config.generation.task_cooldown)
-            self._task_registry_fail_task(synapse.task.id, synapse.dendrite.hotkey)
+            self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
             return self._add_feedback(synapse, miner)
 
         if not self._verify_results_signature(synapse):
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
 
-            # TODO: Add penalty cooldown
-            self._task_registry_fail_task(synapse.task.id, synapse.dendrite.hotkey)
+            self._reset_miner_on_failure(
+                miner=miner,
+                hotkey=synapse.dendrite.hotkey,
+                task_id=synapse.task.id,
+                cooldown_penalty=self.config.generation.cooldown_penalty,
+            )
             return self._add_feedback(synapse, miner)
 
         validation_score = await fidelity_check.validate(
             self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
         )
         if validation_score is None:
-            miner.reset_task(cooldown=self.config.generation.task_cooldown)
-            self._task_registry_fail_task(synapse.task.id, synapse.dendrite.hotkey)
+            self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
             return self._add_feedback(synapse, miner, validation_failed=True)
 
         fidelity_score = self._get_fidelity_score(validation_score)
 
         if fidelity_score == 0:
             bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
-            self._task_registry_fail_task(synapse.task.id, synapse.dendrite.hotkey)
-            miner.reset_task(cooldown=self.config.generation.task_cooldown + self.config.generation.cooldown_penalty)
+
+            self._reset_miner_on_failure(
+                miner=miner,
+                hotkey=synapse.dendrite.hotkey,
+                task_id=synapse.task.id,
+                cooldown_penalty=self.config.generation.cooldown_penalty,
+            )
             return self._add_feedback(synapse, miner)
 
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
@@ -269,7 +275,8 @@ class Validator:
 
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
-    def _task_registry_fail_task(self, task_id: str, hotkey: str) -> None:
+    def _reset_miner_on_failure(self, miner: MinerData, hotkey: str, task_id: str, cooldown_penalty: int = 0) -> None:
+        miner.reset_task(cooldown=self.config.generation.task_cooldown + cooldown_penalty)
         if self.task_registry is not None:
             self.task_registry.fail_task(task_id, hotkey)
 
