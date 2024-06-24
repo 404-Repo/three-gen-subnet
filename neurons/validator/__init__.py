@@ -362,7 +362,7 @@ class Validator:
 
         return False, ""
 
-    def prioritize_getting_version(self, synapse: SubmitResults) -> float:
+    def prioritize_getting_version(self, synapse: GetVersion) -> float:
         return 10000000  # maximizing priority
 
     def _self_check_for_registration(self) -> None:
