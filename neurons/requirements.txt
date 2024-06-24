@@ -1,1 +1,2 @@
 bittensor==6.9.3
+websockets==12.0

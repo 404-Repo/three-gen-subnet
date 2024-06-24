@@ -134,31 +134,10 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
-        "--public_api.whitelist_disabled",
-        action="store_true",
-        help="Disables wallet whitelisting, allowing any wallet to access.",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--public_api.polling_interval",
+        "--public_api.server_port",
         type=int,
-        help="Minimum interval between task polling (in seconds).",
-        default=30,
-    )
-
-    parser.add_argument(
-        "--public_api.rate_limit.requests",
-        type=int,
-        help="The maximum number of requests that are allowed for a single key within the specified time period.",
-        default=10,
-    )
-
-    parser.add_argument(
-        "--public_api.rate_limit.period",
-        type=int,
-        help="The time period, in seconds, for which the request limit (specified by max_requests) applies",
-        default=120,
+        help="The local port public api endpoint is bound to. i.e. 8888",
+        default=8888,
     )
 
     parser.add_argument(
@@ -172,7 +151,14 @@ def read_config() -> bt.config:
         "--public_api.wait_after_first_copy",
         type=int,
         help="Maximum wait time for the second copy after the first acceptable copy was generated.",
-        default=60,
+        default=30,
+    )
+
+    parser.add_argument(
+        "--public_api.sync_api_keys_interval",
+        type=int,
+        help="Defines the interval at which the api keys are re-fetched from the database.",
+        default=30 * 60,  # one hour
     )
 
     parser.add_argument(
