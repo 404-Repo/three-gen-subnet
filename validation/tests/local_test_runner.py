@@ -4,21 +4,21 @@ import os
 import sys
 import inspect
 import yaml
-from typing import List
 from time import time
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
-sys.path.insert(0, parentdir + "/validation")
+sys.path.insert(0, parentdir + "/validation_lib")
 
 import torch
+import pandas as pd
 from loguru import logger
 
-from validation.memory import enough_gpu_mem_available
-from validation.rendering.rendering_pipeline import RenderingPipeline
-from validation.validation_pipeline import ValidationPipeline
-from validation.io.hdf5 import HDF5Loader
+from validation_lib.memory import enough_gpu_mem_available
+from validation_lib.rendering.rendering_pipeline import RenderingPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.io.hdf5 import HDF5Loader
 
 
 def get_all_h5_file_names(folder_path: str):
@@ -33,6 +33,8 @@ def get_all_h5_file_names(folder_path: str):
     a list with file names
     """
     h5_files = glob.glob(os.path.join(folder_path, "**/*.h5"), recursive=True)
+    h5_files.sort(key=os.path.getctime)
+
     if len(h5_files) == 0:
         raise RuntimeWarning(f"No HDF5 files were found in <{folder_path}>. Nothing to process!")
 
@@ -46,7 +48,6 @@ def validate(
     prompt: str,
     views: int,
     cam_rad: float,
-    gs_scale: float,
     data_ver: int,
 ):
     """Function for validating the input data
@@ -59,7 +60,6 @@ def validate(
     prompt : an input prompt
     views: the amount of views to render
     cam_rad: the radius of the camera orbit
-    gs_scale: the scaling factor for rendering the gaussian splatting model
     data_ver: version of the input data format: 0 - corresponds to dream gaussian
                                                 1 - corresponds to new data format (default)
 
@@ -71,7 +71,7 @@ def validate(
     logger.info(f" Input prompt: {prompt}")
     t1 = time()
 
-    images = renderer.render_gaussian_splatting_views(data_dict, views, cam_rad, gs_scale=gs_scale, data_ver=data_ver)
+    images = renderer.render_gaussian_splatting_views(data_dict, views, cam_rad, data_ver=data_ver)
     score = validator.validate(images, prompt)
 
     t2 = time()
@@ -93,36 +93,17 @@ def load_config():
     return config_data
 
 
-def match_promtps(prompts_in: List[str], file_names: List[str]):
-    """Function that matches input prompts with the name of the files
+def load_prompts(config_data: dict):
+    """
 
     Parameters
     ----------
-    prompts_in: a list of input prompts
-    file_names: a list of input file names
+    config_data
 
     Returns
     -------
-    matched list of prompts
+
     """
-    prompts = []
-    for file_path in file_names:
-        filename = os.path.basename(file_path)
-        for prompt in prompts_in:
-            if any(word in filename.split("_") for word in prompt.split(" ")):
-                prompts.append(prompt)
-                break
-    return prompts
-
-
-def main():
-    # loading config file
-    config_data = load_config()
-
-    # getting all hdf5 file names
-    h5_files = get_all_h5_file_names(config_data["hdf5_folder"])
-
-    # reading prompts either from the file or from config
     if config_data["prompts_file"] != "":
         with open(config_data["prompts_file"]) as file:
             prompts_in = [line.rstrip() for line in file]
@@ -130,38 +111,48 @@ def main():
         prompts_in = config_data["prompts"]
     else:
         raise ValueError(
-            "No prompts were given by either 'prompts_file' or 'prompts' fields in the config! Nothing to be processed."
+            "No prompts were given by either 'prompts_file' or 'prompts' fields in the config! "
+            "Nothing to be processed."
         )
 
-    if len(prompts_in) == len(h5_files):
-        prompts = match_promtps(prompts_in, h5_files)
-    elif len(prompts_in) == 1:
-        prompts = prompts_in
-    else:
-        raise ValueError(
-            "The amount of provided prompts should be the same as the amount of input files or "
-            "it should be 1 prompt for all files."
-        )
+    return prompts_in
 
-    # prompts = ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon",]
+
+def main():
+    # loading config file
+    config_data = load_config()
+
+    # save images enable/disable
     save_images = config_data["save_images"]
+    debug_output = True
 
     assert config_data["img_width"] != "" and config_data["img_width"] > 0
     assert config_data["img_height"] != "" and config_data["img_height"] > 0
+    assert config_data["iterations"] != "" and int(config_data["iterations"]) > 0
+
+    # getting all hdf5 file names
+    h5_files = get_all_h5_file_names(config_data["hdf5_folder"])
+    logger.info(f" Files to process: {h5_files}")
+
+    # reading prompts either from the file or from config
+    prompts = load_prompts(config_data)
+    logger.info(f" Prompts used for generating files: {prompts}")
 
     # preparing rendering system
     renderer = RenderingPipeline(config_data["img_width"], config_data["img_height"])
 
     # preparing validator
-    validator = ValidationPipeline(debug=True)
-    validator.preload_scoring_model()
+    validator = ValidationPipeline(verbose=debug_output)
+    validator.preload_model()
 
     # preparing HDF5 loader
     hdf5_loader = HDF5Loader()
 
-    assert config_data["iterations"] != "" and int(config_data["iterations"]) > 0
+    data = []
+    for i in range(int(config_data["iterations"])):
+        data.append(["Iteration_" + str(i)])
 
-    # running validation loop
+    # running validation_lib loop
     for i in range(int(config_data["iterations"])):
         for j, h5_file in enumerate(h5_files):
             # loading h5 file
@@ -183,16 +174,16 @@ def main():
             if not enough_gpu_mem_available(data_dict):
                 return
 
-            images, _ = validate(
+            images, score = validate(
                 renderer,
                 validator,
                 data_dict,
                 prompt,
                 config_data["views"],
                 config_data["cam_rad"],
-                config_data["gs_scale"],
                 config_data["data_ver"],
             )
+            data[i].append(score)
 
             if save_images:
                 path = os.path.join(os.curdir, "renders")
@@ -206,6 +197,16 @@ def main():
         gc.collect()
         torch.cuda.empty_cache()
 
+    # saving statistics to .csv file
+    cols = [os.path.splitext(os.path.basename(f))[0] for f in h5_files]
+    cols.insert(0, "Iteration")
+
+    df = pd.DataFrame(data, columns=cols)
+    df.to_csv("statistics.csv", float_format="%.5f")
+
 
 if __name__ == "__main__":
+    t1 = time()
     main()
+    t2 = time()
+    logger.info(f"Total time spent: {(t2-t1)/60.0} min")

@@ -12,4 +12,4 @@ else
   conda deactivate
 fi
 
-conda env remove --name three-gen-validation
+conda env remove --name three-gen-validation -y

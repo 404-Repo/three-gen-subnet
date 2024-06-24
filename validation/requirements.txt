@@ -1,4 +1,4 @@
-h5py==3.10.*
+h5py==3.11.*
 numpy==1.26.*
 torch==2.3.*
 transformers==4.41.*
@@ -10,3 +10,5 @@ meshio==5.3.*
 ninja==1.11.*
 fastapi==0.111.*
 uvicorn==0.30.*
+pillow==10.*
+pandas==2.*

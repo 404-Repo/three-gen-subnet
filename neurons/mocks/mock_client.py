@@ -1,71 +1,35 @@
-import argparse
 import asyncio
-import typing
+import json
 
-import bittensor as bt
-from api import Generate, StatusCheck, TaskStatus
+from aiohttp import ClientSession, WSMsgType
+from validator.api.protocol import Auth, PromptData, TaskStatus, TaskUpdate
 
 
 async def main() -> None:
-    config = await get_config()
-    bt.logging(config=config)
-
-    wallet = bt.wallet(config=config)
-    subtensor = bt.subtensor(config=config)
-    metagraph = bt.metagraph(netuid=config.netuid, network=subtensor.network, sync=False)
-    metagraph.sync(subtensor=subtensor)
-    dendrite = bt.dendrite(wallet)
-
-    bt.logging.info("Requesting the job")
-
-    validator_uid = 0
-    task = await generate(dendrite, metagraph, validator_uid)
-    if task.task_id is None:
-        bt.logging.info("Generation rejected")
-        return
-
-    bt.logging.info(f"Generation started: {task}")
-
-    while True:
-        await asyncio.sleep(10.0)
-        check = await check_task(dendrite, metagraph, validator_uid, task.task_id)
-        bt.logging.info(f"Status: {check.status}. Results: {len(check.results or '')}")
-        if check.status == TaskStatus.DONE:
-            break
+    await asyncio.gather(*[work() for _ in range(20)])
 
 
-async def generate(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Generate:
-    synapse = Generate(prompt="Bill Gates")
-    response = typing.cast(
-        Generate,
-        await dendrite.call(
-            target_axon=metagraph.axons[validator_uid], synapse=synapse, deserialize=False, timeout=12.0
-        ),
-    )
-    return response
+async def work() -> None:
+    async with ClientSession() as session:
+        async with session.ws_connect("wss://1qshev6dbe7gdz-8888.proxy.runpod.net/ws/generate/") as ws:
+            await ws.send_json(Auth(api_key="").dict())
+            await ws.send_json(PromptData(prompt="Donald Duck", send_first_results=True).dict())
 
-
-async def check_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, task_id: str) -> StatusCheck:
-    synapse = StatusCheck(task_id=task_id)
-    response = typing.cast(
-        StatusCheck,
-        await dendrite.call(
-            target_axon=metagraph.axons[validator_uid],
-            synapse=synapse,
-            deserialize=False,
-            timeout=300.0,
-        ),
-    )
-    return response
-
-
-async def get_config() -> bt.config:
-    parser = argparse.ArgumentParser()
-    bt.logging.add_args(parser)
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
-    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=89)
-    return bt.config(parser)
+            async for msg in ws:
+                if msg.type == WSMsgType.TEXT:
+                    update = TaskUpdate(**json.loads(msg.data))
+                    if update.status == TaskStatus.STARTED:
+                        print("Task started")
+                    elif update.status == TaskStatus.FIRST_RESULTS:
+                        score = update.results.score if update.results else None
+                        assets = update.results.assets or "" if update.results else ""
+                        print(f"First results. Score: {score}. Size: {len(assets)}")
+                    elif update.status == TaskStatus.BEST_RESULTS:
+                        score = update.results.score if update.results else None
+                        assets = update.results.assets or "" if update.results else ""
+                        print(f"Best results. Score: {score}. Size: {len(assets)}")
+                elif msg.type == WSMsgType.ERROR:
+                    print(f"WebSocket connection closed with exception: {ws.exception()}")
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class MetagraphSynchronizer:
         metagraph: bt.metagraph = self._metagraph_ref()
 
         log = (
-            "Validator | "
+            f"Validator | "
             f"UID:{uid} | "
             f"Block:{metagraph.block.item()} | "
             f"Stake:{metagraph.S[uid]:.4f} | "

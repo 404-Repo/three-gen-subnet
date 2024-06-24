@@ -1,14 +1,12 @@
-import io
-
 import torch
 import numpy as np
 import skvideo.io as video
 from PIL import Image
 from loguru import logger
 
-from validation.rendering.gs_renderer import GaussianRenderer
-from validation.rendering.gs_camera import OrbitCamera
-from validation.utils import preprocess_dream_gaussian_output
+from validation_lib.rendering.gs_renderer import GaussianRenderer
+from validation_lib.rendering.gs_camera import OrbitCamera
+from validation_lib.utils import preprocess_dream_gaussian_output
 
 
 class RenderingPipeline:
@@ -42,12 +40,11 @@ class RenderingPipeline:
     def render_gaussian_splatting_views(
         self,
         data: dict,
-        views: int = 15,
+        views: int = 16,
         cam_rad: float = 3.5,
         cam_fov: float = 49.1,
         cam_znear: float = 0.01,
         cam_zfar: float = 100,
-        gs_scale: float = 1.0,
         data_ver: int = 1,
     ):
         """Function for rendering multiple views of the preloaded Gaussian Splatting model
@@ -60,23 +57,29 @@ class RenderingPipeline:
         cam_fov: the field of view for the camera
         cam_znear: the position of the near camera plane along Z-axis
         cam_zfar: the position of the far camera plane along Z-axis
-        gs_scale: the scale of the Gaussians that will be used during rendering
-        data_ver: version of the input data format: 0 - default dream gaussian format
-                                                    1+ - preparation for PLY
+        data_ver: version of the input data format: 0 - corresponds to dream gaussian
+                                                    1 - corresponds to new data format (default)
 
         Returns
         -------
         list with rendered images stored as PIL.Image
         """
+
         logger.info(" Rendering view of the input Gaussian Splatting Model.")
 
+        # setting up the camera
         camera = OrbitCamera(self._img_width, self._img_height, cam_fov, cam_znear, cam_zfar)
 
-        rendered_images = []
+        # setting up tensors for storing camera transforms
+        camera_views_proj = torch.empty((views, 4, 4)).to(self._device)
+        camera_intrs = torch.empty((views, 3, 3)).to(self._device)
+
+        # setting up angles that will be rendered
         random_angles_number = views // 2
         step = 360 // random_angles_number
         elevations = np.random.randint(self._cam_min_elev_angle, self._cam_max_elev_angle, random_angles_number)
 
+        j = 0
         for i in range(2):
             for azimuth, elev in zip(range(0, 360, step), elevations):
                 if i == 0:
@@ -84,20 +87,36 @@ class RenderingPipeline:
                 else:
                     camera.compute_transform_orbit(elev, azimuth, cam_rad)
 
-                if data_ver <= 1:
-                    data_in = preprocess_dream_gaussian_output(data, camera.camera_position)
-                else:
-                    data_in = data
+                camera_views_proj[j] = camera.world_to_camera_transform
+                camera_intrs[j] = camera.intrinsics
+                j += 1
 
-                rendered_image, rendered_alpha, rendered_depth = self._render.render(
-                    camera, data_in, scale_modifier=np.clip(gs_scale, 0, 1)
-                )
+        # data conversion (if we use dream gaussian project, tmp)
+        if data_ver <= 1:
+            data_proc = preprocess_dream_gaussian_output(data, camera.camera_position)
+        else:
+            data_proc = data
 
-                image = rendered_image.detach().cpu().numpy() * 255
-                image = image.astype(dtype=np.uint8)
+        # converting input data to tensors on GPU
+        means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        rotations = torch.tensor(data_proc["rotation"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        scales = torch.tensor(data_proc["scale"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        opacity = torch.tensor(data_proc["opacities"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        rgbs = torch.tensor(data_proc["features_dc"], dtype=torch.float32).contiguous().squeeze().to(self._device)
 
-                pil_image = Image.fromarray(image)
-                rendered_images.append(pil_image)
+        # preparing data to send for rendering
+        gaussian_data = [means3D, rotations, scales, opacity, rgbs]
+
+        rendered_images, rendered_alphas, rendered_depths = self._render.render(
+            camera_views_proj,
+            camera_intrs,
+            (camera.image_width, camera.image_height),
+            camera.z_near,
+            camera.z_far,
+            gaussian_data,
+        )
+        # converting tensors to image-like tensors, keep all of them in device memory
+        rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
 
         logger.info(" Done.")
         return rendered_images
@@ -122,7 +141,7 @@ class RenderingPipeline:
         logger.info(" Done.")
         return images
 
-    def save_rendered_images(self, images: list, file_name: str, path: str):
+    def save_rendered_images(self, images: torch.Tensor, file_name: str, path: str):
         """Function for saving rendered images
 
         Parameters
@@ -132,4 +151,7 @@ class RenderingPipeline:
         path: path to the folder where the rendered images will be stored
 
         """
-        self._render.save_images(images, file_name, path)
+
+        images_np = [(img.detach().cpu().numpy()).astype(np.uint8) for img in images]
+        images_pil = [Image.fromarray(img) for img in images_np]
+        self._render.save_images(images_pil, file_name, path)

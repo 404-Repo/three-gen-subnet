@@ -6,8 +6,8 @@ import meshio
 import numpy as np
 import torch
 
-from validation.io.base import BaseLoader
-from validation.utils import sigmoid
+from validation_lib.io.base import BaseLoader
+from validation_lib.utils import sigmoid
 
 
 class PlyLoader(BaseLoader):

@@ -6,7 +6,6 @@ from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import torch
-from api import Generate, StatusCheck
 from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
 from common import create_neuron_dir, owner
@@ -17,11 +16,11 @@ from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
 from validator import fidelity_check
+from validator.api import PublicAPIServer
+from validator.api.task_registry import TaskRegistry
 from validator.dataset import Dataset
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
-from validator.rate_limiter import RateLimiter
-from validator.task_registry import TaskRegistry
 from validator.version import VALIDATOR_VERSION
 
 
@@ -43,18 +42,18 @@ class Validator:
     """Axon for external connections."""
     dataset: Dataset
     """Prompts for synthetic tasks."""
-    task_registry: TaskRegistry
-    """Organic tasks registry."""
     miners: list[MinerData]
     """List of neurons."""
     metagraph_sync: MetagraphSynchronizer
     """Simple wrapper to encapsulate metagraph syncs."""
-    public_api_limiter: RateLimiter
-    """Rate limiter for organic requests."""
     storage: Storage | None
     """Bittensor storage subnet is used to store generated assets (if enabled)."""
     updater: AutoUpdater
     """Simple wrapper to encapsulate neuron auto-updates."""
+    task_registry: TaskRegistry | None
+    """Organic tasks registry."""
+    public_server: PublicAPIServer | None
+    """FastApi server that serves the public API endpoint."""
 
     def __init__(self, config: bt.config) -> None:
         self.config: bt.config = copy.deepcopy(config)
@@ -108,19 +107,8 @@ class Validator:
         ).attach(
             forward_fn=self.get_version,
             blacklist_fn=self.blacklist_getting_version,
+            priority_fn=self.prioritize_getting_version,
         )
-
-        if self.config.public_api.enabled:
-            if self.config.public_api.whitelist_disabled:
-                bt.logging.warning("Security risk. Whitelist for public API disabled.")
-
-            self.axon.attach(
-                forward_fn=self.generate,
-                blacklist_fn=self.blacklist_generation,
-            ).attach(
-                forward_fn=self.check_status,
-                blacklist_fn=self.blacklist_checking_status,
-            )
 
         bt.logging.info(f"Axon created: {self.axon}")
 
@@ -131,16 +119,17 @@ class Validator:
             wallet=self.wallet,
         )
 
-        self.task_registry = TaskRegistry(
-            copies=self.config.public_api.copies,
-            wait_after_first_copy=self.config.public_api.wait_after_first_copy,
-            task_timeout=self.config.generation.task_timeout,
-            polling_interval=self.config.public_api.polling_interval,
-        )
+        if self.config.public_api.enabled:
+            self.task_registry = TaskRegistry(
+                copies=self.config.public_api.copies,
+                wait_after_first_copy=self.config.public_api.wait_after_first_copy,
+                task_timeout=self.config.generation.task_timeout,
+            )
 
-        self.public_api_limiter = RateLimiter(
-            max_requests=self.config.public_api.rate_limit.requests, period=self.config.public_api.rate_limit.period
-        )
+            self.public_server = PublicAPIServer(config=self.config, task_registry=self.task_registry)
+        else:
+            self.task_registry = None
+            self.public_server = None
 
         self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
         self.load_state()
@@ -155,54 +144,6 @@ class Validator:
             self.storage = Storage(config)
         else:
             self.storage = None
-
-    def generate(self, synapse: Generate) -> Generate:
-        """Public API. Generation request."""
-        bt.logging.debug(
-            f"Public API. Generation requested. Requester: {synapse.dendrite.hotkey}. Prompt: {synapse.prompt}"
-        )
-
-        synapse.task_id = self.task_registry.add_task(synapse.prompt, synapse.dendrite.hotkey)
-        synapse.polling_interval = self.config.public_api.polling_interval
-        return synapse
-
-    def blacklist_generation(self, synapse: Generate) -> Tuple[bool, str]:  # noqa: UP006, UP035
-        if not self._is_wallet_whitelisted(synapse.dendrite.hotkey):
-            return True, "Not whitelisted"
-
-        if not self.public_api_limiter.is_allowed(synapse.dendrite.hotkey):
-            bt.logging.info(f"{synapse.dendrite.hotkey} hit the rate limit for public api calls")
-            return True, "Rate limit"
-
-        return False, ""
-
-    def _is_wallet_whitelisted(self, hotkey: str) -> bool:
-        """Checks whether wallet is whitelisted to use public API."""
-
-        # TODO: move whitelist to the config file
-        # TODO: add dynamic watchers to whitelist additional keys without restarting the validator.
-
-        # Temporary solution. Only one wallet that belongs to the subnet owners is whitelisted.
-        # Validators are free to modify this list.
-        # Once the testing period is over, run-time whitelist modification will be provided.
-        whitelist = ["5DwHD8Ja9aWGhB5nbmZqCCs9GNMpzxhBcZjnhcY73Sd75qe7"]
-        if not self.config.public_api.whitelist_disabled and hotkey not in whitelist:
-            bt.logging.warning(f"{hotkey} is not white-listed for the public API")
-            return False
-
-        return True
-
-    def check_status(self, synapse: StatusCheck) -> StatusCheck:
-        """Public API. Status check request. Rate limit is applied in the `get_task_status`."""
-
-        synapse.status, synapse.results = self.task_registry.get_task_status(synapse.task_id, synapse.dendrite.hotkey)
-        return synapse
-
-    def blacklist_checking_status(self, synapse: StatusCheck) -> Tuple[bool, str]:  # noqa: UP006, UP035
-        if not self._is_wallet_whitelisted(synapse.dendrite.hotkey):
-            return True, "Not whitelisted"
-
-        return False, ""
 
     def pull_task(self, synapse: PullTask) -> PullTask:
         """Miner requesting new task from the validator."""
@@ -237,13 +178,16 @@ class Validator:
 
         is_strong_miner = self.metagraph_sync.is_strong_miner(uid)
 
-        organic_task = self.task_registry.get_next_task(synapse.dendrite.hotkey, is_strong_miner=is_strong_miner)
+        if self.task_registry is not None:
+            organic_task = self.task_registry.get_next_task(synapse.dendrite.hotkey, is_strong_miner=is_strong_miner)
+        else:
+            organic_task = None
+
         if organic_task is not None:
             task = Task(id=organic_task.id, prompt=organic_task.prompt)
             bt.logging.debug(f"[{uid}] pulls organic task ({task.prompt} | {task.id})")
         else:
             task = Task(prompt=self.dataset.get_random_prompt())
-            # task = Task(prompt="tourmaline tassel earring")
             bt.logging.debug(f"[{uid}] pulls synthetic task ({task.prompt} | {task.id})")
 
         miner.assign_task(task)
@@ -278,25 +222,39 @@ class Validator:
 
         if synapse.results == "":
             bt.logging.debug(f"[{uid}] submitted empty results")
-            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+
+            self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
             return self._add_feedback(synapse, miner)
 
         if not self._verify_results_signature(synapse):
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
+
+            self._reset_miner_on_failure(
+                miner=miner,
+                hotkey=synapse.dendrite.hotkey,
+                task_id=synapse.task.id,
+                cooldown_penalty=self.config.generation.cooldown_penalty,
+            )
             return self._add_feedback(synapse, miner)
 
         validation_score = await fidelity_check.validate(
             self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
         )
         if validation_score is None:
-            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+            self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
             return self._add_feedback(synapse, miner, validation_failed=True)
 
         fidelity_score = self._get_fidelity_score(validation_score)
 
         if fidelity_score == 0:
             bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
-            miner.reset_task(cooldown=self.config.generation.task_cooldown + self.config.generation.cooldown_penalty)
+
+            self._reset_miner_on_failure(
+                miner=miner,
+                hotkey=synapse.dendrite.hotkey,
+                task_id=synapse.task.id,
+                cooldown_penalty=self.config.generation.cooldown_penalty,
+            )
             return self._add_feedback(synapse, miner)
 
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
@@ -311,9 +269,17 @@ class Validator:
             moving_average_alpha=self.config.neuron.moving_average_alpha,
         )
 
-        self.task_registry.complete_task(synapse.task.id, synapse.dendrite.hotkey, synapse.results, validation_score)
+        if self.task_registry is not None:
+            self.task_registry.complete_task(
+                synapse.task.id, synapse.dendrite.hotkey, synapse.results, synapse.data_format, validation_score
+            )
 
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
+
+    def _reset_miner_on_failure(self, miner: MinerData, hotkey: str, task_id: str, cooldown_penalty: int = 0) -> None:
+        miner.reset_task(cooldown=self.config.generation.task_cooldown + cooldown_penalty)
+        if self.task_registry is not None:
+            self.task_registry.fail_task(task_id, hotkey)
 
     def _add_feedback(
         self,
@@ -396,6 +362,9 @@ class Validator:
 
         return False, ""
 
+    def prioritize_getting_version(self, synapse: GetVersion) -> float:
+        return 10000000  # maximizing priority
+
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
             netuid=self.config.netuid,
@@ -425,6 +394,9 @@ class Validator:
             f"Serving validator axon {self.axon} on network: {self.config.subtensor.chain_endpoint} "
             f"with netuid: {self.config.netuid}"
         )
+
+        if self.public_server is not None:
+            self.public_server.start()
 
         bt.logging.debug("Starting the validator.")
 

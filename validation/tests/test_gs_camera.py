@@ -10,7 +10,7 @@ sys.path.insert(0, parentdir + "/validation")
 import numpy as np
 import torch
 
-from validation.rendering.gs_camera import OrbitCamera
+from validation_lib.rendering.gs_camera import OrbitCamera
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
