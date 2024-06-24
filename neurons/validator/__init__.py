@@ -107,6 +107,7 @@ class Validator:
         ).attach(
             forward_fn=self.get_version,
             blacklist_fn=self.blacklist_getting_version,
+            priority_fn=self.prioritize_getting_version,
         )
 
         bt.logging.info(f"Axon created: {self.axon}")
@@ -360,6 +361,9 @@ class Validator:
             )
 
         return False, ""
+
+    def prioritize_getting_version(self, synapse: SubmitResults) -> float:
+        return 10000000  # maximizing priority
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
