@@ -60,17 +60,6 @@ app.router.lifespan_context = lifespan
 
 
 def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
-    """
-    Validates the input prompt and data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
-
-    """
-
     logger.info(f"Validating started. Prompt: {prompt}")
 
     t1 = time()
