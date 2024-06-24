@@ -95,15 +95,14 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
 
 
 def _cleanup():
-    """Call garbage collection"""
     t1 = time()
 
-    gc.collect()
+    # gc.collect()
     torch.cuda.empty_cache()
     gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
 
     t2 = time()
-    logger.info(f"Garbage collection took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
+    logger.info(f"Cache purge took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
 
 
 @app.post("/validate/", response_model=ResponseData)
