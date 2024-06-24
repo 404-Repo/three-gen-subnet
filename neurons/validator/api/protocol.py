@@ -39,8 +39,37 @@ class TaskResults(BaseModel):
         assets (str): The base64 encoded 3D assets in HDF5 format.
     """
 
+    hotkey: str
     score: float
     assets: str | None
+
+
+class MinerStatistics(BaseModel):
+    """
+    Attributes:
+        hotkey (str): Miner hotkey
+        assign_time (int): Task assign time.
+        data_format (str): Results format.
+        score (float): Validation score.
+        submit_time (int): Submit time.
+    """
+
+    hotkey: str
+    assign_time: int
+    data_format: str
+    score: float
+    submit_time: int
+
+
+class TaskStatistics(BaseModel):
+    """
+    Attributes:
+        create_time (int): Task registration time.
+        miners (list[MinerStatistics]) List of miner assigned for the task.
+    """
+
+    create_time: int
+    miners: list[MinerStatistics]
 
 
 class TaskUpdate(BaseModel):
@@ -49,7 +78,9 @@ class TaskUpdate(BaseModel):
         status (TaskStatus): The current status of the task.
         results (Optional[str]): Detailed results associated with the current task status.
                                  This can be None if not applicable.
+        statistics (Optional[TaskStatistics]): Detailed statistics for the current task or None.
     """
 
     status: TaskStatus
     results: TaskResults | None = None
+    statistics: TaskStatistics | None = None

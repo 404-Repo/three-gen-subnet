@@ -6,46 +6,53 @@ from collections import deque
 import bittensor as bt
 from pydantic import BaseModel
 
+from validator.api.protocol import MinerStatistics, TaskStatistics
+
 
 class AssignedMiner(BaseModel):
-    hotkey: str
-    results: str | None = None
-    score: float = 0
-    finished: bool = False
+    hotkey: str  # Neuron hotkey
+    assign_time: int  # Assign time.
+    results: str | None = None  # Submitted results.
+    data_format: str = "ply"  # Results format.
+    score: float = 0  # Validation score.
+    submit_time: int = 0  # Submit time.
+    finished: bool = False  # Status whether assigned miner is finished with the task.
+
+
+def miner_stats(miner: AssignedMiner) -> MinerStatistics:
+    return MinerStatistics(
+        hotkey=miner.hotkey,
+        assign_time=miner.assign_time,
+        data_format=miner.data_format,
+        score=miner.score,
+        submit_time=miner.submit_time,
+    )
 
 
 class OrganicTask:
     def __init__(self, prompt: str) -> None:
-        self.prompt = prompt
-        """Prompt to use for generation."""
-
-        self.id = str(uuid.uuid4())
-        """Unique id"""
-
-        self.create_time = time.time()
-        """Task registration time."""
-
-        self.assigned: dict[str, AssignedMiner] = {}
-        """Miners assigned for the job."""
-        self.assigned_time = 0.0
-        """First assignment time."""
-
-        self.strong_miner_assigned = False
-        """True if the strong miner is amongst assigned miners."""
-        self.first_results_time = 0.0
-        """Time of the first acceptable results"""
+        self.prompt = prompt  # Prompt to use for generation.
+        self.id = str(uuid.uuid4())  # Unique id.
+        self.create_time = time.time()  # Task registration time.
+        self.assigned: dict[str, AssignedMiner] = {}  # Miners assigned for the job.
+        self.assign_time = 0.0  # First assignment time.
+        self.strong_miner_assigned = False  # True if the strong miner is amongst assigned miners.
+        self.first_results_time = 0.0  # Time of the first acceptable results.
 
         self.start_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
-        """Future is set when the task gets assigned the first time."""
+        # Future is set when the task gets assigned the first time.
         self.first_results_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
-        """Future is set when the first acceptable results are generated."""
+        # Future is set when the first acceptable results are generated.
         self.best_results_future: asyncio.Future[AssignedMiner | None] = asyncio.get_event_loop().create_future()
-        """Future is set when all assigned miners submit their results."""
+        # Future is set when all assigned miners submit their results.
 
     def get_best_results(self) -> AssignedMiner | None:
         best: AssignedMiner | None = None
         for miner in self.assigned.values():
             if miner.results is None:
+                continue
+            # TODO: remove
+            if miner.data_format != "ply":
                 continue
             if best is None:
                 best = miner
@@ -53,6 +60,11 @@ class OrganicTask:
             if miner.score > best.score:
                 best = miner
         return best
+
+    def get_stats(self) -> TaskStatistics:
+        return TaskStatistics(
+            create_time=int(self.create_time), miners=[miner_stats(miner) for miner in self.assigned.values()]
+        )
 
     def should_be_assigned(self, strong_miner: bool, copies: int) -> bool:
         return (strong_miner and not self.strong_miner_assigned) or len(self.assigned) < copies
@@ -176,12 +188,12 @@ class TaskRegistry:
                 continue
 
             task.strong_miner_assigned = task.strong_miner_assigned or is_strong_miner
-            miner = AssignedMiner(hotkey=hotkey)
+            miner = AssignedMiner(hotkey=hotkey, assign_time=int(current_time))
             task.assigned[hotkey] = miner
 
-            if task.assigned_time == 0:
+            if task.assign_time == 0:
                 bt.logging.debug(f"{current_time - task.create_time} seconds between task created and task assigned")
-                task.assigned_time = current_time
+                task.assign_time = current_time
 
                 _set_future(task.start_future, miner)
 
@@ -207,7 +219,7 @@ class TaskRegistry:
             self.clean_task(task_id=task.id)
             self._queue.popleft()
 
-    def complete_task(self, task_id: str, hotkey: str, results: str, score: float) -> None:
+    def complete_task(self, task_id: str, hotkey: str, results: str, data_format: str, score: float) -> None:
         """
         Miner finished the task.
 
@@ -228,7 +240,9 @@ class TaskRegistry:
         bt.logging.trace(f"[{hotkey}] completed the task ({task_id}): {task.prompt}. Score: {score:.2f}")
 
         miner.results = results
+        miner.data_format = data_format
         miner.score = score
+        miner.submit_time = int(time.time())
         miner.finished = True
 
         if task.first_results_time == 0:
@@ -263,10 +277,24 @@ class TaskRegistry:
         bt.logging.trace(f"[{hotkey}] failed the task ({task_id}): {task.prompt}.")
 
         miner.finished = True
+        miner.submit_time = int(time.time())
         if task.all_miners_finished(self._copies):
             best_results = task.get_best_results()
             _set_future(task.first_results_future, best_results)
             _set_future(task.best_results_future, best_results)
+
+    def get_stats(self, task_id: str) -> TaskStatistics | None:
+        """
+        Returns task statistics.
+
+        Args:
+        - task_id (str): The unique identifier of the task.
+        """
+        task = self._tasks.get(task_id, None)
+        if task is None:
+            return None
+
+        return task.get_stats()
 
     def clean_task(self, task_id: str) -> None:
         """

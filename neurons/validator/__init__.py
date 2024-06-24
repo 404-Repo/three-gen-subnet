@@ -270,7 +270,7 @@ class Validator:
 
         if self.task_registry is not None:
             self.task_registry.complete_task(
-                synapse.task.id, synapse.dendrite.hotkey, synapse.results, validation_score
+                synapse.task.id, synapse.dendrite.hotkey, synapse.results, synapse.data_format, validation_score
             )
 
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
