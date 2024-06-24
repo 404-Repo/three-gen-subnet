@@ -27,6 +27,11 @@ SELECT api_key, name, max_requests, period FROM api_keys;
 EOF
 }
 
+gen_key() {
+  API_KEY=$(openssl rand -base64 32 | tr -d '[:punct:]')
+  echo "Generated API Key: $API_KEY"
+}
+
 add_key() {
   setup_database
   local API_KEY=$1
@@ -50,7 +55,7 @@ EOF
 }
 
 usage() {
-  echo "Usage: $0 <db_file> {list|add <api_key> <name> <max_requests> <period>|remove <api_key>}"
+  echo "Usage: $0 <db_file> {list|gen|add <api_key> <name> <max_requests> <period>|remove <api_key>}"
   exit 1
 }
 
@@ -59,6 +64,9 @@ shift 1
 case "$1" in
   list)
     list_keys
+    ;;
+  gen)
+    gen_key
     ;;
   add)
     [ $# -eq 5 ] || usage
