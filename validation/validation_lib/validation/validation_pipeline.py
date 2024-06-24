@@ -10,7 +10,8 @@ from validation_lib.validation.clip_based_model import ScoringModel
 
 
 class ValidationPipeline:
-    """ Class with implementation of the validation algorithm """
+    """Class with implementation of the validation algorithm"""
+
     def __init__(self, verbose: bool = True, debug: bool = False):
         """
         Parameters
@@ -67,7 +68,9 @@ class ValidationPipeline:
         if self._verbose:
             logger.info(" Validating input data.")
 
-        prompts = self._negative_prompts + [prompt, ]
+        prompts = self._negative_prompts + [
+            prompt,
+        ]
         dists = self._clip_processor.evaluate_image(images, prompts)
         dists_sorted = np.sort(dists)
         dists_sorted = dists_sorted.reshape(-1, 1)

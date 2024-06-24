@@ -8,7 +8,8 @@ from PIL import Image
 
 
 class ScoringModel:
-    """  """
+    """ """
+
     def __init__(self):
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
@@ -16,7 +17,7 @@ class ScoringModel:
         self._model = None
 
     def evaluate_image(self, images: List[Image.Image], prompts: List[str]):
-        """ Function for validating the input data
+        """Function for validating the input data
 
         Parameters
         ----------
@@ -43,7 +44,7 @@ class ScoringModel:
         return dist
 
     def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b"):
-        """ Function for preloading the MetaClip model
+        """Function for preloading the MetaClip model
 
         Parameters
         ----------
@@ -59,7 +60,7 @@ class ScoringModel:
         logger.info("[INFO] Done.")
 
     def unload_model(self):
-        """ Function for unloading model from the GPU VRAM """
+        """Function for unloading model from the GPU VRAM"""
 
         del self._model
         del self._processor

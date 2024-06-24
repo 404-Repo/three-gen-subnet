@@ -6,7 +6,7 @@ from loguru import logger
 
 from validation_lib.rendering.gs_renderer import GaussianRenderer
 from validation_lib.rendering.gs_camera import OrbitCamera
-from validation_lib.utils import  preprocess_dream_gaussian_output
+from validation_lib.utils import preprocess_dream_gaussian_output
 
 
 class RenderingPipeline:
@@ -107,13 +107,14 @@ class RenderingPipeline:
         # preparing data to send for rendering
         gaussian_data = [means3D, rotations, scales, opacity, rgbs]
 
-        rendered_images, rendered_alphas, rendered_depths = self._render.render(camera_views_proj,
-                                                                                camera_intrs,
-                                                                        (camera.image_width,
-                                                                                camera.image_height),
-                                                                                camera.z_near,
-                                                                                camera.z_far,
-                                                                                gaussian_data)
+        rendered_images, rendered_alphas, rendered_depths = self._render.render(
+            camera_views_proj,
+            camera_intrs,
+            (camera.image_width, camera.image_height),
+            camera.z_near,
+            camera.z_far,
+            gaussian_data,
+        )
         # converting tensors to image-like tensors, keep all of them in device memory
         rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
 

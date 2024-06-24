@@ -14,13 +14,16 @@ class GaussianRenderer:
         torch.set_default_device(self._device)
         self._bg_color = torch.tensor([1, 1, 1, 1], dtype=torch.float32, device=self._device)
 
-    def render(self, cameras_view_proj: torch.Tensor,
-               cameras_intr: torch.Tensor,
-               img_res: Tuple[int, int],
-               z_near: float,
-               z_far: float,
-               gaussian_data: List[torch.Tensor],
-               bg_color: torch.Tensor | None = None):
+    def render(
+        self,
+        cameras_view_proj: torch.Tensor,
+        cameras_intr: torch.Tensor,
+        img_res: Tuple[int, int],
+        z_near: float,
+        z_far: float,
+        gaussian_data: List[torch.Tensor],
+        bg_color: torch.Tensor | None = None,
+    ):
         """
         Function that renders input gaussian splatting data using single camera view
         or multiple camera views as a single batch
@@ -56,19 +59,21 @@ class GaussianRenderer:
         else:
             backgrounds = background_col
 
-        rendered_colors, rendered_alphas, meta = rasterization(means3D,
-                                                               rotations,
-                                                               scales,
-                                                               opacity,
-                                                               rgbs,
-                                                               cameras_view_proj,
-                                                               cameras_intr,
-                                                               img_res[0],
-                                                               img_res[1],
-                                                               z_near,
-                                                               z_far,
-                                                               backgrounds=backgrounds,
-                                                               render_mode="RGB+D")
+        rendered_colors, rendered_alphas, meta = rasterization(
+            means3D,
+            rotations,
+            scales,
+            opacity,
+            rgbs,
+            cameras_view_proj,
+            cameras_intr,
+            img_res[0],
+            img_res[1],
+            z_near,
+            z_far,
+            backgrounds=backgrounds,
+            render_mode="RGB+D",
+        )
 
         assert rendered_colors.shape == (num_cameras, img_res[0], img_res[1], 4)
         assert rendered_alphas.shape == (num_cameras, img_res[0], img_res[1], 1)

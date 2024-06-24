@@ -32,7 +32,7 @@ def get_all_h5_file_names(folder_path: str):
     -------
     a list with file names
     """
-    h5_files = glob.glob(os.path.join(folder_path, '**/*.h5'), recursive=True)
+    h5_files = glob.glob(os.path.join(folder_path, "**/*.h5"), recursive=True)
     h5_files.sort(key=os.path.getctime)
 
     if len(h5_files) == 0:
@@ -110,8 +110,10 @@ def load_prompts(config_data: dict):
     elif len(config_data["prompts"]) > 0:
         prompts_in = config_data["prompts"]
     else:
-        raise ValueError("No prompts were given by either 'prompts_file' or 'prompts' fields in the config! "
-                         "Nothing to be processed.")
+        raise ValueError(
+            "No prompts were given by either 'prompts_file' or 'prompts' fields in the config! "
+            "Nothing to be processed."
+        )
 
     return prompts_in
 
@@ -153,7 +155,6 @@ def main():
     # running validation_lib loop
     for i in range(int(config_data["iterations"])):
         for j, h5_file in enumerate(h5_files):
-
             # loading h5 file
             file_name, _ = os.path.splitext(os.path.basename(h5_file))
             file_path = os.path.abspath(h5_file)
@@ -173,13 +174,15 @@ def main():
             if not enough_gpu_mem_available(data_dict):
                 return
 
-            images, score = validate(renderer,
-                                     validator,
-                                     data_dict,
-                                     prompt,
-                                     config_data["views"],
-                                     config_data["cam_rad"],
-                                     config_data["data_ver"])
+            images, score = validate(
+                renderer,
+                validator,
+                data_dict,
+                prompt,
+                config_data["views"],
+                config_data["cam_rad"],
+                config_data["data_ver"],
+            )
             data[i].append(score)
 
             if save_images:

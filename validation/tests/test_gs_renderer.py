@@ -44,12 +44,14 @@ def test_gs_renderer_hdf5():
     gaussian_data = [means3D, rotations, scales, opacity, rgbs]
 
     renderer = GaussianRenderer()
-    image, _, _ = renderer.render(camera_views_proj,
-                                  camera_intrs,
-                                  (camera.image_width, camera.image_height),
-                                  camera.z_near,
-                                  camera.z_far,
-                                  gaussian_data)
+    image, _, _ = renderer.render(
+        camera_views_proj,
+        camera_intrs,
+        (camera.image_width, camera.image_height),
+        camera.z_near,
+        camera.z_far,
+        gaussian_data,
+    )
 
     img_np = image.detach().cpu().numpy() * 255
     # img = Image.fromarray(img_np.astype(dtype=np.uint8))
@@ -87,12 +89,14 @@ def test_gs_renderer_ply():
     gaussian_data = [means3D, rotations, scales, opacity, rgbs]
 
     renderer = GaussianRenderer()
-    image, _, _ = renderer.render(camera_views_proj,
-                                  camera_intrs,
-                                  (camera.image_width, camera.image_height),
-                                  camera.z_near,
-                                  camera.z_far,
-                                  gaussian_data)
+    image, _, _ = renderer.render(
+        camera_views_proj,
+        camera_intrs,
+        (camera.image_width, camera.image_height),
+        camera.z_near,
+        camera.z_far,
+        gaussian_data,
+    )
 
     img_np = image.detach().cpu().numpy() * 255
     # img = Image.fromarray(img_np.astype(dtype=np.uint8))
