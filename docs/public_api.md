@@ -55,7 +55,7 @@ In this example, the client is allowed to make 100 requests per 60 seconds (1 mi
 
 # Integrating with the public endpoint
 
-## How it works
+## How It Works
 
 ```mermaid
 sequenceDiagram
