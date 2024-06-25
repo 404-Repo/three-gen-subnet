@@ -10,13 +10,14 @@ To serve a public endpoint, follow these steps:
    ```
 4. Wait for 30 minutes for the changes to take effect.
 
-# Configuring the validator 
-To start serving public endpoint, you need to turn it on. You need to run validator with `--public_api.enabled` flag.
-By default `--public_api.server_port` is set to 8888, you can change it and open corresponding port on your firewall.
+# Configuring the Validator
+To start serving the public endpoint, you need to enable it in the configuration file:
+1. Run the validator with the `--public_api.enabled` flag.
+2. The default port for the public API is 8888. You can change this by setting `--public_api.server_port` to a different port number and opening the corresponding port on your firewall.
 
-Other public API settings:
-`--public_api.copies` - validator will give the task to `--public_api.copies` miners and pick the best results. It's not recommended to change this settings. Default value 4 is considered a good balance between  latency and redundancy.
-`--public_api.wait_after_first_copy` - once the first results are received, validator will wait for `--public_api.wait_after_first_copy` seconds to let other miners to finish with their task. It's not recommended to change this value. More data will be collected and this parameter will be adjusted in a future releases.
+Other Public API Settings:
+* `--public_api.copies`: Number of miners the validator assigns the task to. It selects the best result from the given copies. The default value is 4, which is a good balance between latency and redundancy. It is not recommended to change this setting.
+* `--public_api.wait_after_first_copy`: The time in seconds the validator waits after receiving the first result before considering other results. This value defaults to a parameter that aims to balance data collection and response time. Adjustments to this parameter will be made in future releases.
 
 # Configuring client access
 Access to the public endpoint is regulated with API keys. It's recommended to create unique API key for each partner (or frontend) and configure the individual rate limits.
