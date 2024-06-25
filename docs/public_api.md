@@ -6,7 +6,7 @@ To serve a public endpoint, follow these steps:
 2. Set the server port for the public API by adding `--public_api.server_port 8888` (default value) to `neurons/validator.config.js` and ensure the port is open on your firewall.
 3. Add a client API key using the following command:
    ```commandline
-   scripts/api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db add CLIENT_API_KEY client-name 100 60
+   scripts/api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db add EWJzrqUL94r5BEz0ZLPUbEwD8qdQX18dCUF9B7C2e0 client-name 100 60
    ```
 4. Wait for 30 minutes for the changes to take effect.
 
@@ -15,39 +15,40 @@ To start serving the public endpoint, you need to enable it in the configuration
 1. Run the validator with the `--public_api.enabled` flag.
 2. The default port for the public API is 8888. You can change this by setting `--public_api.server_port` to a different port number and opening the corresponding port on your firewall.
 
-Other Public API Settings:
+#### Other Public API Settings:
 * `--public_api.copies`: Number of miners the validator assigns the task to. It selects the best result from the given copies. The default value is 4, which is a good balance between latency and redundancy. It is not recommended to change this setting.
 * `--public_api.wait_after_first_copy`: The time in seconds the validator waits after receiving the first result before considering other results. This value defaults to a parameter that aims to balance data collection and response time. Adjustments to this parameter will be made in future releases.
 
-# Configuring client access
-Access to the public endpoint is regulated with API keys. It's recommended to create unique API key for each partner (or frontend) and configure the individual rate limits.
-Validator stores API key information in the SQL lite database stored on the validator node. File name: `api_keys.db`. And it's stored in the .bittensor folder. If you validator coldkey is named `validator`, default location would be here: ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db
+# Configuring Client Access
+Access to the public endpoint is regulated through API keys. 
+It is recommended to create unique API keys for each client or partner and configure individual rate limits for them.
+The validator stores API key information in an SQLite database located on the validator node. 
+The default file name is `api_keys.db` and it resides in the `.bittensor` folder. 
+For a validator with the coldkey named validator, the default location would be: `~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db`.
+A script (`api_key_cli.sh`) is provided in the `/three-gen-subnet/scripts` directory to manage the API keys database. 
 
-We provide a simple `api_key_cli.sh` located in `/three-gen-subnet/scripts` dir to work with API keys database.
+**Validators synchronize API keys with the database every 30 minutes.** 
 
-Validator synchronizes API keys with the database every 30 minutes.
+### All commands require specifying the path to the database.
 
-All commands require specifying the path to the database. 
-
-## Generate new API key
+#### Generate a New API Key:
 ```commandline
 ./api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db gen
 ```
 
-## List all API keys
+#### List All API Keys:
 ```commandline
 ./api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db list
 ```
 
-## Add new API key
-To add new client API key you need to provide some client name or alias, and specify rate limit parameters (number of requests per defined period).
-The first parameter defines the number of requests, the second interval in seconds.
+#### Add a New API Key:
+To add an API key, provide a client name or alias, and specify rate limit parameters (number of requests per defined period). The first parameter is the number of requests, and the second is the interval in seconds.
 ```commandline
 ./api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db add EWJzrqUL94r5BEz0ZLPUbEwD8qdQX18dCUF9B7C2e0 client-name 100 60
 ```
-In this example, client would be allowed to do 100 requests per 60 seconds (1 minute).
+In this example, the client is allowed to make 100 requests per 60 seconds (1 minute).
 
-## Remove API key
+#### Remove an API Key
 ```commandline
 ./api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db remopve EWJzrqUL94r5BEz0ZLPUbEwD8qdQX18dCUF9B7C2e0
 ```
