@@ -1,12 +1,14 @@
-Draft:
-Our subnet allows validators to run serve http (websocket) endpoint that allows external (external to subnet) clients to access the power (probably power is not the best word) of the subnet.
+Our subnet allows validators to serve HTTP (websocket) endpoints that enable external clients to access the functionalities of the subnet.
 
-# Short version
-To serve public endpoint you need to:
-1. Add `--public_api.enabled` to `neurons/validator.config.js`.
-2. Add `--public_api.server_port 8888` (default value) to `neurons/validator.config.js` and open the port.
-3. Add client API key with `scripts/api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db add EWJzrqUL94r5BEz0ZLPUbEwD8qdQX18dCUF9B7C2e0 client-name 100 60`
-4. Wait for 30 minutes.
+# Short Version
+To serve a public endpoint, follow these steps:
+1. Enable the public API by adding `--public_api.enabled` to `neurons/validator.config.js`.
+2. Set the server port for the public API by adding `--public_api.server_port 8888` (default value) to `neurons/validator.config.js` and ensure the port is open on your firewall.
+3. Add a client API key using the following command:
+   ```commandline
+   scripts/api_key_cli.sh ~/.bittensor/miners/validator/default/netuid17/validator/api_keys.db add CLIENT_API_KEY client-name 100 60
+   ```
+4. Wait for 30 minutes for the changes to take effect.
 
 # Configuring the validator 
 To start serving public endpoint, you need to turn it on. You need to run validator with `--public_api.enabled` flag.
