@@ -73,6 +73,36 @@ To manage application processes:
 - Adopt [PM2](https://pm2.io) for benefits like auto-restarts, load balancing, and detailed monitoring. Setup scripts provide PM2 configuration templates for initial use. Modify these templates according to your setup needs before starting your processes.
 - If PM2 is incompatible with your setup, but you're using [Conda](https://docs.conda.io/en/latest/), remember to activate the Conda environment first or specify the correct Python interpreter before executing any scripts.
 
+
+## Preparing Working Environment
+
+In this section we are giving some basic instructions regarding how to set up conda on your Linux Machine.
+First install all essential packages and miniconda3.
+
+```commandline
+# 1. preparing linux environment
+
+apt update
+apt install nano
+apt install vim npm -y
+
+# 2. installing pm2
+
+npm install pm2 -g
+npm fund
+
+# 3. installing conda
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /opt/miniconda-installer.sh
+bash /opt/miniconda-installer.sh -b -p /opt/miniconda3
+
+# 4. initializing conda 
+/opt/miniconda3/bin/conda init
+```
+
+After it, either close your terminal or exit your ssh session to update the terminal.
+Open new terminal or re-login to your remote session. 
+
+
 ## Running the Miner
 
 To operate the miner, the miner neuron and generation endpoints must be initiated. While currently supporting a single generation endpoint, future updates are intended to allow a miner to utilize multiple generation endpoints simultaneously.
