@@ -26,9 +26,7 @@ async def main() -> None:
 
 
 async def validate(endpoint: str, prompt: str, data: str) -> float | None:
-    validate_url = urllib.parse.urljoin(endpoint, "/validate/")
-
-    # validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
+    validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
 
     bt.logging.info(f"Url: {validate_url}, prompt: {prompt}, results size: {len(data)}")
 
@@ -70,7 +68,7 @@ async def get_config() -> bt.config:
         "--data",
         type=str,
         help="Path to the file with generated results.",
-        default="monkey.h5",
+        default="monkey.encoded.ply",
     )
     parser.add_argument(
         "--prompt",
