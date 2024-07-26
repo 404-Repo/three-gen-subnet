@@ -27,8 +27,8 @@ def h5data():
 def test_validator(h5data):
     prompt = "A yellow monkey"
     data = h5data
-    render = RenderingPipeline(512, 512, "gs")
-    images = render.render_gaussian_splatting_views(data, 16, 3.0, data_ver=2)
+    render = RenderingPipeline(16, "gs")
+    images = render.render_gaussian_splatting_views(data, 512, 512, 3.0, data_ver=2)
 
     validator = ValidationPipeline()
     validator.preload_model()

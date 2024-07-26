@@ -78,8 +78,8 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
         return 0.0
 
     # Render images
-    renderer = RenderingPipeline(512, 512, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 16, 4.0, data_ver=data_ver)
+    renderer = RenderingPipeline(16, mode="gs")
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5, data_ver=data_ver)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")

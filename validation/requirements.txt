@@ -1,10 +1,9 @@
 h5py==3.11.*
-numpy==1.26.*
-torch==2.3.*
-transformers==4.41.*
-pytest==8.2.*
+numpy==2.0.1
+torch==2.4.*
+transformers==4.43.*
+pytest==8.3.*
 scikit-video==1.1.*
-scikit-learn==1.5.*
 loguru==0.7.*
 meshio==5.3.*
 ninja==1.11.*
@@ -12,3 +11,4 @@ fastapi==0.111.*
 uvicorn==0.30.*
 pillow==10.*
 pandas==2.*
+pytod==0.0.3
