@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from PIL import Image
 from loguru import logger
-from sklearn.ensemble import IsolationForest
+from pytod.models.knn import KNN
 
 from validation_lib.validation.clip_based_model import ScoringModel
 
@@ -12,7 +12,7 @@ from validation_lib.validation.clip_based_model import ScoringModel
 class ValidationPipeline:
     """Class with implementation of the validation algorithm"""
 
-    def __init__(self, verbose: bool = True, debug: bool = False):
+    def __init__(self, verbose: bool = False, debug: bool = False):
         """
         Parameters
         ----------
@@ -24,6 +24,7 @@ class ValidationPipeline:
         self._debug = debug
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
+        self._clf = KNN(device=self._device.type)
 
         self._negative_prompts = [
             "empty",
@@ -72,23 +73,23 @@ class ValidationPipeline:
             prompt,
         ]
         dists = self._clip_processor.evaluate_image(images, prompts)
-        dists_sorted = np.sort(dists)
+        dists_sorted, _ = torch.sort(dists)
         dists_sorted = dists_sorted.reshape(-1, 1)
 
         # searching for the anomalies
         # Set contamination to expected proportion of outliers
-        clf = IsolationForest(contamination=0.1)
-        clf.fit(dists_sorted)
-        preds = clf.predict(dists_sorted)
+        self._clf.fit(dists_sorted)
+        preds = self._clf.labels_
 
         # removing found outliers from the input dists array
-        outliers = np.where(preds == -1)[0]
-        filtered_dists = np.delete(dists_sorted, outliers)
-        score = np.median(filtered_dists)
+        outliers = np.where(preds == 1)[0]
+        filtered_dists = np.delete(dists_sorted.cpu().detach().numpy(), outliers)
+        score = np.mean(filtered_dists)
 
         if self._debug:
             logger.debug(f" data: {dists_sorted.T}")
             logger.debug(f" outliers: {dists_sorted[outliers].T}")
+            logger.debug(f" filtered scores: {filtered_dists.T}")
             logger.debug(f" score: {score}")
 
         if self._verbose:

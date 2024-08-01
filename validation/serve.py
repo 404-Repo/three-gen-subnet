@@ -18,7 +18,7 @@ from validation_lib.validation.validation_pipeline import ValidationPipeline
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.memory import enough_gpu_mem_available
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 
 def get_args():
@@ -60,12 +60,9 @@ app.router.lifespan_context = lifespan
 
 
 def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
-    logger.info(f"Validating started. Prompt: {prompt}")
-
     t1 = time()
 
     # Load data
-    logger.info(" Preloading input data.")
     pcl_raw = base64.b64decode(data)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
@@ -78,8 +75,8 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
         return 0.0
 
     # Render images
-    renderer = RenderingPipeline(512, 512, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 16, 4.0, data_ver=data_ver)
+    renderer = RenderingPipeline(16, mode="gs")
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5, data_ver=data_ver)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")

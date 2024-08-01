@@ -19,10 +19,12 @@ from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline
 from validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.io.ply import PlyLoader
 
 
-def get_all_h5_file_names(folder_path: str):
-    """Function for getting all file names from the folder
+def get_all_file_names(folder_path: str):
+    """
+    Function for getting all file names from the folder
 
     Parameters
     ----------
@@ -30,15 +32,19 @@ def get_all_h5_file_names(folder_path: str):
 
     Returns
     -------
-    a list with file names
+    files: a list with file names
     """
     h5_files = glob.glob(os.path.join(folder_path, "**/*.h5"), recursive=True)
-    h5_files.sort(key=os.path.getctime)
+    ply_files = glob.glob(os.path.join(folder_path, "**/*.ply"), recursive=True)
+    files = h5_files + ply_files
 
-    if len(h5_files) == 0:
+    # h5_files.sort(key=os.path.getctime)
+    files.sort(key=os.path.basename)
+
+    if len(files) == 0:
         raise RuntimeWarning(f"No HDF5 files were found in <{folder_path}>. Nothing to process!")
 
-    return h5_files
+    return files
 
 
 def validate(
@@ -46,11 +52,13 @@ def validate(
     validator: ValidationPipeline,
     data_dict: dict,
     prompt: str,
-    views: int,
+    img_width: int,
+    img_height:int,
     cam_rad: float,
     data_ver: int,
 ):
-    """Function for validating the input data
+    """
+    Function for validating the input data
 
     Parameters
     ----------
@@ -65,19 +73,25 @@ def validate(
 
     Returns
     -------
-    a set of rendered images, computed float score
+    images: a set of rendered images, computed float score
+    score: a clip score per model
+    dt: total time for validation
     """
-    # print("[INFO] Start validating the input 3D data.")
     logger.info(f" Input prompt: {prompt}")
+
     t1 = time()
-
-    images = renderer.render_gaussian_splatting_views(data_dict, views, cam_rad, data_ver=data_ver)
-    score = validator.validate(images, prompt)
-
+    images = renderer.render_gaussian_splatting_views(data_dict, img_width, img_height, cam_rad, data_ver=data_ver)
     t2 = time()
-    logger.info(f" Validation took: {t2 - t1} sec\n\n")
 
-    return images, score
+    score = validator.validate(images, prompt)
+    t3 = time()
+
+    logger.info(f" Rendering took: {t2 - t1} sec")
+    logger.info(f" Validation took: {t3 - t2} sec")
+    logger.info(f" Validation took [total]: {t3 - t1} sec\n\n")
+    dt = t3 - t1
+
+    return images, score, dt
 
 
 def load_config():
@@ -95,13 +109,15 @@ def load_config():
 
 def load_prompts(config_data: dict):
     """
+    Function for loading prompts from the specified txt file
 
     Parameters
     ----------
-    config_data
+    config_data: config file stored as a dictionary with essential fields
 
     Returns
     -------
+    prompts_in: a list with preloaded prompts
 
     """
     if config_data["prompts_file"] != "":
@@ -131,22 +147,23 @@ def main():
     assert config_data["iterations"] != "" and int(config_data["iterations"]) > 0
 
     # getting all hdf5 file names
-    h5_files = get_all_h5_file_names(config_data["hdf5_folder"])
-    logger.info(f" Files to process: {h5_files}")
+    files = get_all_file_names(config_data["data_folder"])
+    logger.info(f" Files to process: {files}")
 
     # reading prompts either from the file or from config
     prompts = load_prompts(config_data)
     logger.info(f" Prompts used for generating files: {prompts}")
 
     # preparing rendering system
-    renderer = RenderingPipeline(config_data["img_width"], config_data["img_height"])
+    renderer = RenderingPipeline(config_data["views"])
 
     # preparing validator
-    validator = ValidationPipeline(verbose=debug_output)
+    validator = ValidationPipeline(verbose=debug_output, debug=debug_output)
     validator.preload_model()
 
     # preparing HDF5 loader
     hdf5_loader = HDF5Loader()
+    ply_loader = PlyLoader()
 
     data = []
     for i in range(int(config_data["iterations"])):
@@ -154,51 +171,59 @@ def main():
 
     # running validation_lib loop
     for i in range(int(config_data["iterations"])):
-        for j, h5_file in enumerate(h5_files):
-            # loading h5 file
-            file_name, _ = os.path.splitext(os.path.basename(h5_file))
-            file_path = os.path.abspath(h5_file)
+        for j, dfile in enumerate(files):
+            # loading data file
+            file_name, extension = os.path.splitext(os.path.basename(dfile))
+            file_path = os.path.abspath(dfile)
             file_path = os.path.dirname(file_path)
 
-            logger.info(f" File Path: {h5_file}")
+            logger.info(f" File Path: {dfile}")
 
-            data_dict = hdf5_loader.from_file(file_name, file_path)
+            if extension == ".h5":
+                data_dict = hdf5_loader.from_file(file_name, file_path)
+            elif extension == ".ply":
+                data_dict = ply_loader.from_file(file_name, file_path)
+            else:
+                logger.warning(f"File with unknown extension <{extension}> was found. skipping.")
+                continue
 
             # prompts preparing
             if len(prompts) == 1:
                 prompt = prompts[0]
             else:
-                assert len(prompts) == len(h5_files)
+                assert len(prompts) == len(files)
                 prompt = prompts[j]
 
             if not enough_gpu_mem_available(data_dict):
                 return
 
-            images, score = validate(
+            images, score, dt = validate(
                 renderer,
                 validator,
                 data_dict,
                 prompt,
-                config_data["views"],
+                config_data["img_width"],
+                config_data["img_height"],
                 config_data["cam_rad"],
-                config_data["data_ver"],
+                config_data["data_ver"]
             )
+
             data[i].append(score)
+            data[i].append(dt)
 
             if save_images:
-                path = os.path.join(os.curdir, "renders")
-                if not os.path.exists(path):
-                    os.mkdir(path)
-                path = os.path.join(path, file_name)
-                os.mkdir(path)
-
+                path = os.path.join(os.curdir, "renders", file_name)
+                os.makedirs(path, exist_ok=True)
                 renderer.save_rendered_images(images, file_name, path)
 
         gc.collect()
         torch.cuda.empty_cache()
 
     # saving statistics to .csv file
-    cols = [os.path.splitext(os.path.basename(f))[0] for f in h5_files]
+    cols = []
+    for f in files:
+        cols.append(os.path.splitext(os.path.basename(f))[0])
+        cols.append("time, sec")
     cols.insert(0, "Iteration")
 
     df = pd.DataFrame(data, columns=cols)

@@ -1,8 +1,10 @@
 import gc
 from typing import List
+from time import time
 
 import torch
-from transformers import AutoProcessor, AutoModelForZeroShotImageClassification
+from transformers import (AutoProcessor,
+                          AutoModelForZeroShotImageClassification)
 from loguru import logger
 from PIL import Image
 
@@ -10,13 +12,19 @@ from PIL import Image
 class ScoringModel:
     """ """
 
-    def __init__(self):
+    def __init__(self, debug: bool = False):
+        """
+        Parameters
+        ----------
+        debug: enable/disable extra output to konsole
+        """
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
         self._processor = None
         self._model = None
+        self._debug = debug
 
-    def evaluate_image(self, images: List[Image.Image], prompts: List[str]):
+    def evaluate_image(self, images: List[Image.Image] | List[torch.Tensor], prompts: List[str]):
         """Function for validating the input data
 
         Parameters
@@ -29,17 +37,27 @@ class ScoringModel:
         an estimated float score
         """
 
-        inputs = self._processor(text=prompts, images=images, return_tensors="pt", padding=True)
+        t1 = time()
+        inputs = self._processor(
+            text=prompts, images=images, return_tensors="pt", padding=True
+        )
         inputs.to(self._device)
-        results = self._model(**inputs)
+        t2 = time()
+        if self._debug:
+            logger.debug(f"Processor time: {t2 - t1} sec")
+
+        with torch.no_grad():
+            results = self._model(**inputs)
 
         # this is the image-text similarity score
         logits_per_image = results["logits_per_image"]
 
         # we can take the softmax to get the label probabilities
-        probs = logits_per_image.softmax(dim=1).cpu().detach().numpy()
-
+        probs = logits_per_image.softmax(dim=1)
         dist = probs[:, -1]
+        t3 = time()
+        if self._debug:
+            logger.debug(f"Inference time: {t3 - t2} sec")
 
         return dist
 

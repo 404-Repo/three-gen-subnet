@@ -40,17 +40,16 @@ The project is divided into three key modules, each designed to perform specific
 
 ## Hardware Requirements
 
-Pending detailed benchmark results, our recommended setup aligns with Google Cloud's a2-highgpu-1g specs:
-- GPU: NVIDIA A100 40GB
-- CPU: 12 vCPUs
-- RAM: 32GB - 85GB
-- Storage: 200GB SSD
-Expectations under continuous operation include about 500GB/month in network traffic and 0.2MB/s throughput.
-
-Minimal setup aligns with RunPod 1 x RTX 4090 specs:
+Our recommended setup aligns with RunPod 1 x RTX 4090 specs:
 - GPU: NVIDIA 1 x RTX 4090
 - CPU: 16 vCPU
-- RAM: 61 GB
+- RAM: 62 GB
+- Storage: 50GB SSD
+
+Minimal setup aligns with RunPod 1 x L4 specs:
+- GPU: NVIDIA 1 x L4
+- CPU: 12 vCPU
+- RAM: 62 GB
 
 ## OS Requirements
 

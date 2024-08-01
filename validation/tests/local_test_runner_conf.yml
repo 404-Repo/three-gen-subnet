@@ -1,5 +1,5 @@
 # path to the folder with test .h5 data
-hdf5_folder: ""
+data_folder: ""
 
 # path to the file with prompts (txt file)
 prompts_file: ""
@@ -11,20 +11,20 @@ prompts_file: ""
 prompts: []
 
 # flag that allows to save rendering images per input GS for debugging purposes
-save_images: True
+save_images: False
 
 # parameters that defines image size during the rendering
 img_width: 512
 img_height: 512
 
 # amount of iterations to re-compute the validation
-iterations: 10
+iterations: 20
 
 # amount of rendering views:
 views: 16
 
 # radius of the camera orbit
-cam_rad: 3.6
+cam_rad: 2.5
 
 # data version
 # 0-1 - corresponds to dream gaussian
