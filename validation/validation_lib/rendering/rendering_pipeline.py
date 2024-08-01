@@ -63,8 +63,6 @@ class RenderingPipeline:
         rendered_images: list with rendered images stored as PIL.Image
         """
 
-        logger.info(" Rendering view of the input Gaussian Splatting Model.")
-
         # setting up the camera
         camera = OrbitCamera(img_width, img_height, cam_fov, cam_znear, cam_zfar)
 
@@ -105,7 +103,6 @@ class RenderingPipeline:
         # converting tensors to image-like tensors, keep all of them in device memory
         rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
 
-        logger.info(" Done.")
         return rendered_images
 
     @staticmethod
@@ -120,12 +117,8 @@ class RenderingPipeline:
         -------
         images: a list with images stored as PIL.Image
         """
-        logger.info(" Converting input video to list of images.")
-
         video_data = video.vread(video_file)
         images = [Image.fromarray(video_data[i, :, :, :]) for i in range(video_data.shape[0])]
-
-        logger.info(" Done.")
         return images
 
     def save_rendered_images(self, images: torch.Tensor, file_name: str, path: str):

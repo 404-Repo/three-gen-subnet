@@ -12,7 +12,7 @@ from PIL import Image
 class ScoringModel:
     """ """
 
-    def __init__(self, debug:bool = False):
+    def __init__(self, debug: bool = False):
         """
         Parameters
         ----------

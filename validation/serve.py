@@ -60,12 +60,9 @@ app.router.lifespan_context = lifespan
 
 
 def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader):
-    logger.info(f"Validating started. Prompt: {prompt}")
-
     t1 = time()
 
     # Load data
-    logger.info(" Preloading input data.")
     pcl_raw = base64.b64decode(data)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)

@@ -12,7 +12,7 @@ from validation_lib.validation.clip_based_model import ScoringModel
 class ValidationPipeline:
     """Class with implementation of the validation algorithm"""
 
-    def __init__(self, verbose: bool = True, debug: bool = False):
+    def __init__(self, verbose: bool = False, debug: bool = False):
         """
         Parameters
         ----------
