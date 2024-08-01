@@ -86,14 +86,14 @@ def read_config() -> bt.config:
         "--generation.task_cooldown",
         type=int,
         help="Cooldown period between tasks from the same miner (in seconds).",
-        default=90,
+        default=60,
     )
 
     parser.add_argument(
         "--generation.cooldown_penalty",
         type=int,
         help="Penalty cooldown if miner submits unacceptable results.",
-        default=90,
+        default=60,
     )
 
     parser.add_argument(
