@@ -1,2 +1,2 @@
-bittensor==6.9.3
+-e git+https://github.com/opentensor/bittensor.git@release/6.9.4#egg=bittensor
 websockets==12.0
