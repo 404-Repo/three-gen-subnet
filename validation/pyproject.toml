@@ -1,22 +1,37 @@
 [tool.poetry]
-name = "neurons"
+name = "validation"
 version = "0.1.0"
-description = ""
-authors = ["Maxim Bladyko <bladyko@gmail.com>"]
+description = "This endpoint functions as an independent local web server, which operates concurrently with the neuron process."
+authors = ["s7500 <stezurrodion69@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-bittensor = "6.9.4"
+h5py = "==3.11.0"
+numpy = "==1.26.4"
+torch = "==2.4.0"
+transformers = "==4.43.2"
+pytest = "==8.3.2"
+scikit-video = "==1.1.11"
+scikit-learn = "==1.5.1"
+loguru = "==0.7.2"
+meshio = "==5.3.5"
+ninja = "==1.11.1.1"
+fastapi = "==0.111.0"
+uvicorn = "==0.30.1"
+pillow = "==10.4.0"
+pandas = "==2.2.2"
+pyyaml = "==6.0.2"
+
 
 [tool.poetry.group.dev.dependencies]
-poetry = { version = "1.8.3" }
-poethepoet = { version = "0.27.0", extras = ["poetry_plugin"] }
-black = "==23.7.0"
+black = "==24.4.2"
 ruff = "==0.5.1"
 bandit = "==1.7.9"
 mypy = "==1.9.0"
-types-requests = "2.31.0"
+types-requests = "==2.31.0.0"
+poethepoet = "==0.27.0"
+types-PyYAML = "==6.0.12.20240808"
 
 [build-system]
 requires = ["poetry-core"]
@@ -45,6 +60,11 @@ namespace-packages = ["sources"]
 fix = true
 output-format = "full"
 include = ["*.py"]
+exclude = [
+    '.venv/.*',
+    'tests',
+    './validation_lib/eval_sh.py'
+]
 
 [tool.ruff.lint]
 select = [
@@ -65,7 +85,8 @@ unfixable = []
 # Exclude directories
 exclude = [
     ".*",
-    "tests"
+    "tests",
+    "./validation_lib/eval_sh.py"
 ]
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = []
@@ -82,7 +103,9 @@ skips = ["B104"]
 exclude_dirs = [
     "./.*/**",
     "./tests/**",
+    "./validation_lib/eval_sh.py"
 ]
+
 
 [tool.mypy]
 cache_dir = ".reports/mypy_cache/"
@@ -97,12 +120,14 @@ strict_equality = true
 warn_redundant_casts = true
 exclude = [
     '.venv/.*',
-    'tests'
+    'tests',
+    'validation_lib/eval_sh.py'
 ]
 
 [[tool.mypy.overrides]]
 module = [
-    # place modules to skip here
+    "types-pyyaml",
+    "validation_lib.eval_sh"
 ]
 ignore_errors = true
 

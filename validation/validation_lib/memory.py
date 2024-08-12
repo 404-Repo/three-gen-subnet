@@ -1,10 +1,10 @@
 import sys
 
-from loguru import logger
 import torch
+from loguru import logger
 
 
-def enough_gpu_mem_available(data: dict):
+def enough_gpu_mem_available(data: dict) -> bool:
     """Function that checks whether the input data will fit in the GPU Memory
 
     Parameters
@@ -33,7 +33,7 @@ def enough_gpu_mem_available(data: dict):
     logger.warning(f" Total VRAM available: {gpu_available_memory / 1024 ** 3} Gb")
     logger.warning(f" Total VRAM allocated: {torch.cuda.memory_allocated()/1024 ** 3} Gb")
     logger.warning(f" Total data size to load to VRAM: {total_memory_bytes / 1024 ** 3} Gb")
-    logger.warning(f" Input data size exceeds the available VRAM free memory!")
-    logger.warning(f" Input data will not be further processed.\n")
+    logger.warning(" Input data size exceeds the available VRAM free memory!")
+    logger.warning(" Input data will not be further processed.\n")
 
     return False

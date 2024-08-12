@@ -1,11 +1,10 @@
-from typing import List
+from typing import Any
 
-import torch
 import numpy as np
-from PIL import Image
+import torch
 from loguru import logger
+from PIL import Image
 from pytod.models.knn import KNN
-
 from validation_lib.validation.clip_based_model import ScoringModel
 
 
@@ -35,7 +34,7 @@ class ValidationPipeline:
             "not quite right",
         ]
 
-    def validate(self, images: List[Image.Image], prompt: str):
+    def validate(self, images: list[Image.Image], prompt: str) -> Any:
         """
         Function for validating the input data
 
@@ -52,7 +51,7 @@ class ValidationPipeline:
         clip_score = self.compute_clip_score(images, prompt)
         return clip_score
 
-    def compute_clip_score(self, images: List[Image.Image], prompt: str):
+    def compute_clip_score(self, images: list[Image.Image], prompt: str) -> Any:
         """
         Function for validating the input data using clip-based model
 
@@ -97,7 +96,7 @@ class ValidationPipeline:
 
         return score
 
-    def preload_model(self, clip_model: str = "facebook/metaclip-b16-fullcc2.5b"):
+    def preload_model(self, clip_model: str = "facebook/metaclip-b16-fullcc2.5b") -> None:
         """
         Function for preloading the scoring model (clip-based) for rendered image analysis
 

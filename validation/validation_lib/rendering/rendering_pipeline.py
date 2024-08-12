@@ -1,20 +1,19 @@
-import random
+from typing import Any
 
-import torch
 import numpy as np
 import skvideo.io as video
-from PIL import Image
+import torch
 from loguru import logger
-
-from validation_lib.rendering.gs_renderer import GaussianRenderer
+from PIL import Image
 from validation_lib.rendering.gs_camera import OrbitCamera
+from validation_lib.rendering.gs_renderer import GaussianRenderer
 from validation_lib.utils import preprocess_dream_gaussian_output
 
 
 class RenderingPipeline:
     """Class that provides access to the implemented rendering pipelines."""
 
-    def __init__(self, views: int,  mode="gs"):
+    def __init__(self, views: int, mode: str = "gs") -> None:
         """
         Parameters
         ----------
@@ -42,9 +41,8 @@ class RenderingPipeline:
         cam_znear: float = 0.01,
         cam_zfar: float = 100,
         data_ver: int = 1,
-    ):
-        """
-        Function for rendering multiple views of the preloaded Gaussian Splatting model
+    ) -> list[torch.Tensor]:
+        """Function for rendering multiple views of the preloaded Gaussian Splatting model
 
         Parameters
         ----------
@@ -70,9 +68,9 @@ class RenderingPipeline:
         camera_views_proj = torch.empty((self._views, 4, 4)).to(self._device)
         camera_intrs = torch.empty((self._views, 3, 3)).to(self._device)
 
-        for theta, phi, j in zip(self._thetas, self._phis, range(self._views)):
-            dtheta = random.uniform(-5, 5)
-            camera.compute_transform_orbit(phi, theta+dtheta, cam_rad, is_degree=True)
+        for theta, phi, j in zip(self._thetas, self._phis, range(self._views), strict=False):
+            dtheta = np.random.uniform(-5, 5)
+            camera.compute_transform_orbit(phi, theta + dtheta, cam_rad, is_degree=True)
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
 
@@ -101,12 +99,13 @@ class RenderingPipeline:
             gaussian_data,
         )
         # converting tensors to image-like tensors, keep all of them in device memory
-        rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
+        result_rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
 
-        return rendered_images
+        logger.info(" Done.")
+        return result_rendered_images
 
     @staticmethod
-    def render_video_to_images(video_file: str):
+    def render_video_to_images(video_file: str) -> list[Image.Image]:
         """Function for converting video to images
 
         Parameters
@@ -121,9 +120,8 @@ class RenderingPipeline:
         images = [Image.fromarray(video_data[i, :, :, :]) for i in range(video_data.shape[0])]
         return images
 
-    def save_rendered_images(self, images: torch.Tensor, file_name: str, path: str):
-        """
-        Function for saving rendered images
+    def save_rendered_images(self, images: torch.Tensor | list[torch.Tensor], file_name: str, path: str) -> None:
+        """Function for saving rendered images
 
         Parameters
         ----------
@@ -138,7 +136,7 @@ class RenderingPipeline:
         self._render.save_images(images_pil, file_name, path)
 
     @staticmethod
-    def get_cameras_distribution1(views: int):
+    def get_cameras_distribution1(views: int) -> tuple[np.ndarray, np.ndarray]:
         """
         Fibonacci points distribution on the sphere.
 
@@ -154,7 +152,7 @@ class RenderingPipeline:
         thetas = []
         phis = []
 
-        phi = np.pi * (np.sqrt(5.) - 1.)  # golden angle in radians
+        phi = np.pi * (np.sqrt(5.0) - 1.0)  # golden angle in radians
 
         for i in range(views):
             y = 1 - (i / float(views - 1)) * 2  # y goes from 1 to -1
@@ -169,7 +167,7 @@ class RenderingPipeline:
         return np.array(thetas), np.array(phis)
 
     @staticmethod
-    def get_cameras_distribution2(views: int):
+    def get_cameras_distribution2(views: int) -> tuple[np.ndarray, np.ndarray]:
         """
         Spiral based points distribution on sphere.
 
@@ -186,11 +184,11 @@ class RenderingPipeline:
         x = 0.1 + 1.2 * views
         thetas = []
         phis = []
-        start = (-1. + 1. / (n - 1.))
-        increment = (2. - 2. / (n - 1.)) / (n - 1.)
+        start = -1.0 + 1.0 / (n - 1.0)
+        increment = (2.0 - 2.0 / (n - 1.0)) / (n - 1.0)
         for j in range(0, n):
             s = start + j * increment
-            theta = np.rad2deg(np.pi / 2. * np.copysign(1, s) * (1. - np.sqrt(1. - abs(s)))) % 360
+            theta = np.rad2deg(np.pi / 2.0 * np.copysign(1, s) * (1.0 - np.sqrt(1.0 - abs(s)))) % 360
             phi = np.rad2deg(s * x) - 90
             thetas.append(theta)
             phis.append(phi)
@@ -198,7 +196,7 @@ class RenderingPipeline:
         return np.array(thetas), np.array(phis)
 
     @staticmethod
-    def get_cameras_distribution3(views: int):
+    def get_cameras_distribution3(views: int) -> tuple[list[Any], list[Any]]:
         """
         Equal angularly distanced points distribution on sphere
 
@@ -219,7 +217,7 @@ class RenderingPipeline:
         phis = []
         thetas = []
 
-        for k in range(0, views):
+        for _ in range(0, views):
             phi = np.rad2deg(np.arccos(z)) - 90  # polar angle
             theta = np.rad2deg(long % (2 * np.pi)) % 360  # azimuthal angle
 
@@ -232,7 +230,7 @@ class RenderingPipeline:
         return thetas, phis
 
     @staticmethod
-    def get_cameras_distribution4(views: int):
+    def get_cameras_distribution4(views: int) -> tuple[np.ndarray, np.ndarray]:
         """
         "Sunflower" points distribution on the sphere
 
@@ -247,9 +245,9 @@ class RenderingPipeline:
         """
         indices = np.arange(0, views, dtype=float) + 0.5
         phis = np.arccos(1 - 2 * indices / views)
-        thetas = np.pi * (1 + 5 ** 0.5) * indices
+        thetas_prep = np.pi * (1 + 5**0.5) * indices
 
         phis = [np.rad2deg(phi) - 90 for phi in phis]
-        thetas = [np.rad2deg(theta) % 360 for theta in thetas]
+        thetas = [np.rad2deg(theta) % 360 for theta in thetas_prep]
 
         return np.array(thetas), np.array(phis)

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from io import BytesIO
-from typing import Dict
+from typing import Any
 
 import numpy as np
 
@@ -13,7 +13,7 @@ class BaseLoader(ABC):
     """
 
     @abstractmethod
-    def from_file(self, file_name: str, file_path: str) -> Dict:
+    def from_file(self, file_name: str, file_path: str) -> dict[str, Any]:
         """
         Load data from a file.
 
@@ -27,7 +27,7 @@ class BaseLoader(ABC):
         pass
 
     @abstractmethod
-    def from_buffer(self, buffer: BytesIO) -> Dict:
+    def from_buffer(self, buffer: BytesIO) -> dict[str, Any]:
         """
         Load data from a buffer.
 
@@ -68,5 +68,5 @@ class BaseWriter(ABC):
         sh_degree: int,
         h5file_name: str,
         h5file_path: str,
-    ):
+    ) -> None:
         pass

@@ -1,6 +1,7 @@
+import inspect
 import os
 import sys
-import inspect
+
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -9,7 +10,6 @@ sys.path.insert(0, parentdir + "/validation")
 
 import numpy as np
 import torch
-
 from validation_lib.rendering.gs_camera import OrbitCamera
 
 

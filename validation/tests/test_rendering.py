@@ -1,8 +1,9 @@
+import inspect
 import os
 import sys
-import inspect
 
 import numpy as np
+
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -10,9 +11,8 @@ sys.path.insert(0, parentdir)
 sys.path.insert(0, parentdir + "/validation")
 
 import pytest
-
-from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 
 
 @pytest.fixture

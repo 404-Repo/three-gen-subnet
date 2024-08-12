@@ -1,12 +1,11 @@
 import gc
-from typing import List
 from time import time
+from typing import Any
 
 import torch
-from transformers import (AutoProcessor,
-                          AutoModelForZeroShotImageClassification)
 from loguru import logger
 from PIL import Image
+from transformers import AutoModelForZeroShotImageClassification, AutoProcessor, CLIPModel, CLIPProcessor
 
 
 class ScoringModel:
@@ -20,11 +19,11 @@ class ScoringModel:
         """
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
-        self._processor = None
-        self._model = None
-        self._debug = debug
+        self._processor: CLIPProcessor = None
+        self._model: CLIPModel = None
+        self._debug: bool = debug
 
-    def evaluate_image(self, images: List[Image.Image] | List[torch.Tensor], prompts: List[str]):
+    def evaluate_image(self, images: list[Image.Image] | list[torch.Tensor], prompts: list[str]) -> Any:
         """Function for validating the input data
 
         Parameters
@@ -38,9 +37,7 @@ class ScoringModel:
         """
 
         t1 = time()
-        inputs = self._processor(
-            text=prompts, images=images, return_tensors="pt", padding=True
-        )
+        inputs = self._processor(text=prompts, images=images, return_tensors="pt", padding=True)
         inputs.to(self._device)
         t2 = time()
         if self._debug:
@@ -61,7 +58,7 @@ class ScoringModel:
 
         return dist
 
-    def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b"):
+    def preload_scoring_model(self, scoring_model: str = "facebook/metaclip-b16-fullcc2.5b") -> None:
         """Function for preloading the MetaClip model
 
         Parameters
@@ -77,7 +74,7 @@ class ScoringModel:
 
         logger.info("[INFO] Done.")
 
-    def unload_model(self):
+    def unload_model(self) -> None:
         """Function for unloading model from the GPU VRAM"""
 
         del self._model
