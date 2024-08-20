@@ -1,2 +1,2 @@
-bittensor==6.9.3
+bittensor==6.9.4
 websockets==12.0
