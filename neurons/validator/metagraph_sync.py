@@ -3,7 +3,7 @@ import weakref
 
 import bittensor as bt
 
-from miner_data import MinerData
+from validator.miner_data import MinerData
 
 
 class MetagraphSynchronizer:
