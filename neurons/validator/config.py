@@ -76,6 +76,20 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
+        "--neuron.cooldown_violation_penalty",
+        type=int,
+        help="If miner asks for a new task while on a cooldown, additional cooldown is added",
+        default=10,
+    )
+
+    parser.add_argument(
+        "--neuron.cooldown_violations_threshold",
+        type=int,
+        help="Cooldown violation threshold to consider the miner behaviour malicious",
+        default=100,
+    )
+
+    parser.add_argument(
         "--generation.task_timeout",
         type=int,
         help="Time limit for submitting tasks (in seconds).",

@@ -158,23 +158,27 @@ class Validator:
             bt.logging.debug(f"[{uid}] asked for a new task while having expired task. New task will be assigned")
             miner.reset_task()
 
-        cooldown_violation = True
         if miner.assigned_task is not None:
             bt.logging.debug(
-                f"[{uid}] asked for a new task while having assigned task. " f"Resetting the task and setting cooldown"
+                f"[{uid}] asked for a new task while having assigned task. Resetting the task and setting cooldown"
             )
-            cooldown_violation = False
             miner.reset_task(cooldown=self.config.generation.task_cooldown)
+            return self._add_cooldown_data(synapse, miner)
 
         if miner.is_on_cooldown():
-            if cooldown_violation:
-                miner.cooldown_violations += 1
+            miner.cooldown_violations += 1
             bt.logging.debug(
-                f"[{uid}] asked for a new task while on a cooldown. " f"Total violations: {miner.cooldown_violations}"
+                f"[{uid}] asked for a new task while on a cooldown ({miner.cooldown_left()} sec left). "
+                f"Total violations: {miner.cooldown_violations}"
             )
-            synapse.cooldown_until = miner.cooldown_until
-            synapse.cooldown_violations = miner.cooldown_violations
-            return synapse
+            cooldown_violations_threshold_reached = (
+                miner.cooldown_violations > self.config.neuron.cooldown_violations_threshold
+            )
+            if cooldown_violations_threshold_reached:
+                miner.cooldown_until += self.config.neuron.cooldown_violation_penalty
+                bt.logging.debug(f"[{uid}] Cooldown penalty added.")
+
+            return self._add_cooldown_data(synapse, miner)
 
         is_strong_miner = self.metagraph_sync.is_strong_miner(uid)
 
@@ -219,6 +223,9 @@ class Validator:
         if miner.assigned_task != synapse.task:
             bt.logging.warning(f"[{uid}] submitted results for the wrong task")
             return self._add_feedback(synapse, miner)
+
+        # Reducing cooldown violations to allow some accidental cooldown violations.
+        miner.cooldown_violations = max(0, miner.cooldown_violations - 1)
 
         if synapse.results == "":
             bt.logging.debug(f"[{uid}] submitted empty results")
@@ -275,6 +282,11 @@ class Validator:
             )
 
         return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
+
+    def _add_cooldown_data(self, synapse: PullTask, miner: MinerData) -> PullTask:
+        synapse.cooldown_violations = miner.cooldown_violations
+        synapse.cooldown_until = miner.cooldown_until
+        return synapse
 
     def _reset_miner_on_failure(self, miner: MinerData, hotkey: str, task_id: str, cooldown_penalty: int = 0) -> None:
         miner.reset_task(cooldown=self.config.generation.task_cooldown + cooldown_penalty)

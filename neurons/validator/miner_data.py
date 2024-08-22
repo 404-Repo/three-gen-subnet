@@ -58,6 +58,9 @@ class MinerData(BaseModel):
             return False
         return time.time() < self.cooldown_until
 
+    def cooldown_left(self) -> int:
+        return 0 if self.cooldown_until == 0 else self.cooldown_until - int(time.time())
+
     def _expire_observations(self, current_time: int, observation_window: int = 8 * 60 * 60) -> None:
         expiration_threshold = current_time - observation_window
         while self.observations and self.observations[0] < expiration_threshold:
