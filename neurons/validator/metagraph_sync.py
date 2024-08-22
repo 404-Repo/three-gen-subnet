@@ -3,6 +3,8 @@ import weakref
 
 import bittensor as bt
 
+from validator import MinerData
+
 
 class MetagraphSynchronizer:
     def __init__(
@@ -30,7 +32,7 @@ class MetagraphSynchronizer:
     def should_sync(self) -> bool:
         return self._last_sync_time + self._sync_interval <= time.time()
 
-    def sync(self) -> None:
+    def sync(self, miners: list[MinerData]) -> None:
         self._last_sync_time = time.time()
 
         bt.logging.info("Synchronizing metagraph")
@@ -42,11 +44,26 @@ class MetagraphSynchronizer:
             bt.logging.exception(f"Metagraph synchronization failed with {e}")
             return
 
-        # Scores are not reset deliberately, so that new miners can start from the lowest emission but not from zero.
-
         neurons = [(metagraph.I[uid], uid) for uid in range(int(metagraph.n))]
         neurons.sort(reverse=True)
         self._strong_miners = {uid for i, uid in neurons[: self._strong_miners_count]}
+
+        for uid in range(int(metagraph.n)):
+            axon = metagraph.axons[uid]
+            miner = miners[uid]
+            if miner.hotkey == axon.hotkey:
+                continue
+
+            bt.logging.debug(f"[{uid}] changed the owner from {miner.hotkey} to {axon.hotkey}")
+
+            if miner.hotkey is not None:
+                # TODO: Migration from version 23 to version 24. Remove the check and reset always
+                miner.observations.clear()
+                miner.fidelity_score = 1.0
+
+            miner.cooldown_until = 0
+            miner.cooldown_violations = 0
+            miner.hotkey = axon.hotkey
 
     def log_info(self, uid: int) -> None:
         if self._last_info_time + self._log_info_interval > time.time():

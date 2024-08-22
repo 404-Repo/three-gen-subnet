@@ -69,6 +69,9 @@ class Validator:
 
         self._self_check_for_registration()
 
+        self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
+        self.load_state()
+
         self.metagraph = bt.metagraph(
             netuid=self.config.netuid, network=self.subtensor.network, sync=False
         )  # Make sure not to sync without passing subtensor
@@ -80,7 +83,7 @@ class Validator:
             self.config.neuron.log_info_interval,
             self.config.neuron.strong_miners_count,
         )
-        self.metagraph_sync.sync()
+        self.metagraph_sync.sync(self.miners)
 
         bt.logging.info(f"Metagraph: {self.metagraph}")
 
@@ -130,9 +133,6 @@ class Validator:
         else:
             self.task_registry = None
             self.public_server = None
-
-        self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
-        self.load_state()
 
         self.updater = AutoUpdater(
             disabled=self.config.neuron.auto_update_disabled,
@@ -418,7 +418,7 @@ class Validator:
 
             if self.metagraph_sync.should_sync():
                 self.save_state()
-                self.metagraph_sync.sync()
+                self.metagraph_sync.sync(self.miners)
                 self._set_weights()
 
             if await self.updater.should_update():

@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 class MinerData(BaseModel):
     uid: int
 
+    hotkey: str | None = None
+    """Miner hotkey."""
+
     observations: deque[int] = Field(default_factory=deque)
     """Observation window containing task finish times (seconds), limited to the last 8 hours."""
 
