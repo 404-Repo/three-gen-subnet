@@ -171,7 +171,10 @@ class Validator:
                 f"[{uid}] asked for a new task while on a cooldown ({miner.cooldown_left()} sec left). "
                 f"Total violations: {miner.cooldown_violations}"
             )
-            if miner.cooldown_violations > self.config.neuron.cooldown_violation_threshold:
+            cooldown_violations_threshold_reached = (
+                miner.cooldown_violations > self.config.neuron.cooldown_violations_threshold
+            )
+            if cooldown_violations_threshold_reached:
                 miner.cooldown_until += self.config.neuron.cooldown_violation_penalty
                 bt.logging.debug(f"[{uid}] Cooldown penalty added.")
 

@@ -83,7 +83,7 @@ def read_config() -> bt.config:
     )
 
     parser.add_argument(
-        "--neuron.cooldown_violation_threshold",
+        "--neuron.cooldown_violations_threshold",
         type=int,
         help="Cooldown violation threshold to consider the miner behaviour malicious",
         default=100,
