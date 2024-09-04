@@ -101,6 +101,8 @@ curl -d "prompt=pink bicycle" -X POST http://127.0.0.1:8093/generate_video/ > vi
 
 Ensure wallet registration as per the [official bittensor guide](https://docs.bittensor.com/subnets/register-validate-mine).
 
+Important: by running a miner on this subnet you agree that you have obtained all licenses, rights and consents required to use, reproduce, modify, display, distribute and make available your submitted results to this subnet and its end users.
+
 #### Setup
 Prepare the neuron by executing the setup script in the `neurons` directory:
 ```commandline
