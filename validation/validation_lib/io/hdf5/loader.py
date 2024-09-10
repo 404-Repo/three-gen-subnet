@@ -1,10 +1,9 @@
 import io
-import os
-from typing import Dict
+from pathlib import Path
+from typing import Any
 
-import numpy as np
 import h5py as h5
-
+import numpy as np
 from validation_lib.io.base import BaseLoader
 
 
@@ -12,7 +11,7 @@ class HDF5Loader(BaseLoader):
     """Class for storing Gaussian Splatting data in HDF5 file format."""
 
     @staticmethod
-    def _get_dataset(group: h5.Group, dataset_name: str):
+    def _get_dataset(group: h5.Group, dataset_name: str) -> np.ndarray:
         """Function for getting data from the given group using dataset name
 
         Parameters
@@ -28,7 +27,7 @@ class HDF5Loader(BaseLoader):
         data = group.get(dataset_name)
         return np.array(data)
 
-    def from_file(self, file_name: str, file_path: str) -> Dict:
+    def from_file(self, file_name: str, file_path: str) -> dict[str, Any]:
         """Function for loading data from the the HDF5 file
 
         Parameters
@@ -40,7 +39,7 @@ class HDF5Loader(BaseLoader):
         -------
         a dictionary with loaded data
         """
-        h5_fpath = os.path.join(file_path, file_name + ".h5")
+        h5_fpath = Path(file_path) / f"{file_name}.h5"
         file = h5.File(h5_fpath, mode="r")
 
         points = self._get_dataset(file, "points")
@@ -53,19 +52,20 @@ class HDF5Loader(BaseLoader):
         sh_degree = int(self._get_dataset(file, "sh_degree")[0])
         file.close()
 
-        data_dict = {}
-        data_dict["points"] = points
-        data_dict["normals"] = normals
-        data_dict["features_dc"] = features_dc
-        data_dict["features_rest"] = features_rest
-        data_dict["opacities"] = opacities
-        data_dict["scale"] = scale
-        data_dict["rotation"] = rotation
-        data_dict["sh_degree"] = sh_degree
+        data_dict = {
+            "points": points,
+            "normals": normals,
+            "features_dc": features_dc,
+            "features_rest": features_rest,
+            "opacities": opacities,
+            "scale": scale,
+            "rotation": rotation,
+            "sh_degree": sh_degree,
+        }
 
         return data_dict
 
-    def from_buffer(self, buffer: io.BytesIO) -> Dict:
+    def from_buffer(self, buffer: io.BytesIO) -> dict[str, Any]:
         """Function for unpacking Gaussian Splatting (GS) data from bytes buffer
 
         Parameters
@@ -86,14 +86,15 @@ class HDF5Loader(BaseLoader):
             rotation = self._get_dataset(file, "rotation")
             sh_degree = int(self._get_dataset(file, "sh_degree")[0])
 
-        data_dict = {}
-        data_dict["points"] = points
-        data_dict["normals"] = normals
-        data_dict["features_dc"] = features_dc
-        data_dict["features_rest"] = features_rest
-        data_dict["opacities"] = opacities
-        data_dict["scale"] = scale
-        data_dict["rotation"] = rotation
-        data_dict["sh_degree"] = sh_degree
+        data_dict = {
+            "points": points,
+            "normals": normals,
+            "features_dc": features_dc,
+            "features_rest": features_rest,
+            "opacities": opacities,
+            "scale": scale,
+            "rotation": rotation,
+            "sh_degree": sh_degree,
+        }
 
         return data_dict

@@ -1,10 +1,11 @@
-import os
-import inspect
-
-import requests
-import json
 import argparse
 import base64
+import inspect
+import json
+import os
+
+import requests
+
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 DEFAULT_PROMPT = "A hamburger"

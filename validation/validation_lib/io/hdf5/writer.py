@@ -1,15 +1,14 @@
 from io import BytesIO
-import os
+from pathlib import Path
 
-import numpy as np
 import h5py as h5
-
+import numpy as np
 from validation_lib.io.base import BaseWriter
 
 
 class HDF5Writer(BaseWriter):
     @staticmethod
-    def _create_dataset(group: h5.Group, dataset_name: str, data: np.ndarray):
+    def _create_dataset(group: h5.Group, dataset_name: str, data: np.ndarray) -> h5.Group:
         """Function for creating a dataset
 
         Parameters
@@ -77,7 +76,7 @@ class HDF5Writer(BaseWriter):
         sh_degree: int,
         h5file_name: str,
         h5file_path: str,
-    ):
+    ) -> None:
         """Function for saving the Gaussian Splatting (GS) data to the HDF5 file in a compressed way
 
         Parameters
@@ -95,7 +94,7 @@ class HDF5Writer(BaseWriter):
 
         """
 
-        h5_fpath = os.path.join(h5file_path, h5file_name + ".h5")
+        h5_fpath = Path(h5file_path) / f"{h5file_name}.h5"
         file = h5.File(h5_fpath, mode="w")
 
         self._create_dataset(file, "points", points)

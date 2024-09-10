@@ -218,11 +218,11 @@ class Validator:
 
         if synapse.task is None:
             bt.logging.warning(f"[{uid}] submitted results with no original task")
-            return self._add_feedback(synapse, miner)
+            return self._add_feedback_and_strip(synapse, miner)
 
         if miner.assigned_task != synapse.task:
             bt.logging.warning(f"[{uid}] submitted results for the wrong task")
-            return self._add_feedback(synapse, miner)
+            return self._add_feedback_and_strip(synapse, miner)
 
         # Reducing cooldown violations to allow some accidental cooldown violations.
         miner.cooldown_violations = max(0, miner.cooldown_violations - 1)
@@ -231,7 +231,7 @@ class Validator:
             bt.logging.debug(f"[{uid}] submitted empty results")
 
             self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
-            return self._add_feedback(synapse, miner)
+            return self._add_feedback_and_strip(synapse, miner)
 
         if not self._verify_results_signature(synapse):
             bt.logging.warning(f"[{uid}] submitted results with wrong signature")
@@ -242,14 +242,14 @@ class Validator:
                 task_id=synapse.task.id,
                 cooldown_penalty=self.config.generation.cooldown_penalty,
             )
-            return self._add_feedback(synapse, miner)
+            return self._add_feedback_and_strip(synapse, miner)
 
         validation_score = await fidelity_check.validate(
             self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
         )
         if validation_score is None:
             self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
-            return self._add_feedback(synapse, miner, validation_failed=True)
+            return self._add_feedback_and_strip(synapse, miner, validation_failed=True)
 
         fidelity_score = self._get_fidelity_score(validation_score)
 
@@ -262,7 +262,7 @@ class Validator:
                 task_id=synapse.task.id,
                 cooldown_penalty=self.config.generation.cooldown_penalty,
             )
-            return self._add_feedback(synapse, miner)
+            return self._add_feedback_and_strip(synapse, miner)
 
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
 
@@ -281,7 +281,7 @@ class Validator:
                 synapse.task.id, synapse.dendrite.hotkey, synapse.results, synapse.data_format, validation_score
             )
 
-        return self._add_feedback(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
+        return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
     def _add_cooldown_data(self, synapse: PullTask, miner: MinerData) -> PullTask:
         synapse.cooldown_violations = miner.cooldown_violations
@@ -293,7 +293,7 @@ class Validator:
         if self.task_registry is not None:
             self.task_registry.fail_task(task_id, hotkey)
 
-    def _add_feedback(
+    def _add_feedback_and_strip(
         self,
         synapse: SubmitResults,
         miner: MinerData,
@@ -301,6 +301,9 @@ class Validator:
         current_time: int | None = None,
         validation_failed: bool = False,
     ) -> SubmitResults:
+        synapse.results = ""
+        synapse.signature = ""
+
         if current_time is None:
             current_time = int(time.time())
         reward = miner.calculate_reward(current_time)

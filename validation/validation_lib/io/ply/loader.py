@@ -1,17 +1,16 @@
 import io
 from pathlib import Path
-from typing import Dict
+from typing import Any
 
 import meshio
 import numpy as np
 import torch
-
 from validation_lib.io.base import BaseLoader
 from validation_lib.utils import sigmoid
 
 
 class PlyLoader(BaseLoader):
-    def from_file(self, file_name: str, file_path: str) -> Dict:
+    def from_file(self, file_name: str, file_path: str) -> dict[str, Any]:
         """
         Wrapper for _load with file_name and file_path strings
 
@@ -27,7 +26,7 @@ class PlyLoader(BaseLoader):
         fpath = Path(file_path, file_name + ".ply")
         return self._load(fpath)
 
-    def from_buffer(self, buffer: io.BytesIO) -> Dict:
+    def from_buffer(self, buffer: io.BytesIO) -> dict[str, Any]:
         """
         Wrapper for _load with data from bytes buffer
 
@@ -41,7 +40,7 @@ class PlyLoader(BaseLoader):
         """
         return self._load(buffer)
 
-    def _load(self, source: io.BytesIO | Path) -> Dict:
+    def _load(self, source: io.BytesIO | Path) -> dict[str, Any]:
         """
         Function for unpacking Gaussian Splatting (GS) data from bytes buffer or file path
 
@@ -66,8 +65,8 @@ class PlyLoader(BaseLoader):
                 pdata["rot_3"],
             ]
         ).T
-        rotation = torch.tensor(rotation).contiguous()
-        rotation = torch.nn.functional.normalize(rotation)
+        rotation_to_tensor = torch.tensor(rotation).contiguous()
+        normalized_rotation = torch.nn.functional.normalize(rotation_to_tensor)
 
         scale = np.exp(np.vstack([pdata["scale_0"], pdata["scale_1"], pdata["scale_2"]]).T)
 
@@ -91,7 +90,7 @@ class PlyLoader(BaseLoader):
         data_dict["features_rest"] = features_rest
         data_dict["opacities"] = opacities
         data_dict["scale"] = scale
-        data_dict["rotation"] = rotation
+        data_dict["rotation"] = normalized_rotation
         data_dict["sh_degree"] = sh_degree
 
         return data_dict

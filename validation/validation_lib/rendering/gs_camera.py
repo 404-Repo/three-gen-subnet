@@ -1,5 +1,7 @@
-import torch
+from typing import Any
+
 import numpy as np
+import torch
 
 
 class OrbitCamera:
@@ -42,12 +44,12 @@ class OrbitCamera:
             self._fov_y = fov_y
 
     @property
-    def camera_to_world_tr(self):
+    def camera_to_world_tr(self) -> torch.Tensor:
         """Matrix with camera to world transform"""
         return self._cam_to_world_tr
 
     @property
-    def world_to_camera_transform(self):
+    def world_to_camera_transform(self) -> torch.Tensor:
         """Matrix with transform from world space to camera space"""
         # return torch.inverse(self._cam_to_world_tr).transpose(0, 1).to(self._device)
         R = self._cam_to_world_tr[:3, :3].transpose(0, 1)
@@ -58,42 +60,42 @@ class OrbitCamera:
         return result.to(self._device)
 
     @property
-    def camera_position(self):
+    def camera_position(self) -> torch.Tensor:
         """A vector with current camera position"""
         return -self._cam_to_world_tr[:3, 3]
 
     @property
-    def tan_half_fov(self):
+    def tan_half_fov(self) -> Any:
         """A tan of the half value of the field of view value"""
         return np.tan(0.5 * self._fov_y)
 
     @property
-    def fov(self):
+    def fov(self) -> Any:
         """Field pof view in radians"""
         return self._fov_y
 
     @property
-    def image_height(self):
+    def image_height(self) -> int:
         """The height of the camera image"""
         return self._img_height
 
     @property
-    def image_width(self):
+    def image_width(self) -> int:
         """The width of the camera image"""
         return self._img_width
 
     @property
-    def z_near(self):
+    def z_near(self) -> float:
         """The value of the near camera plane"""
         return self._z_near
 
     @property
-    def z_far(self):
+    def z_far(self) -> float:
         """The value of the far camera plane"""
         return self._z_far
 
     @property
-    def intrinsics(self):
+    def intrinsics(self) -> torch.Tensor:
         """Function for computing the intrinsics for the camera"""
         focal_x = self._img_width / (2 * self.tan_half_fov)
         focal_y = self._img_height / (2 * self.tan_half_fov)
@@ -105,11 +107,11 @@ class OrbitCamera:
         Ks[1, 2] = self._img_height // 2
         return Ks.to(self._device)
 
-    def set_camera_to_world_transform(self, transform: torch.Tensor):
+    def set_camera_to_world_transform(self, transform: torch.Tensor) -> None:
         """Function for setting up the camera to world transform"""
         self._cam_to_world_tr = transform
 
-    def look_at(self, camera_pos: torch.Tensor, target_pos: torch.Tensor, opengl_conv: bool = True):
+    def look_at(self, camera_pos: torch.Tensor, target_pos: torch.Tensor, opengl_conv: bool = True) -> torch.Tensor:
         """Function for computing the rotation matrix for the camera
 
         Parameters
@@ -146,7 +148,7 @@ class OrbitCamera:
         is_degree: bool = True,
         target_pos: torch.Tensor | None = None,
         opengl_conv: bool = True,
-    ):
+    ) -> None:
         """Function for computing orbit transform for the current camera
 
         Parameters
@@ -180,7 +182,7 @@ class OrbitCamera:
         self._cam_to_world_tr = T
 
     @staticmethod
-    def _length(x: torch.Tensor, eps: float = 1e-20):
+    def _length(x: torch.Tensor, eps: float = 1e-20) -> torch.Tensor:
         """Function for computing the length of the input vector
 
         Parameters
@@ -194,7 +196,7 @@ class OrbitCamera:
         """
         return torch.sqrt(torch.clamp(torch.dot(x, x), min=eps))
 
-    def _safe_normalize(self, x: torch.Tensor, eps: float = 1e-20):
+    def _safe_normalize(self, x: torch.Tensor, eps: float = 1e-20) -> torch.Tensor:
         """Function for computing the normalization of the input vector
 
         Parameters

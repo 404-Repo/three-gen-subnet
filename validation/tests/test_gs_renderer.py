@@ -1,22 +1,21 @@
+import inspect
 import os
 import sys
-import inspect
+
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 sys.path.insert(0, parentdir + "/validation")
 
-import pytest
-import torch
 import numpy as np
-from PIL import Image
+import torch
 from loguru import logger
-
-from validation_lib.rendering.gs_camera import OrbitCamera
-from validation_lib.rendering.gs_renderer import GaussianRenderer
+from PIL import Image
 from validation_lib.io.hdf5 import HDF5Loader
 from validation_lib.io.ply import PlyLoader
+from validation_lib.rendering.gs_camera import OrbitCamera
+from validation_lib.rendering.gs_renderer import GaussianRenderer
 
 
 test_data_folder = os.path.join(currentdir, "resources")

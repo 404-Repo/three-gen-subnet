@@ -4,21 +4,21 @@ data_folder: ""
 # path to the file with prompts (txt file)
 prompts_file: ""
 
+# path where to store raw_template or from where to load the prepared reference template
+template_path: "benchmark_reference.csv"
+
 # array with prompt / prompts
 # Examples:
 #prompts: ["yellow monkey with legs"] - one prompt for all input files
 #prompts: ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon"] - one prompt per file
 prompts: []
 
-# flag that allows to save rendering images per input GS for debugging purposes
-save_images: False
-
 # parameters that defines image size during the rendering
 img_width: 512
 img_height: 512
 
 # amount of iterations to re-compute the validation
-iterations: 20
+iterations: 30
 
 # amount of rendering views:
 views: 16
@@ -30,3 +30,18 @@ cam_rad: 2.5
 # 0-1 - corresponds to dream gaussian
 # 2 - corresponds to new data format (default)
 data_ver: 2
+
+# enable/disable generation of the raw template
+generate_raw_template: False
+
+# enable/disable evaluation of the validation results on benchmark data;
+evaluate_validation: True
+
+# flag that allows to save rendering images per input GS for debugging purposes
+save_images: False
+
+# enables / disables extra output in the terminal
+verbose_output: False
+
+# enables / disables extra debugging output in the terminal
+debug_output: False

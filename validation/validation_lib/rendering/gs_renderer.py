@@ -1,15 +1,14 @@
-import os
-from typing import List, Tuple
+from pathlib import Path
 
 import torch
-from PIL import Image
 from gsplat.rendering import rasterization
+from PIL import Image
 
 
 class GaussianRenderer:
     """Class with implementation of the Gaussian Splatting Renderer"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
         self._bg_color = torch.tensor([1, 1, 1, 1], dtype=torch.float32, device=self._device)
@@ -18,12 +17,12 @@ class GaussianRenderer:
         self,
         cameras_view_proj: torch.Tensor,
         cameras_intr: torch.Tensor,
-        img_res: Tuple[int, int],
+        img_res: tuple[int, int],
         z_near: float,
         z_far: float,
-        gaussian_data: List[torch.Tensor],
+        gaussian_data: list[torch.Tensor],
         bg_color: torch.Tensor | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Function that renders input gaussian splatting data using single camera view
         or multiple camera views as a single batch
@@ -54,10 +53,9 @@ class GaussianRenderer:
         # Pre-allocate tensors
         num_cameras = len(cameras_view_proj)
         background_col = self._bg_color if bg_color is None else bg_color
+        backgrounds = background_col
         if background_col is not None:
             backgrounds = background_col.expand(num_cameras, *background_col.shape).to(self._device)
-        else:
-            backgrounds = background_col
 
         rendered_colors, rendered_alphas, meta = rasterization(
             means3D,
@@ -75,8 +73,10 @@ class GaussianRenderer:
             render_mode="RGB+D",
         )
 
-        assert rendered_colors.shape == (num_cameras, img_res[0], img_res[1], 4)
-        assert rendered_alphas.shape == (num_cameras, img_res[0], img_res[1], 1)
+        if rendered_colors.shape != (num_cameras, img_res[0], img_res[1], 4):
+            raise ValueError(f"Unexpected shape for rendered_colors: {rendered_colors.shape}")
+        if rendered_alphas.shape != (num_cameras, img_res[0], img_res[1], 1):
+            raise ValueError(f"Unexpected shape for rendered_alphas: {rendered_alphas.shape}")
 
         rendered_images = rendered_colors[..., 0:3].clip(0, 1)
         rendered_depths = rendered_colors[..., 3:4]
@@ -85,7 +85,7 @@ class GaussianRenderer:
         return rendered_images, rendered_alphas, rendered_depths
 
     @staticmethod
-    def save_images(images: List[Image.Image], file_name: str, path: str):
+    def save_images(images: list[Image.Image], file_name: str, path: str) -> None:
         """Function for saving rendered images that are defined as PIL images
 
         Parameters
@@ -95,9 +95,10 @@ class GaussianRenderer:
         path: the path to the folder where the images will be saved
 
         """
-        if not os.path.exists(path):
-            os.mkdir(path)
+        save_path = Path(path)
+        if not save_path.exists():
+            save_path.mkdir(parents=True, exist_ok=True)
 
         for i, image in enumerate(images):
-            img_name = os.path.join(path, file_name + "_" + str(i) + ".png")
+            img_name = save_path / f"{file_name}_{i}.png"
             image.save(img_name)
