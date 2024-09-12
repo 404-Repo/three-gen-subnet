@@ -12,6 +12,7 @@ def main() -> None:
     verbose_output = config_data["verbose_output"]
     debug_output = config_data["debug_output"]
     save_images = config_data["save_images"]
+    save_previews = config_data["save_previews"]
     generate_raw_template = config_data["generate_raw_template"]
     evaluate_validation = config_data["evaluate_validation"]
 
@@ -32,7 +33,10 @@ def main() -> None:
 
     benchmark_runner = BenchmarkRunner(config_data["views"], verbose=verbose_output, debug=debug_output)
     logger.info(f" Validating input data: {len(files)} files.")
-    images, scores, _, file_names = benchmark_runner.run_validation_benchmark(config_data, prompts, files, save_images)
+    images, preview_images, scores, _, file_names = benchmark_runner.run_validation_benchmark(
+        config_data, prompts, files, save_images, save_previews
+    )
+
     logger.info(" Done. \n")
 
     if generate_raw_template:
@@ -50,6 +54,13 @@ def main() -> None:
             " Please enable one of the options in the config file: "
             "'generate_raw_template' or 'evaluate_validation'. Nothing to do."
         )
+
+    if save_previews:
+        logger.info("Saving preview images.")
+        benchmark_runner.save_rendered_images(
+            preview_images, "benchmark_output/previews", file_names, save_previews=True
+        )
+        logger.info("Done.")
 
 
 if __name__ == "__main__":

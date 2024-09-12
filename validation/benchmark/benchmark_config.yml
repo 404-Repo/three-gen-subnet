@@ -35,10 +35,13 @@ data_ver: 2
 generate_raw_template: False
 
 # enable/disable evaluation of the validation results on benchmark data;
-evaluate_validation: True
+evaluate_validation: False
 
 # flag that allows to save rendering images per input GS for debugging purposes
 save_images: False
+
+# flag that allows to save rendered preview images per input GS for debugging purposes
+save_previews: False
 
 # enables / disables extra output in the terminal
 verbose_output: False

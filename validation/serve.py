@@ -9,8 +9,10 @@ from typing import Any
 
 import torch
 import uvicorn
+from application.metrics import Metrics
 from fastapi import FastAPI
 from loguru import logger
+from PIL import Image
 from pydantic import BaseModel, Field
 from validation_lib.io.base import BaseLoader
 from validation_lib.io.hdf5 import HDF5Loader
@@ -20,7 +22,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
-VERSION = "1.7.1"
+VERSION = "1.8.0"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -36,15 +38,18 @@ args, _ = get_args()
 
 
 class RequestData(BaseModel):
-    prompt: str = Field(max_length=1024)
-    data: str = Field(max_length=500 * 1024 * 1024)
-    data_ver: int = Field(default=0)
+    prompt: str = Field(max_length=1024, description="Prompt used to generate assets")
+    data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
+    data_ver: int = Field(default=0, description="Deprecated. Data version")
     # 0 - Dream Gaussian native format (default value)
     # 1+ - Preparation for PLY support
+    generate_preview: bool = Field(default=False, description="Optional. Pass to render and return a preview")
+    preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
 
 
 class ResponseData(BaseModel):
-    score: float
+    score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
+    preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
 @asynccontextmanager
@@ -52,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Startup logic
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_model()
+    app.state.metrics = Metrics()
 
     yield
 
@@ -62,13 +68,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 app.router.lifespan_context = lifespan
 
 
-def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader) -> Any:
-    logger.info(f"Validating started. Prompt: {prompt}")
+def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
+    logger.info(f"Validating started. Prompt: {request.prompt}")
 
     t1 = time()
 
     # Load data
-    pcl_raw = base64.b64decode(data)
+    pcl_raw = base64.b64decode(request.data)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
     t2 = time()
@@ -77,23 +83,36 @@ def _validate(prompt: str, data: str, data_ver: int, loader: BaseLoader) -> Any:
 
     # Check required memory
     if not enough_gpu_mem_available(data_dict):
-        return 0.0
+        return ResponseData(score=0.0)
 
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5, data_ver=data_ver)
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5, data_ver=request.data_ver)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    score = app.state.validator.validate(images, prompt)
-    logger.info(f" Score: {score}. Prompt: {prompt}")
+    score = app.state.validator.validate(images, request.prompt)
+    logger.info(f" Score: {score}. Prompt: {request.prompt}")
 
     t4 = time()
     logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
 
-    return score
+    if request.generate_preview and score > request.preview_score_threshold:
+        buffered = io.BytesIO()
+        rendered_image = renderer.render_preview_image(
+            data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5, data_ver=request.data_ver
+        )
+        preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
+        preview_image.save(buffered, format="PNG")
+        encoded_preview = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    else:
+        encoded_preview = None
+
+    app.state.metrics.update(score)
+
+    return ResponseData(score=score, preview=encoded_preview)
 
 
 def _cleanup() -> None:
@@ -119,20 +138,15 @@ async def validate(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
 
     """
-    prompt = request.prompt
-    data = request.data
-    version = int(request.data_ver)
-    loader = HDF5Loader()
-    score = 0.0
-
     try:
-        score = _validate(prompt, data, version, loader)
+        response = _validate(request, HDF5Loader())
     except Exception as e:
         logger.exception(e)
+        response = ResponseData(score=0.0)
     finally:
         _cleanup()
 
-    return ResponseData(score=score)
+    return response
 
 
 @app.post("/validate_ply/", response_model=ResponseData)
@@ -147,19 +161,17 @@ async def validate_ply(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
 
     """
-    prompt = request.prompt
-    data = request.data
-    loader = PlyLoader()
-    score = 0.0
+    request.data_ver = 256
 
     try:
-        score = _validate(prompt, data, 256, loader)
+        response = _validate(request, PlyLoader())
     except Exception as e:
         logger.exception(e)
+        response = ResponseData(score=0.0)
     finally:
         _cleanup()
 
-    return ResponseData(score=score)
+    return response
 
 
 @app.get("/version/", response_model=str)

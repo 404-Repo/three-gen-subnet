@@ -43,12 +43,12 @@ def main() -> None:
 
     # running validation_lib loop
     for i in range(int(config_data["iterations"])):
-        images, scores, _, file_names = benchmark_runner.run_validation_benchmark(
+        images, _, scores, _, file_names = benchmark_runner.run_validation_benchmark(
             config_data, prompts, files, save_images
         )
         if save_images:
             for j in range(len(file_names)):
-                benchmark_runner.save_rendered_images(images[j], "renders", file_names[j])
+                benchmark_runner.save_rendered_images(images[j], "renders", [file_names[j]])
             save_images = False
 
         file_names_list = file_names

@@ -6,12 +6,13 @@ import pandas as pd
 import torch
 import tqdm
 from loguru import logger
+from PIL import Image
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from validation.validation_lib.io.hdf5 import HDF5Loader
-from validation.validation_lib.io.ply import PlyLoader
-from validation.validation_lib.memory import enough_gpu_mem_available
-from validation.validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation.validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.io.ply import PlyLoader
+from validation_lib.memory import enough_gpu_mem_available
+from validation_lib.rendering.rendering_pipeline import RenderingPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
 class BenchmarkRunner:
@@ -34,7 +35,8 @@ class BenchmarkRunner:
         prompt: str,
         cam_rad: float,
         data_ver: int,
-    ) -> tuple[list[torch.Tensor], float, float]:
+        generate_preview: bool = False,
+    ) -> tuple[list[torch.Tensor], float, torch.Tensor | None, float]:
         """Function for validating the input data
 
         Parameters
@@ -46,7 +48,7 @@ class BenchmarkRunner:
         cam_rad: the radius of the camera orbit
         data_ver: version of the input data format: 0 - corresponds to dream gaussian
                                                     1 - corresponds to new data format (default)
-
+        generate_preview: enable/disable saving of the preview
         Returns
         -------
         images: a set of rendered images,
@@ -65,19 +67,26 @@ class BenchmarkRunner:
         t3 = time()
 
         dt = t3 - t1
+        preview_image = None
+        if generate_preview:
+            preview_image = self._gs_renderer.render_preview_image(
+                data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5, data_ver=data_ver
+            )
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
         logger.info(f" Validation took [total]: {dt} sec\n\n")
 
-        images_cpu = [img.detach().cpu() for img in images]
-        del images
-
-        return images_cpu, score, dt
+        return images, score, preview_image, dt
 
     def run_validation_benchmark(
-        self, config_data: dict, prompts: list[str], files: list[Path], return_images: bool = False
-    ) -> tuple[list[list[torch.Tensor]], list[list[float]], list[list[float]], list[str]]:
+        self,
+        config_data: dict,
+        prompts: list[str],
+        files: list[Path],
+        return_images: bool = False,
+        return_previews: bool = False,
+    ) -> tuple[list[list[torch.Tensor]], list[torch.Tensor] | list, list[list[float]], list[list[float]], list[str]]:
         """
         Function for running validation over provided dataset
 
@@ -87,6 +96,7 @@ class BenchmarkRunner:
         prompts: a list with prompts
         files: list of paths to the ply files
         return_images: enable/disable returning of the images
+        return_previews: enable/disable returning of the preview images
 
         Returns
         -------
@@ -96,6 +106,7 @@ class BenchmarkRunner:
         file_names: list of ply file names
         """
         rendered_images = []
+        preview_images = []
         scores = []
         timings = []
         file_names = []
@@ -108,9 +119,9 @@ class BenchmarkRunner:
             logger.info(f" File Path: {file_name}")
 
             if file_ext == ".h5":
-                data_dict = self._hdf5_loader.from_file(file_name, file_path)
+                data_dict = self._hdf5_loader.from_file(file_name, file_path.as_posix())
             elif file_ext == ".ply":
-                data_dict = self._ply_loader.from_file(file_name, file_path)
+                data_dict = self._ply_loader.from_file(file_name, file_path.as_posix())
             else:
                 continue
 
@@ -125,22 +136,25 @@ class BenchmarkRunner:
             if not enough_gpu_mem_available(data_dict):
                 raise RuntimeError("Not enough GPU memory to process the current data.")
 
-            images, score, dt = self.validate(
+            images, score, preview_img, dt = self.validate(
                 data_dict,
                 int(config_data["img_width"]),
                 int(config_data["img_height"]),
                 prompt,
                 config_data["cam_rad"],
                 config_data["data_ver"],
+                return_previews,
             )
 
             if return_images:
                 rendered_images.append(images)
+            if return_previews:
+                preview_images.append(preview_img)
 
             scores.append([score])
             timings.append([dt])
             file_names.append(file_name)
-        return rendered_images, scores, timings, file_names
+        return rendered_images, preview_images, scores, timings, file_names
 
     def run_evaluation_benchmark(self, files: list[Path], scores: list[list[float]], template_path: str) -> None:
         """
@@ -198,7 +212,13 @@ class BenchmarkRunner:
             f"< lq: {round(f1score[2], 3)} >"
         )
 
-    def save_rendered_images(self, images: list[torch.Tensor], folder_name: Path | str, gs_file_name: str) -> None:
+    def save_rendered_images(
+        self,
+        images: list[torch.Tensor],
+        folder_name: Path | str,
+        gs_file_names: list[str],
+        save_previews: bool = False,
+    ) -> None:
         """
         Function for saving rendered images
 
@@ -207,13 +227,20 @@ class BenchmarkRunner:
         images: list of images per model
         folder_name: name for the folder where images will be saved
         gs_file_name: name of the ply file for which input set of images was rendered
+        save_previews: enable/disable saving of the preview images
         """
         path = Path.cwd() / folder_name
-        path.mkdir(exist_ok=True)
-        path = path / gs_file_name
-        path.mkdir()
+        path.mkdir(parents=True, exist_ok=True)
 
-        self._gs_renderer.save_rendered_images(images, gs_file_name, path)
+        if save_previews:
+            for image, file_name, _ in zip(images, gs_file_names, tqdm.trange(len(images)), strict=False):
+                preview_path = path / file_name
+                pil_image = Image.fromarray(image.detach().cpu().numpy())
+                pil_image.save(f"{preview_path}.png")
+        else:
+            file_name = gs_file_names[0]
+            path = path / file_name
+            self._gs_renderer.save_rendered_images(images, file_name, path.as_posix())
 
     def generate_raw_evaluation_template(
         self,
@@ -277,17 +304,17 @@ class BenchmarkRunner:
                 file_destination = output_plys_highq_folder_path / (file_name + file_ext)
                 shutil.copy2(file_path, file_destination)
                 if images:
-                    self.save_rendered_images(images[i], output_imgs_highq_folder_path, file_name)
+                    self.save_rendered_images(images[i], output_imgs_highq_folder_path, [file_name])
             elif tag == "mq":
                 file_destination = output_plys_medq_folder_path / (file_name + file_ext)
                 shutil.copy2(file_path, file_destination)
                 if images:
-                    self.save_rendered_images(images[i], output_imgs_medq_folder_path, file_name)
+                    self.save_rendered_images(images[i], output_imgs_medq_folder_path, [file_name])
             else:
                 file_destination = output_plys_lowq_folder_path / (file_name + file_ext)
                 shutil.copy2(file_path, file_destination)
                 if images:
-                    self.save_rendered_images(images[i], output_imgs_lowq_folder_path, file_name)
+                    self.save_rendered_images(images[i], output_imgs_lowq_folder_path, [file_name])
 
         logger.info(f"Creating raw template: {template_name}")
         data = {"files": file_names, "prompt": prompts, "scores": scores, "quality": file_tags}

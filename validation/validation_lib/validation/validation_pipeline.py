@@ -3,7 +3,6 @@ from typing import Any
 import numpy as np
 import torch
 from loguru import logger
-from PIL import Image
 from pytod.models.knn import KNN
 from validation_lib.validation.clip_based_model import ScoringModel
 
@@ -34,7 +33,7 @@ class ValidationPipeline:
             "not quite right",
         ]
 
-    def validate(self, images: list[Image.Image], prompt: str) -> Any:
+    def validate(self, images: list[torch.Tensor], prompt: str) -> Any:
         """
         Function for validating the input data
 
@@ -51,7 +50,7 @@ class ValidationPipeline:
         clip_score = self.compute_clip_score(images, prompt)
         return clip_score
 
-    def compute_clip_score(self, images: list[Image.Image], prompt: str) -> Any:
+    def compute_clip_score(self, images: list[torch.Tensor], prompt: str) -> Any:
         """
         Function for validating the input data using clip-based model
 

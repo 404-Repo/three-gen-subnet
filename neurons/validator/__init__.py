@@ -244,14 +244,15 @@ class Validator:
             )
             return self._add_feedback_and_strip(synapse, miner)
 
-        validation_score = await fidelity_check.validate(
-            self.config.validation.endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
+        validation_endpoint = self.config.validation.endpoints[uid % len(self.config.validation.endpoints)]
+        validation = await fidelity_check.validate(
+            validation_endpoint, synapse.task.prompt, synapse.results, synapse.data_format, synapse.data_ver
         )
-        if validation_score is None:
+        if validation is None:
             self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
             return self._add_feedback_and_strip(synapse, miner, validation_failed=True)
 
-        fidelity_score = self._get_fidelity_score(validation_score)
+        fidelity_score = self._get_fidelity_score(validation.score)
 
         if fidelity_score == 0:
             bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
@@ -278,7 +279,7 @@ class Validator:
 
         if self.task_registry is not None:
             self.task_registry.complete_task(
-                synapse.task.id, synapse.dendrite.hotkey, synapse.results, synapse.data_format, validation_score
+                synapse.task.id, synapse.dendrite.hotkey, synapse.results, synapse.data_format, validation.score
             )
 
         return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
@@ -361,7 +362,7 @@ class Validator:
 
     async def get_version(self, synapse: GetVersion) -> GetVersion:
         synapse.version = VALIDATOR_VERSION
-        synapse.validation_version = await fidelity_check.version(self.config.validation.endpoint)
+        synapse.validation_version = await fidelity_check.version(self.config.validation.endpoints[0])
         return synapse
 
     def blacklist_getting_version(self, synapse: GetVersion) -> Tuple[bool, str]:  # noqa: UP006, UP035

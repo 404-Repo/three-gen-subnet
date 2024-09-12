@@ -104,6 +104,80 @@ class RenderingPipeline:
         logger.info(" Done.")
         return result_rendered_images
 
+    def render_preview_image(
+        self,
+        data: dict,
+        img_width: int,
+        img_height: int,
+        theta: float = 0.0,
+        phi: float = 0.0,
+        cam_rad: float = 2.5,
+        cam_fov: float = 49.1,
+        cam_znear: float = 0.01,
+        cam_zfar: float = 100,
+        data_ver: int = 1,
+    ) -> torch.Tensor:
+        """
+        Function for rendering a preview image
+
+        Parameters
+        ----------
+        data: dictionary with input unpacked data
+        img_width: the width of the rendering image
+        img_height: the height of the rendering image
+        theta: azimuth angle in degrees that defines camera's position on horizontal plane
+        phi: elevation angle in degrees that defines camera's position on vertical plane
+        cam_rad: the radius of the sphere where camera will be placed & moved along
+        cam_fov: the field of view for the camera
+        cam_znear: the position of the near camera plane along Z-axis
+        cam_zfar: the position of the far camera plane along Z-axis
+        data_ver: version of the input data format: 0 - corresponds to dream gaussian
+                                                    1 - corresponds to new data format (default)
+        Returns
+        -------
+        rendered_preview: a PIL image with rendered preview fro the input model
+        """
+        # setting up the camera
+        camera = OrbitCamera(img_width, img_height, cam_fov, cam_znear, cam_zfar)
+
+        camera_view_proj = torch.empty((1, 4, 4)).to(self._device)
+        camera_intr = torch.empty((1, 3, 3)).to(self._device)
+
+        camera.compute_transform_orbit(phi, theta, cam_rad, is_degree=True)
+        camera_view_proj[0] = camera.world_to_camera_transform
+        camera_intr[0] = camera.intrinsics
+
+        # data conversion (if we use dream gaussian project, tmp)
+        if data_ver <= 1:
+            data_proc = preprocess_dream_gaussian_output(data, camera.camera_position)
+        else:
+            data_proc = data
+
+        # converting input data to tensors on GPU
+        means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        rotations = torch.tensor(data_proc["rotation"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        scales = torch.tensor(data_proc["scale"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        opacity = torch.tensor(data_proc["opacities"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+        rgbs = torch.tensor(data_proc["features_dc"], dtype=torch.float32).contiguous().squeeze().to(self._device)
+
+        # preparing data to send for rendering
+        gaussian_data = [means3D, rotations, scales, opacity, rgbs]
+
+        rendered_image, _, _ = self._render.render(
+            camera_view_proj,
+            camera_intr,
+            (camera.image_width, camera.image_height),
+            camera.z_near,
+            camera.z_far,
+            gaussian_data,
+        )
+
+        # converting tensors to image-like tensors, keep all of them in device memory
+        rendered_preview = (rendered_image[0] * 255).to(torch.uint8)
+
+        logger.info(" Done.")
+        return rendered_preview
+
     @staticmethod
     def render_video_to_images(video_file: str) -> list[Image.Image]:
         """Function for converting video to images

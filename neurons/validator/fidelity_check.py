@@ -2,13 +2,20 @@ import urllib.parse
 
 import aiohttp
 import bittensor as bt
+import pydantic
+from pydantic import BaseModel, Field
 
 
-async def validate(endpoint: str, prompt: str, data: str, data_format: str, data_ver: int) -> float | None:
-    if data_format == "ply":
-        validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
-    else:
-        validate_url = urllib.parse.urljoin(endpoint, "/validate/")
+class ValidationResponse(BaseModel):
+    score: float
+    preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+
+
+async def validate(endpoint: str, prompt: str, data: str, data_format: str, data_ver: int) -> ValidationResponse | None:
+    if data_format != "ply":
+        return ValidationResponse(score=0.0)
+
+    validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -16,12 +23,10 @@ async def validate(endpoint: str, prompt: str, data: str, data_format: str, data
                 validate_url, json={"prompt": prompt, "data": data, "data_ver": data_ver}
             ) as response:
                 if response.status == 200:
-                    results = await response.json()
-
-                    validation_score = float(results["score"])
-                    bt.logging.debug(f"Validation score: {validation_score:.2f} | Prompt: {prompt}")
-
-                    return validation_score
+                    data_dict = await response.json()
+                    results = ValidationResponse(**data_dict)
+                    bt.logging.debug(f"Validation score: {results.score:.2f} | Prompt: {prompt}")
+                    return results
                 else:
                     bt.logging.error(f"Validation failed: [{response.status}] {response.reason}")
         except aiohttp.ClientConnectorError:
@@ -30,6 +35,8 @@ async def validate(endpoint: str, prompt: str, data: str, data_format: str, data
             bt.logging.error(f"The request to the endpoint timed out: {endpoint}")
         except aiohttp.ClientError as e:
             bt.logging.error(f"An unexpected client error occurred: {e} ({endpoint})")
+        except pydantic.ValidationError as e:
+            bt.logging.error(f"Incompatible validation response format: {e} ({endpoint})")
         except Exception as e:
             bt.logging.error(f"An unexpected error occurred: {e} ({endpoint})")
 

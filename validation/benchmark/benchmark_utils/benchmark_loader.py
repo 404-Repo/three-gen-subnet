@@ -48,7 +48,8 @@ class BenchmarkLoader:
         """
         logger.info("Loading prompts.")
         if config_data["prompts_file"] != "":
-            with Path.open(config_data["prompts_file"]) as file:
+            prompts_dataset_path = Path(config_data["prompts_file"])
+            with prompts_dataset_path.open() as file:
                 prompts_in = [line.rstrip() for line in file]
         elif len(config_data["prompts"]) > 0:
             prompts_in = config_data["prompts"]
