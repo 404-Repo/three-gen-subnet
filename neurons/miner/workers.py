@@ -134,7 +134,7 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     )
 
 
-async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:
+async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:  # noqa: ASYNC109
     bt.logging.debug(f"Generating for prompt: {prompt} with timeout {timeout} seconds")
 
     client_timeout = ClientTimeout(total=timeout) if timeout is not None else sentinel

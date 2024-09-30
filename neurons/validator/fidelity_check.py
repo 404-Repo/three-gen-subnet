@@ -3,6 +3,7 @@ import urllib.parse
 import aiohttp
 import bittensor as bt
 import pydantic
+from common.protocol import SubmitResults
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +12,11 @@ class ValidationResponse(BaseModel):
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
-async def validate(endpoint: str, prompt: str, data: str, data_format: str, data_ver: int) -> ValidationResponse | None:
+async def validate(endpoint: str, synapse: SubmitResults) -> ValidationResponse | None:
+    prompt = synapse.task.prompt  # type: ignore[union-attr]
+    data = synapse.results
+    data_format = synapse.data_format
+    data_ver = synapse.data_ver
     if data_format != "ply":
         return ValidationResponse(score=0.0)
 

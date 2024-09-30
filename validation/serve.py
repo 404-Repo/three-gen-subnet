@@ -5,7 +5,6 @@ import io
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from time import time
-from typing import Any
 
 import torch
 import uvicorn

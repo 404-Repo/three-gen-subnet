@@ -4,6 +4,7 @@ import uuid
 from collections import deque
 
 import bittensor as bt
+from common.protocol import SubmitResults
 from pydantic import BaseModel
 
 from validator.api.protocol import MinerStatistics, TaskStatistics
@@ -219,16 +220,18 @@ class TaskRegistry:
             self.clean_task(task_id=task.id)
             self._queue.popleft()
 
-    def complete_task(self, task_id: str, hotkey: str, results: str, data_format: str, score: float) -> None:
+    def complete_task(self, synapse: SubmitResults, score: float) -> None:
         """
         Miner finished the task.
 
         Args:
-        - task_id (str): The unique identifier of the task.
-        - hotkey (str): Hotkey of the miner.
-        - results (str): encoded binary with the results.
-        - score (float): validation score.
+            - synapse (PullTask): pull task associated with the miner.
+            - score (float): validation score.
         """
+        task_id = synapse.task.id  # type: ignore[union-attr]
+        hotkey = synapse.dendrite.hotkey
+        results = synapse.results
+        data_format = synapse.data_format
         task = self._tasks.get(task_id, None)
         if task is None:
             return
