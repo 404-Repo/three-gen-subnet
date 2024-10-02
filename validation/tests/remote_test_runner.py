@@ -25,7 +25,7 @@ def send_post_request(prompt: str, file_path: str, url: str, version: str, gener
         encoded_data = base64.b64encode(file_data).decode("utf-8")
 
         # Create the payload
-        payload = {"prompt": prompt, "data": encoded_data, "data_ver": version, "generate_preview": generate_preview}
+        payload = {"prompt": prompt, "data": encoded_data, "generate_preview": generate_preview}
 
         # Send the POST request
         headers = {"Content-Type": "application/json"}

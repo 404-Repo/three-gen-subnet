@@ -15,18 +15,11 @@ class ValidationResponse(BaseModel):
 async def validate(endpoint: str, synapse: SubmitResults) -> ValidationResponse | None:
     prompt = synapse.task.prompt  # type: ignore[union-attr]
     data = synapse.results
-    data_format = synapse.data_format
-    data_ver = synapse.data_ver
-    if data_format != "ply":
-        return ValidationResponse(score=0.0)
-
     validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(
-                validate_url, json={"prompt": prompt, "data": data, "data_ver": data_ver}
-            ) as response:
+            async with session.post(validate_url, json={"prompt": prompt, "data": data}) as response:
                 if response.status == 200:
                     data_dict = await response.json()
                     results = ValidationResponse(**data_dict)

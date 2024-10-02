@@ -89,7 +89,7 @@ def create_submit_results(uid: int, task: Task) -> SubmitResults:
     keypair = get_mock_keypair(uid)
     default_wallet = bt.MockWallet()  # Validator wallet
     signature = b64encode(keypair.sign(f"{0}{task.prompt}{default_wallet.hotkey.ss58_address}{keypair.ss58_address}"))
-    synapse = SubmitResults(task=task, results="dummy", data_format="ply", submit_time=0, signature=signature)
+    synapse = SubmitResults(task=task, results="dummy", submit_time=0, signature=signature)
 
     synapse.dendrite.hotkey = keypair.ss58_address
     synapse.axon.hotkey = default_wallet.hotkey.ss58_address

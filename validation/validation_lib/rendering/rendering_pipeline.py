@@ -7,7 +7,6 @@ from loguru import logger
 from PIL import Image
 from validation_lib.rendering.gs_camera import OrbitCamera
 from validation_lib.rendering.gs_renderer import GaussianRenderer
-from validation_lib.utils import preprocess_dream_gaussian_output
 
 
 class RenderingPipeline:
@@ -40,7 +39,6 @@ class RenderingPipeline:
         cam_fov: float = 49.1,
         cam_znear: float = 0.01,
         cam_zfar: float = 100,
-        data_ver: int = 1,
     ) -> list[torch.Tensor]:
         """Function for rendering multiple views of the preloaded Gaussian Splatting model
 
@@ -53,8 +51,6 @@ class RenderingPipeline:
         cam_fov: the field of view for the camera
         cam_znear: the position of the near camera plane along Z-axis
         cam_zfar: the position of the far camera plane along Z-axis
-        data_ver: version of the input data format: 0 - corresponds to dream gaussian
-                                                    1 - corresponds to new data format (default)
 
         Returns
         -------
@@ -74,11 +70,7 @@ class RenderingPipeline:
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
 
-        # data conversion (if we use dream gaussian project, tmp)
-        if data_ver <= 1:
-            data_proc = preprocess_dream_gaussian_output(data, camera.camera_position)
-        else:
-            data_proc = data
+        data_proc = data
 
         # converting input data to tensors on GPU
         means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
@@ -115,7 +107,6 @@ class RenderingPipeline:
         cam_fov: float = 49.1,
         cam_znear: float = 0.01,
         cam_zfar: float = 100,
-        data_ver: int = 1,
     ) -> torch.Tensor:
         """
         Function for rendering a preview image
@@ -131,8 +122,6 @@ class RenderingPipeline:
         cam_fov: the field of view for the camera
         cam_znear: the position of the near camera plane along Z-axis
         cam_zfar: the position of the far camera plane along Z-axis
-        data_ver: version of the input data format: 0 - corresponds to dream gaussian
-                                                    1 - corresponds to new data format (default)
         Returns
         -------
         rendered_preview: a PIL image with rendered preview fro the input model
@@ -147,11 +136,7 @@ class RenderingPipeline:
         camera_view_proj[0] = camera.world_to_camera_transform
         camera_intr[0] = camera.intrinsics
 
-        # data conversion (if we use dream gaussian project, tmp)
-        if data_ver <= 1:
-            data_proc = preprocess_dream_gaussian_output(data, camera.camera_position)
-        else:
-            data_proc = data
+        data_proc = data
 
         # converting input data to tensors on GPU
         means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)

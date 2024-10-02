@@ -26,11 +26,6 @@ views: 16
 # radius of the camera orbit
 cam_rad: 2.5
 
-# data version
-# 0-1 - corresponds to dream gaussian
-# 2 - corresponds to new data format (default)
-data_ver: 2
-
 # enable/disable generation of the raw template
 generate_raw_template: False
 

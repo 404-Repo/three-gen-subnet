@@ -14,7 +14,6 @@ from loguru import logger
 from PIL import Image
 from pydantic import BaseModel, Field
 from validation_lib.io.base import BaseLoader
-from validation_lib.io.hdf5 import HDF5Loader
 from validation_lib.io.ply import PlyLoader
 from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
@@ -39,9 +38,6 @@ args, _ = get_args()
 class RequestData(BaseModel):
     prompt: str = Field(max_length=1024, description="Prompt used to generate assets")
     data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
-    data_ver: int = Field(default=0, description="Deprecated. Data version")
-    # 0 - Dream Gaussian native format (default value)
-    # 1+ - Preparation for PLY support
     generate_preview: bool = Field(default=False, description="Optional. Pass to render and return a preview")
     preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
 
@@ -86,7 +82,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5, data_ver=request.data_ver)
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
@@ -100,9 +96,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     if request.generate_preview and score > request.preview_score_threshold:
         buffered = io.BytesIO()
-        rendered_image = renderer.render_preview_image(
-            data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5, data_ver=request.data_ver
-        )
+        rendered_image = renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
         preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
         preview_image.save(buffered, format="PNG")
         encoded_preview = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -125,29 +119,6 @@ def _cleanup() -> None:
     logger.info(f"Cache purge took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
 
 
-@app.post("/validate/", response_model=ResponseData)
-async def validate(request: RequestData) -> ResponseData:
-    """
-    Validates the input prompt and HDF5 data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
-
-    """
-    try:
-        response = _validate(request, HDF5Loader())
-    except Exception as e:
-        logger.exception(e)
-        response = ResponseData(score=0.0)
-    finally:
-        _cleanup()
-
-    return response
-
-
 @app.post("/validate_ply/", response_model=ResponseData)
 async def validate_ply(request: RequestData) -> ResponseData:
     """
@@ -160,8 +131,6 @@ async def validate_ply(request: RequestData) -> ResponseData:
     - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
 
     """
-    request.data_ver = 256
-
     try:
         response = _validate(request, PlyLoader())
     except Exception as e:

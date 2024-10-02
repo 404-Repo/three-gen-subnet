@@ -8,7 +8,6 @@ import tqdm
 from loguru import logger
 from PIL import Image
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from validation_lib.io.hdf5 import HDF5Loader
 from validation_lib.io.ply import PlyLoader
 from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
@@ -20,7 +19,6 @@ class BenchmarkRunner:
         self._gs_renderer = RenderingPipeline(views)
         self._validator = ValidationPipeline(verbose=verbose, debug=debug)
         self._validator.preload_model()
-        self._hdf5_loader = HDF5Loader()
         self._ply_loader = PlyLoader()
 
         self._high_quality = [0.8, 1.0]
@@ -34,7 +32,6 @@ class BenchmarkRunner:
         img_height: int,
         prompt: str,
         cam_rad: float,
-        data_ver: int,
         generate_preview: bool = False,
     ) -> tuple[list[torch.Tensor], float, torch.Tensor | None, float]:
         """Function for validating the input data
@@ -46,8 +43,6 @@ class BenchmarkRunner:
         img_height: the height of the rendering images
         prompt : an input prompt
         cam_rad: the radius of the camera orbit
-        data_ver: version of the input data format: 0 - corresponds to dream gaussian
-                                                    1 - corresponds to new data format (default)
         generate_preview: enable/disable saving of the preview
         Returns
         -------
@@ -58,9 +53,7 @@ class BenchmarkRunner:
         logger.info(f" Input prompt: {prompt}")
 
         t1 = time()
-        images = self._gs_renderer.render_gaussian_splatting_views(
-            data_dict, img_width, img_height, cam_rad, data_ver=data_ver
-        )
+        images = self._gs_renderer.render_gaussian_splatting_views(data_dict, img_width, img_height, cam_rad)
         t2 = time()
 
         score = self._validator.validate(images, prompt)
@@ -69,9 +62,7 @@ class BenchmarkRunner:
         dt = t3 - t1
         preview_image = None
         if generate_preview:
-            preview_image = self._gs_renderer.render_preview_image(
-                data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5, data_ver=data_ver
-            )
+            preview_image = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
@@ -118,9 +109,7 @@ class BenchmarkRunner:
             file_path = data_path.parent
             logger.info(f" File Path: {file_name}")
 
-            if file_ext == ".h5":
-                data_dict = self._hdf5_loader.from_file(file_name, file_path.as_posix())
-            elif file_ext == ".ply":
+            if file_ext == ".ply":
                 data_dict = self._ply_loader.from_file(file_name, file_path.as_posix())
             else:
                 continue
@@ -142,7 +131,6 @@ class BenchmarkRunner:
                 int(config_data["img_height"]),
                 prompt,
                 config_data["cam_rad"],
-                config_data["data_ver"],
                 return_previews,
             )
 

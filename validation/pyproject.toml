@@ -7,7 +7,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-h5py = "==3.11.0"
 numpy = "==1.26.4"
 torch = "==2.4.0"
 transformers = "==4.43.2"

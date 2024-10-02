@@ -9,26 +9,26 @@ sys.path.insert(0, parentdir)
 sys.path.insert(0, parentdir + "/validation")
 
 import pytest
-from validation_lib.io.hdf5 import HDF5Loader
+from validation_lib.io.ply import PlyLoader
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
 @pytest.fixture
-def h5data():
+def ply_data():
     test_data_folder = os.path.join(currentdir, "resources")
 
-    loader = HDF5Loader()
-    data_dict = loader.from_file("monkey_pcl", test_data_folder)
+    loader = PlyLoader()
+    data_dict = loader.from_file("hamburger", test_data_folder)
 
     return data_dict
 
 
-def test_validator(h5data):
-    prompt = "A yellow monkey"
-    data = h5data
+def test_validator(ply_data):
+    prompt = "A hamburger"
+    data = ply_data
     render = RenderingPipeline(16, "gs")
-    images = render.render_gaussian_splatting_views(data, 512, 512, 3.0, data_ver=2)
+    images = render.render_gaussian_splatting_views(data, 512, 512, 2.7)
 
     validator = ValidationPipeline()
     validator.preload_model()
