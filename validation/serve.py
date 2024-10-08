@@ -44,6 +44,9 @@ class RequestData(BaseModel):
 
 class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
+    clip: float = Field(default=0.0, description="Metaclip similarity score")
+    ssim: float = Field(default=0.0, description="Structure similarity score")
+    lpips: float = Field(default=0.0, description="Perceptive similarity score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
@@ -88,7 +91,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    score, _, _, _ = app.state.validator.validate(images, request.prompt)
+    score, clip, ssim, lpips = app.state.validator.validate(images, request.prompt)
     logger.info(f" Score: {score}. Prompt: {request.prompt}")
 
     t4 = time()
@@ -105,7 +108,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     app.state.metrics.update(score)
 
-    return ResponseData(score=score, preview=encoded_preview)
+    return ResponseData(score=score, clip=clip, ssim=ssim, lpips=lpips, preview=encoded_preview)
 
 
 def _cleanup() -> None:
