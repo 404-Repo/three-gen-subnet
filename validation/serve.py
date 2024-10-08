@@ -82,13 +82,13 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 3.5)
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.8)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    score = app.state.validator.validate(images, request.prompt)
+    score, _, _, _ = app.state.validator.validate(images, request.prompt)
     logger.info(f" Score: {score}. Prompt: {request.prompt}")
 
     t4 = time()

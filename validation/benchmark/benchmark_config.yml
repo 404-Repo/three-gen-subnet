@@ -27,7 +27,7 @@ views: 16
 cam_rad: 2.5
 
 # enable/disable generation of the raw template
-generate_raw_template: False
+generate_raw_template: True
 
 # enable/disable evaluation of the validation results on benchmark data;
 evaluate_validation: False
@@ -38,8 +38,5 @@ save_images: False
 # flag that allows to save rendered preview images per input GS for debugging purposes
 save_previews: False
 
-# enables / disables extra output in the terminal
-verbose_output: False
-
 # enables / disables extra debugging output in the terminal
-debug_output: False
+debug_output: True

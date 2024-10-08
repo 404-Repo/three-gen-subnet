@@ -9,7 +9,6 @@ def main() -> None:
     # loading config file
     config_data = benchmark_loader.load_config()
     template_file = config_data["template_path"]
-    verbose_output = config_data["verbose_output"]
     debug_output = config_data["debug_output"]
     save_images = config_data["save_images"]
     save_previews = config_data["save_previews"]
@@ -31,7 +30,7 @@ def main() -> None:
     prompts = benchmark_loader.load_prompts(config_data)
     logger.info(f" Prompts used for generating files: {prompts}")
 
-    benchmark_runner = BenchmarkRunner(config_data["views"], verbose=verbose_output, debug=debug_output)
+    benchmark_runner = BenchmarkRunner(config_data["views"], debug=debug_output)
     logger.info(f" Validating input data: {len(files)} files.")
     images, preview_images, scores, _, file_names = benchmark_runner.run_validation_benchmark(
         config_data, prompts, files, save_images, save_previews

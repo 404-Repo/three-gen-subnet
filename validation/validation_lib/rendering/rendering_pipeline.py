@@ -1,9 +1,10 @@
+from pathlib import Path
 from typing import Any
 
+import imageio.v3 as iio
 import numpy as np
 import skvideo.io as video
 import torch
-from loguru import logger
 from PIL import Image
 from validation_lib.rendering.gs_camera import OrbitCamera
 from validation_lib.rendering.gs_renderer import GaussianRenderer
@@ -28,7 +29,7 @@ class RenderingPipeline:
         else:
             raise ValueError("Only Gaussian Splatting (gs) rendering is currently supported.")
 
-        self._thetas, self._phis = self.get_cameras_distribution2(views)
+        self._thetas, self._phis = self.get_cameras_distribution3(views)
 
     def render_gaussian_splatting_views(
         self,
@@ -65,7 +66,7 @@ class RenderingPipeline:
         camera_intrs = torch.empty((self._views, 3, 3)).to(self._device)
 
         for theta, phi, j in zip(self._thetas, self._phis, range(self._views), strict=False):
-            dtheta = np.random.uniform(-5, 5)
+            dtheta = np.random.uniform(-3, 3)
             camera.compute_transform_orbit(phi, theta + dtheta, cam_rad, is_degree=True)
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
@@ -93,7 +94,6 @@ class RenderingPipeline:
         # converting tensors to image-like tensors, keep all of them in device memory
         result_rendered_images = [(img * 255).to(torch.uint8) for img in rendered_images]
 
-        logger.info(" Done.")
         return result_rendered_images
 
     def render_preview_image(
@@ -159,8 +159,6 @@ class RenderingPipeline:
 
         # converting tensors to image-like tensors, keep all of them in device memory
         rendered_preview = (rendered_image[0] * 255).to(torch.uint8)
-
-        logger.info(" Done.")
         return rendered_preview
 
     @staticmethod
@@ -310,3 +308,22 @@ class RenderingPipeline:
         thetas = [np.rad2deg(theta) % 360 for theta in thetas_prep]
 
         return np.array(thetas), np.array(phis)
+
+    @staticmethod
+    def create_gif(images: list[torch.Tensor], gif_name: str, file_path: Path, duration: float = 1.5) -> None:
+        """
+        Function for generating gif from rendered images
+
+        Parameters
+        ----------
+        images: a list with images stored as torch. tensor
+        gif_name: the name of the gif file that will be saved
+        file_path: path to the folder where the gif will be saved
+        duration: the duration of the gif in seconds
+
+        """
+        gif_name = gif_name + ".gif"
+        gif_path = file_path / gif_name
+
+        images_pil = [img.detach().cpu().numpy() for img in images]
+        iio.imwrite(gif_path.as_posix(), images_pil, duration=duration, loop=0)

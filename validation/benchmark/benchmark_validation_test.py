@@ -17,7 +17,6 @@ def main() -> None:
 
     # save images enable/disable
     save_images = config_data["save_images"]
-    verbose_output = config_data["verbose_output"]
     debug_output = config_data["debug_output"]
 
     if not (config_data["img_width"] and config_data["img_width"] > 0):
@@ -35,7 +34,7 @@ def main() -> None:
     prompts = benchmark_loader.load_prompts(config_data)
     logger.info(f" Prompts used for generating files: {prompts}")
 
-    benchmark_runner = BenchmarkRunner(config_data["views"], verbose=verbose_output, debug=debug_output)
+    benchmark_runner = BenchmarkRunner(config_data["views"], debug=debug_output)
 
     file_names_list = []
     scores_list = []

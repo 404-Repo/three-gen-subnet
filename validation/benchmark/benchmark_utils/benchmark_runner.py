@@ -15,14 +15,14 @@ from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
 class BenchmarkRunner:
-    def __init__(self, views: int, verbose: bool = True, debug: bool = True):
+    def __init__(self, views: int, debug: bool = True):
         self._gs_renderer = RenderingPipeline(views)
-        self._validator = ValidationPipeline(verbose=verbose, debug=debug)
+        self._validator = ValidationPipeline(debug=debug)
         self._validator.preload_model()
         self._ply_loader = PlyLoader()
 
-        self._high_quality = [0.8, 1.0]
-        self._medium_quality = [0.6, 0.7999]
+        self._high_quality = [0.78, 1.0]
+        self._medium_quality = [0.6, 0.7799]
         self._low_quality = [0.0, 0.5999]
 
     def validate(
@@ -56,7 +56,7 @@ class BenchmarkRunner:
         images = self._gs_renderer.render_gaussian_splatting_views(data_dict, img_width, img_height, cam_rad)
         t2 = time()
 
-        score = self._validator.validate(images, prompt)
+        score, _, _, _ = self._validator.validate(images, prompt)
         t3 = time()
 
         dt = t3 - t1
