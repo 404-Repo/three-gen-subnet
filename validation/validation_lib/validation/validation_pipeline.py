@@ -82,9 +82,9 @@ class ValidationPipeline:
         lpips_score, _ = self._metrics_utils.compute_lpips_score(images)
 
         final_score = (
-            (self._metrics_utils.sigmoid_function(clip_score, 10, 0.6))
-            * (self._metrics_utils.sigmoid_function(ssim_score, 80, 0.835))
-            * self._metrics_utils.sigmoid_function((1 - lpips_score), 40, 0.835)
+            (self._metrics_utils.sigmoid_function(clip_score, 12, 0.6))
+            * (self._metrics_utils.sigmoid_function(ssim_score, 45, 0.82))
+            * self._metrics_utils.sigmoid_function((1 - lpips_score), 28, 0.81)
         )
 
         if self._debug:
