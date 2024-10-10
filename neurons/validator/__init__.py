@@ -294,7 +294,6 @@ class Validator:
         fidelity_score = self._get_fidelity_score(validation_res.score)
         if fidelity_score == 0:
             return self._handle_low_fidelity(synapse, miner, uid)
-        validation_res.score = fidelity_score
 
         res = await self._process_valid_submission(synapse, miner, fidelity_score, validation_res.score)
 
