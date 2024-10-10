@@ -23,60 +23,6 @@ you will need to provide:
 - to generate template file set "generate_raw_template: True" and "evaluate_validation: False";
 - to evaluate validator set "generate_raw_template: False" and "evaluate_validation: True";
 
-```yaml
-# benchmark_config.yml file
-
-# path to the folder with test .ply or .h5 data
-data_folder: ""
-
-# path to the file with prompts (txt file)
-prompts_file: ""
-
-# path where to store raw_template or from where to load the prepared reference template
-template_path: ""
-
-# array with prompt / prompts
-# Examples:
-#prompts: ["yellow monkey with legs"] - one prompt for all input files
-#prompts: ["a peace of jewelry", "a ghost", "a turtle", "goblin with a weapon"] - one prompt per file
-prompts: []
-
-# flag that allows to save rendering images per input GS for debugging purposes
-save_images: False
-
-# parameters that defines image size during the rendering
-img_width: 512
-img_height: 512
-
-# amount of iterations to re-compute the validation
-iterations: 30
-
-# amount of rendering views:
-views: 16
-
-# radius of the camera orbit
-cam_rad: 2.5
-
-# data version
-# 0-1 - corresponds to dream gaussian
-# 2 - corresponds to new data format (default)
-data_ver: 2
-
-# enable/disable generation of the raw template
-generate_raw_template: False
-
-# enable/disable evaluation of the validation results on benchmark data;
-evaluate_validation: True
-
-# flag that allows to save rendering images per input GS for debugging purposes
-save_images: False
-
-# enables / disables extra output in the terminal
-verbose_output: False
-
-# enables / disables extra debugging output in the terminal
-debug_output: False
-```
 ### Running tools:
 In benchmark tools currently we have two tools:
 - benchmark_quality_test_tool.py - this tool generates raw template file and can be used for evaluating the validator quality
@@ -85,8 +31,9 @@ if reference template was supplied.
 the amount of repetitive iterations for testing in the benchmark_config.yml, e.g "iterations: 30". At the end of the evaluation 
 a .csv file with statistics will be generated.
 
-To run one of the tools you just need to do the following
+To run one of the tools you just need to do the following from the "benchmark" folder:
 ```
+export PYTHONPATH="${PYTHONPATH}:$(git rev-parse --show-toplevel)/validation"
 python benchmark_quality_test_tool.py
 python benchmark_validation_test_tool.py
 ```

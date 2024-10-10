@@ -48,7 +48,8 @@ class BenchmarkLoader:
         """
         logger.info("Loading prompts.")
         if config_data["prompts_file"] != "":
-            with Path.open(config_data["prompts_file"]) as file:
+            prompts_dataset_path = Path(config_data["prompts_file"])
+            with prompts_dataset_path.open() as file:
                 prompts_in = [line.rstrip() for line in file]
         elif len(config_data["prompts"]) > 0:
             prompts_in = config_data["prompts"]
@@ -78,15 +79,15 @@ class BenchmarkLoader:
         ply_files = list(folder.rglob("*.ply"))
         files = h5_files + ply_files
 
-        def sort_key(name: Path) -> int | float:
-            # Use regular expression to find the numeric part
-            match = re.search(r"(\d+)", str(name))
-            # Convert the numeric part to an integer for sorting
-            return int(match.group(1)) if match else float("inf")
+        test_match = re.search(r"(\d+)", str(files[0].stem))
+        digit_checker = int(test_match.group(1)) if test_match else False
 
-        files = sorted(files, key=sort_key)
+        if not digit_checker:
+            sorted_files = sorted(files, key=lambda f: f.name)
+        else:
+            sorted_files = sorted(files, key=lambda f: int(re.findall(r"\d+", f.name)[0]))
 
-        if len(files) == 0:
+        if len(sorted_files) == 0:
             raise RuntimeWarning(f"No files were found in <{folder_path}>. Nothing to process!")
 
-        return files
+        return sorted_files

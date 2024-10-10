@@ -43,8 +43,8 @@ class SubmitResults(bt.Synapse):
     task: Task | None  # The original task miner is submitting results for.
     results: str  # Generated assets, encoded as a string.
 
-    data_format: str = "hdf5"  # Results data format. Supported formats: "hdf5" and "ply".
-    data_ver: int = 0  # Version of the hdf5 data format. 0 - default (dream gaussian).
+    data_format: str = "ply"  # Reserved for future use.
+    data_ver: int = 0  # Reserved for future use.
 
     submit_time: int  # time.time_ns()
     signature: str  # Miner signature: b64encode(sign(f'{submit_time}{prompt}{validator.hotkey}{miner.hotkey}'))

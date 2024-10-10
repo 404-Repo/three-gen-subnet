@@ -9,7 +9,7 @@ from time import time
 
 from omegaconf import OmegaConf
 
-from DreamGaussianLib import GaussianProcessor, ModelsPreLoader, HDF5Loader
+from DreamGaussianLib import GaussianProcessor, ModelsPreLoader
 from utils.video_utils import VideoUtils
 
 
@@ -36,50 +36,23 @@ def get_models(config: OmegaConf = Depends(get_config)):
 @app.post("/generate/")
 async def generate(
     prompt: str = Form(),
-    config: OmegaConf = Depends(get_config),
-    models: list = Depends(get_models),
-):
-    buffer = await _generate(models, config, prompt)
-    buffer = base64.b64encode(buffer.getbuffer()).decode("utf-8")
-    return Response(content=buffer, media_type="application/octet-stream")
-
-
-async def _generate(models: list, opt: OmegaConf, prompt: str) -> BytesIO:
-    start_time = time()
-    gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
-    processed_data = gaussian_processor.train(models, opt.iters)
-    hdf5_loader = HDF5Loader.HDF5Loader()
-    buffer = hdf5_loader.pack_point_cloud_to_io_buffer(*processed_data)
-    print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
-    return buffer
-
-
-@app.post("/generate_raw/")
-async def generate_raw(
-    prompt: str = Form(),
-    opt: OmegaConf = Depends(get_config),
-    models: list = Depends(get_models),
-):
-    buffer = await _generate(models, opt, prompt)
-    return Response(content=buffer.getvalue(), media_type="application/octet-stream")
-
-
-@app.post("/generate_model/")
-async def generate_model(
-    prompt: str = Form(),
     opt: OmegaConf = Depends(get_config),
     models: list = Depends(get_models),
 ) -> Response:
-    start_time = time()
+    t0 = time()
     gaussian_processor = GaussianProcessor.GaussianProcessor(opt, prompt)
     gaussian_processor.train(models, opt.iters)
-    print(f"[INFO] It took: {(time() - start_time) / 60.0} min")
+    t1 = time()
+    print(f"[INFO] Generation took: {(t1 - t0) / 60.0} min")
 
     buffer = BytesIO()
     gaussian_processor.get_gs_model().save_ply(buffer)
     buffer.seek(0)
+    buffer = base64.b64encode(buffer.getbuffer()).decode("utf-8")
+    t2 = time()
+    print(f"[INFO] Saving and encoding took: {(t2 - t1) / 60.0} min")
 
-    return StreamingResponse(buffer, media_type="application/octet-stream")
+    return Response(buffer, media_type="application/octet-stream")
 
 
 @app.post("/generate_video/")

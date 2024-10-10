@@ -2,21 +2,24 @@
 name = "neurons"
 version = "0.1.0"
 description = ""
-authors = ["Maxim Bladyko <bladyko@gmail.com>"]
+authors = ["Maxim Bladyko <max@404.xyz>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-bittensor = "6.9.4"
+bittensor = { version = "6.9.4" }
 
 [tool.poetry.group.dev.dependencies]
 poetry = { version = "1.8.3" }
-poethepoet = { version = "0.27.0", extras = ["poetry_plugin"] }
-black = "==23.7.0"
-ruff = "==0.5.1"
-bandit = "==1.7.9"
-mypy = "==1.9.0"
-types-requests = "2.31.0"
+poethepoet = { version = "0.29.0", extras = ["poetry_plugin"] }
+black = { version = "23.7.0" }
+ruff = { version = "0.6.7" }
+bandit = { version = "1.7.10" }
+mypy = { version = "1.11.2" }
+types-requests = { version = "2.31.0" }
+pytest-asyncio = { version = "0.24.0" }
+pytest-httpserver = { version = "1.1.0" }
+time-machine = { version = "2.15.0" }
 
 [build-system]
 requires = ["poetry-core"]
@@ -45,6 +48,10 @@ namespace-packages = ["sources"]
 fix = true
 output-format = "full"
 include = ["*.py"]
+exclude = [
+    ".*",
+    "tests/"
+]
 
 [tool.ruff.lint]
 select = [
@@ -58,15 +65,9 @@ select = [
     "ASYNC", # flake8-async
     "PTH", # flake8-use-pathlib
 ]
-# Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []
 
-# Exclude directories
-exclude = [
-    ".*",
-    "tests"
-]
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = []
 
@@ -106,6 +107,13 @@ module = [
 ]
 ignore_errors = true
 
+[tool.pytest.ini_options]
+cache_dir = ".reports/pytest_cache"
+minversion = "6.0"
+addopts = "-ra -v --asyncio-mode=auto"
+testpaths = ["tests",]
+pythonpath = ["."]
+
 [tool.poe]
 poetry_command = ""
 
@@ -117,4 +125,5 @@ sequence = [
     { cmd = "black ." },
     { cmd = "bandit . -rq -c pyproject.toml" },
     { cmd = "mypy --junit-xml .reports/mypy-junit-report.xml ." },
+    { cmd = "pytest" },
 ]

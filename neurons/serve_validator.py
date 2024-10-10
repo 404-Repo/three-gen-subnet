@@ -9,8 +9,8 @@ async def main() -> None:
     config = read_config()
     bt.logging.info(f"Starting with config: {config}")
 
-    miner = Validator(config)
-    await miner.run()
+    neuron = Validator(config)
+    await neuron.run()
 
 
 if __name__ == "__main__":

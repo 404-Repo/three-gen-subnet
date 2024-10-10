@@ -8,6 +8,7 @@ import aiohttp
 import bittensor as bt
 from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
+from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import PullTask, SubmitResults
 from common.version import NEURONS_VERSION, compare_versions
 
@@ -106,7 +107,10 @@ async def _submit_results(
 ) -> SubmitResults:
     submit_time = time.time_ns()
     prompt = pull.task.prompt if pull.task is not None else None
-    message = f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
+    message = (
+        f"{MINER_LICENSE_CONSENT_DECLARATION}"
+        f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
+    )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
     synapse = SubmitResults(task=pull.task, results=results, submit_time=submit_time, signature=signature)
     response = typing.cast(
@@ -134,7 +138,7 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     )
 
 
-async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:
+async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:  # noqa: ASYNC109
     bt.logging.debug(f"Generating for prompt: {prompt} with timeout {timeout} seconds")
 
     client_timeout = ClientTimeout(total=timeout) if timeout is not None else sentinel

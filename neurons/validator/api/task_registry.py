@@ -4,6 +4,7 @@ import uuid
 from collections import deque
 
 import bittensor as bt
+from common.protocol import SubmitResults
 from pydantic import BaseModel
 
 from validator.api.protocol import MinerStatistics, TaskStatistics
@@ -13,7 +14,6 @@ class AssignedMiner(BaseModel):
     hotkey: str  # Neuron hotkey
     assign_time: int  # Assign time.
     results: str | None = None  # Submitted results.
-    data_format: str = "ply"  # Results format.
     score: float = 0  # Validation score.
     submit_time: int = 0  # Submit time.
     finished: bool = False  # Status whether assigned miner is finished with the task.
@@ -23,7 +23,7 @@ def miner_stats(miner: AssignedMiner) -> MinerStatistics:
     return MinerStatistics(
         hotkey=miner.hotkey,
         assign_time=miner.assign_time,
-        data_format=miner.data_format,
+        data_format="ply",
         score=miner.score,
         submit_time=miner.submit_time,
     )
@@ -50,9 +50,6 @@ class OrganicTask:
         best: AssignedMiner | None = None
         for miner in self.assigned.values():
             if miner.results is None:
-                continue
-            # TODO: remove
-            if miner.data_format != "ply":
                 continue
             if best is None:
                 best = miner
@@ -219,16 +216,17 @@ class TaskRegistry:
             self.clean_task(task_id=task.id)
             self._queue.popleft()
 
-    def complete_task(self, task_id: str, hotkey: str, results: str, data_format: str, score: float) -> None:
+    def complete_task(self, synapse: SubmitResults, score: float) -> None:
         """
         Miner finished the task.
 
         Args:
-        - task_id (str): The unique identifier of the task.
-        - hotkey (str): Hotkey of the miner.
-        - results (str): encoded binary with the results.
-        - score (float): validation score.
+            - synapse (PullTask): pull task associated with the miner.
+            - score (float): validation score.
         """
+        task_id = synapse.task.id  # type: ignore[union-attr]
+        hotkey = synapse.dendrite.hotkey
+        results = synapse.results
         task = self._tasks.get(task_id, None)
         if task is None:
             return
@@ -240,7 +238,6 @@ class TaskRegistry:
         bt.logging.trace(f"[{hotkey}] completed the task ({task_id}): {task.prompt}. Score: {score:.2f}")
 
         miner.results = results
-        miner.data_format = data_format
         miner.score = score
         miner.submit_time = int(time.time())
         miner.finished = True

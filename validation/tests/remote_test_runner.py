@@ -12,9 +12,10 @@ DEFAULT_PROMPT = "A hamburger"
 DEFAULT_FILEPATH = os.path.join(CURRENT_DIR, "resources/hamburger.ply")
 DEFAULT_URL = "http://localhost:10006/validate_ply/"
 DEFAULT_VERSION = 0
+GENERATE_PREVIEW = True
 
 
-def send_post_request(prompt, file_path, url, version):
+def send_post_request(prompt: str, file_path: str, url: str, version: str, generate_preview: bool):
     try:
         # Read the binary file content
         with open(file_path, "rb") as file:
@@ -24,7 +25,7 @@ def send_post_request(prompt, file_path, url, version):
         encoded_data = base64.b64encode(file_data).decode("utf-8")
 
         # Create the payload
-        payload = {"prompt": prompt, "data": encoded_data, "data_ver": version}
+        payload = {"prompt": prompt, "data": encoded_data, "generate_preview": generate_preview}
 
         # Send the POST request
         headers = {"Content-Type": "application/json"}
@@ -43,10 +44,11 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", type=str, default=DEFAULT_PROMPT, help="The prompt to send the POST request to.")
     parser.add_argument("--file_path", type=str, default=DEFAULT_FILEPATH, help="The path to the file to be read.")
     parser.add_argument("--url", type=str, default=DEFAULT_URL, help="The URL to send the POST request to.")
+    parser.add_argument("--preview", type=bool, default=GENERATE_PREVIEW, help="enable/disable preview generation.")
     parser.add_argument(
         "--version", type=int, default=DEFAULT_VERSION, help="The data version to send the POST request to."
     )
 
     args = parser.parse_args()
 
-    send_post_request(args.prompt, args.file_path, args.url, args.version)
+    send_post_request(args.prompt, args.file_path, args.url, args.version, args.preview)

@@ -26,22 +26,17 @@ views: 16
 # radius of the camera orbit
 cam_rad: 2.5
 
-# data version
-# 0-1 - corresponds to dream gaussian
-# 2 - corresponds to new data format (default)
-data_ver: 2
-
 # enable/disable generation of the raw template
-generate_raw_template: False
+generate_raw_template: True
 
 # enable/disable evaluation of the validation results on benchmark data;
-evaluate_validation: True
+evaluate_validation: False
 
 # flag that allows to save rendering images per input GS for debugging purposes
 save_images: False
 
-# enables / disables extra output in the terminal
-verbose_output: False
+# flag that allows to save rendered preview images per input GS for debugging purposes
+save_previews: False
 
 # enables / disables extra debugging output in the terminal
-debug_output: False
+debug_output: True

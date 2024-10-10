@@ -29,7 +29,7 @@ async def main() -> None:
     axon.serve(netuid=config.netuid, subtensor=subtensor)
     axon.start()
 
-    while True:
+    while True:  # noqa:ASYNC110
         await asyncio.sleep(30.0)
 
 

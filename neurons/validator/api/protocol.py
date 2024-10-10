@@ -36,7 +36,7 @@ class TaskResults(BaseModel):
     """
     Attributes:
         score (float): The validation score of the generated assets.
-        assets (str): The base64 encoded 3D assets in HDF5 format.
+        assets (str): The base64 encoded 3D assets in ply format.
     """
 
     hotkey: str
@@ -49,7 +49,7 @@ class MinerStatistics(BaseModel):
     Attributes:
         hotkey (str): Miner hotkey
         assign_time (int): Task assign time.
-        data_format (str): Results format.
+        data_format (str): Reserved for future use.
         score (float): Validation score.
         submit_time (int): Submit time.
     """
