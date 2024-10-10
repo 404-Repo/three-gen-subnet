@@ -9,6 +9,7 @@ import torch
 from auto_updater import AutoUpdater
 from bittensor.utils import weight_utils
 from common import create_neuron_dir, owner
+from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 from pydantic import BaseModel
@@ -382,8 +383,15 @@ class Validator:
             return False
 
         keypair = Keypair(ss58_address=synapse.dendrite.hotkey)
-        message = f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
-        return bool(keypair.verify(message, base64.b64decode(synapse.signature.encode(encoding="utf-8"))))
+        message = (
+            f"{MINER_LICENSE_CONSENT_DECLARATION}"
+            f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
+        )
+        legacy_message = f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
+        encoded_signature = base64.b64decode(synapse.signature.encode(encoding="utf-8"))
+        return bool(keypair.verify(message, encoded_signature)) or bool(
+            keypair.verify(legacy_message, encoded_signature)
+        )
 
     @staticmethod
     def _get_fidelity_score(validation_score: float) -> float:
