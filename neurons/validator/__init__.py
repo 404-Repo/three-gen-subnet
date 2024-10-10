@@ -398,7 +398,7 @@ class Validator:
         # To avoid any randomness or luck in the validation, threshold approach is used.
         if validation_score >= 0.8:
             return 1.0
-        if validation_score >= 0.6:
+        if validation_score >= 0.68:
             return 0.75
         return 0.0
 
