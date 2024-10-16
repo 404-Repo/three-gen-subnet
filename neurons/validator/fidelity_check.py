@@ -10,16 +10,29 @@ from pydantic import BaseModel, Field
 class ValidationResponse(BaseModel):
     score: float
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+    clip: float = Field(default=0.0, description="Metaclip similarity score")
+    ssim: float = Field(default=0.0, description="Structure similarity score")
+    lpips: float = Field(default=0.0, description="Perceptive similarity score")
 
 
-async def validate(endpoint: str, synapse: SubmitResults) -> ValidationResponse | None:
+async def validate(
+    endpoint: str, synapse: SubmitResults, storage_enabled: bool, validation_score_threshold: float
+) -> ValidationResponse | None:
     prompt = synapse.task.prompt  # type: ignore[union-attr]
     data = synapse.results
     validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
 
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(validate_url, json={"prompt": prompt, "data": data}) as response:
+            async with session.post(
+                validate_url,
+                json={
+                    "prompt": prompt,
+                    "data": data,
+                    "generate_preview": storage_enabled,
+                    "preview_score_threshold": validation_score_threshold - 0.1,
+                },
+            ) as response:
                 if response.status == 200:
                     data_dict = await response.json()
                     results = ValidationResponse(**data_dict)

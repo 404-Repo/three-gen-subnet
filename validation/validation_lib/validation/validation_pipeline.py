@@ -18,6 +18,7 @@ class ValidationPipeline:
         verbose: enable/disable debugging
         """
 
+        # self._clip_validator = ClipScoreValidator(preproc_img_size=256)
         self._clip_validator = ClipScoreValidator()
         self._debug = debug
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -61,35 +62,45 @@ class ValidationPipeline:
         ssim: structure similarity index score
         lpips: perceptive similarity score
         """
-
+        # clip score
         dists = self._clip_validator.validate(images, prompt)
         dists_sorted, _ = torch.sort(dists)
 
         # normalizing clip score to range [0, 1]
-        dists_sorted = dists_sorted.reshape(-1, 1) / 0.45
+        dists_sorted = dists_sorted.reshape(-1, 1) / 0.35
 
         # searching for the anomalies
-        # Set contamination to expected proportion of outliers
         self._clf.fit(dists_sorted)
         preds = self._clf.labels_
-
-        # removing found outliers from the input dists array
         outliers = np.where(preds == 1)[0]
         filtered_dists = np.delete(dists_sorted.cpu().detach().numpy(), outliers)
-
         clip_score = np.exp(np.log(filtered_dists).mean())
-        ssim_score, _ = self._metrics_utils.compute_ssim_across_views(images)
-        lpips_score, _ = self._metrics_utils.compute_lpips_score(images)
 
+        # ssim score
+        _, ssim_scores = self._metrics_utils.compute_ssim_across_views(images)
+        self._clf.fit(torch.tensor(ssim_scores).reshape(-1, 1))
+        preds = self._clf.labels_
+        outliers = np.where(preds == 1)[0]
+        filtered_ssim = np.delete(ssim_scores, outliers)
+        ssim_score = np.exp(np.log(filtered_ssim).mean())
+
+        # lpips score
+        _, lpips_scores = self._metrics_utils.compute_lpips_score(images)
+        self._clf.fit(torch.tensor(lpips_scores).reshape(-1, 1))
+        preds = self._clf.labels_
+        outliers = np.where(preds == 1)[0]
+        filtered_lpips = np.delete(lpips_scores, outliers)
+        lpips_score = np.exp(np.log(filtered_lpips).mean())
+        lpips_score = 1 - lpips_score
+
+        # compute final score
         final_score = (
-            (self._metrics_utils.sigmoid_function(clip_score, 12, 0.6))
-            * (self._metrics_utils.sigmoid_function(ssim_score, 45, 0.82))
-            * self._metrics_utils.sigmoid_function((1 - lpips_score), 28, 0.81)
+            0.8 * clip_score
+            + 0.1 * self._metrics_utils.sigmoid_function(ssim_score, 35, 0.83)
+            + 0.1 * lpips_score * self._metrics_utils.sigmoid_function(lpips_score, 30, 0.7)
         )
 
         if self._debug:
-            logger.debug(f" filtered scores: {filtered_dists.T}")
-            logger.debug(f" outliers: {dists_sorted[outliers].T} \n")
             logger.debug(f" ssim score: {ssim_score}")
             logger.debug(f" lpips score: {lpips_score}")
             logger.debug(f" clip score: {clip_score}")
@@ -97,9 +108,10 @@ class ValidationPipeline:
 
         return final_score, clip_score, ssim_score, lpips_score
 
-    def preload_model(self, clip_model: str = "ViT-B-16-quickgelu", preload: str = "metaclip_fullcc") -> None:
+    def preload_model(self, clip_model: str = "convnext_large_d", preload: str = "laion2b_s26b_b102k_augreg") -> None:
         """
         Function for preloading the scoring model (clip-based) for rendered images analysis
+        metaclip: ViT-B-16-quickgelu, metaclip_fullcc
 
         Parameters
         ----------

@@ -22,8 +22,8 @@ class BenchmarkRunner:
         self._ply_loader = PlyLoader()
 
         self._high_quality = [0.78, 1.0]
-        self._medium_quality = [0.6, 0.7799]
-        self._low_quality = [0.0, 0.5999]
+        self._medium_quality = [0.68, 0.7799]
+        self._low_quality = [0.0, 0.6799]
 
     def validate(
         self,
@@ -63,10 +63,13 @@ class BenchmarkRunner:
         preview_image = None
         if generate_preview:
             preview_image = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
+            preview_image.detach().cpu()
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
         logger.info(f" Validation took [total]: {dt} sec\n\n")
+
+        images = [img.detach().cpu() for img in images]
 
         return images, score, preview_image, dt
 

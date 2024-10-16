@@ -1,8 +1,10 @@
+import copy
 from pathlib import Path
 from typing import Any
 
 import imageio.v3 as iio
 import numpy as np
+import open3d as o3d
 import skvideo.io as video
 import torch
 from PIL import Image
@@ -36,7 +38,7 @@ class RenderingPipeline:
         data: dict,
         img_width: int,
         img_height: int,
-        cam_rad: float = 3.5,
+        cam_rad: float = 2.5,
         cam_fov: float = 49.1,
         cam_znear: float = 0.01,
         cam_zfar: float = 100,
@@ -71,7 +73,7 @@ class RenderingPipeline:
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
 
-        data_proc = data
+        data_proc = self.rescale_input(data)
 
         # converting input data to tensors on GPU
         means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
@@ -327,3 +329,35 @@ class RenderingPipeline:
 
         images_pil = [img.detach().cpu().numpy() for img in images]
         iio.imwrite(gif_path.as_posix(), images_pil, duration=duration, loop=0)
+
+    def rescale_input(self, gaussian_data: dict, ref_side_size: float = 1.2) -> dict:
+        """
+        Function for rescaling the model to the fixed size
+
+        Parameters
+        ----------
+        gaussian_data: dictionary with input gaussian splatting data
+        ref_side_size: the size of the reference bounding box side (supposedly it is a cube)
+
+        Returns
+        -------
+        data_out: a dictionary with scaled gaussian data
+        """
+        data_out = copy.deepcopy(gaussian_data)
+        points = gaussian_data["points"]
+
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
+
+        bbox = o3d.geometry.AxisAlignedBoundingBox()
+        bbox = bbox.create_from_points(pcd.points)
+        extent = np.array(bbox.get_extent())
+
+        scaling = ref_side_size / extent[1]
+
+        data_out["points"] *= scaling
+        data_out["scale"] *= scaling
+        volume_scale = np.prod(scaling)
+        data_out["opacities"] = np.clip(data_out["opacities"] * (1.0 / volume_scale), 0.0, 1.0)
+
+        return data_out

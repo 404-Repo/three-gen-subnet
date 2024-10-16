@@ -1,10 +1,10 @@
 from typing import Any
 
-import lpips
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torchmetrics import StructuralSimilarityIndexMeasure
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 
 class MetricUtils:
@@ -12,10 +12,13 @@ class MetricUtils:
 
     def __init__(self) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._lpips_model = lpips.LPIPS(net="alex").to(self._device)
-        self._ssim_score_cuda = StructuralSimilarityIndexMeasure(data_range=1.0).to(self._device)
+        torch.set_default_device(self._device)
 
-    def compute_ssim_across_views(self, images: list[torch.Tensor]) -> tuple[float, list[torch.Tensor]]:
+        self._lpips_model = LearnedPerceptualImagePatchSimilarity(normalize=True).to(self._device)
+        self._ssim_score_cuda = StructuralSimilarityIndexMeasure(data_range=1.0).to(self._device)
+        self._images_order = [1, 4, 10, 11, 9, 8, 11, 12, 3, 12, 15, 8, 15, 5, 9, 12]
+
+    def compute_ssim_across_views(self, images: list[torch.Tensor]) -> tuple[float, np.ndarray]:
         """
         Function for computing structural similarity score between input images
 
@@ -30,16 +33,16 @@ class MetricUtils:
         """
 
         ssim_scores = []
-        for i in range(len(images) - 1):
+        for i, j in zip(range(len(images)), self._images_order, strict=False):
             image1 = images[i].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
-            image2 = images[i + 1].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
+            image2 = images[j].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
             ssim_score = self._ssim_score_cuda(image1, image2)
             ssim_scores.append(ssim_score.detach().cpu().numpy())
 
         ssim_score_mean = np.exp(np.log(ssim_scores).mean())
-        return ssim_score_mean, ssim_scores
+        return ssim_score_mean, np.array(ssim_scores)
 
-    def compute_lpips_score(self, images: list[torch.Tensor]) -> tuple[float, list[torch.Tensor]]:
+    def compute_lpips_score(self, images: list[torch.Tensor]) -> tuple[float, np.ndarray]:
         """
         Function for computing Learned Perceptual Image Patch Similarity (LPIPS) score.
         It captures perceptual differences that are not captured by traditional metrics like PSNR or SSIM,
@@ -56,18 +59,17 @@ class MetricUtils:
         """
 
         lpips_scores = []
-        for i in range(len(images) - 1):
-            image1 = images[i].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
-            image1 = F.interpolate(image1, size=(256, 256), mode="bicubic", align_corners=False)
-            image2 = images[i + 1].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
-            image2 = F.interpolate(image2, size=(256, 256), mode="bicubic", align_corners=False)
 
-            with torch.no_grad():
-                lpips_score = self._lpips_model(image1, image2).detach().cpu().numpy()
-                lpips_scores.append(lpips_score)
+        for i, j in zip(range(len(images)), self._images_order, strict=False):
+            image1 = images[i].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
+            image1 = torch.clip(F.interpolate(image1, size=(256, 256), mode="bicubic", align_corners=False), 0, 1)
+            image2 = images[j].unsqueeze(0).permute(0, 3, 1, 2) / 255.0
+            image2 = torch.clip(F.interpolate(image2, size=(256, 256), mode="bicubic", align_corners=False), 0, 1)
+            lpips_score = self._lpips_model(image1, image2).detach().cpu().numpy()
+            lpips_scores.append(lpips_score.flatten())
 
         lpips_score_mean = np.exp(np.log(lpips_scores).mean())
-        return lpips_score_mean, lpips_scores
+        return lpips_score_mean, np.array(lpips_scores).T
 
     @staticmethod
     def sigmoid_function(x: float, slope: float, x_shift: float) -> Any:
