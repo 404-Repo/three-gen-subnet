@@ -29,12 +29,17 @@ class Feedback(BaseModel):
 class PullTask(bt.Synapse):
     """Miner requesting a new task from the validator."""
 
-    version: Version | None = None  # Current validator version.
-    task: Task | None = None  # Task to be filled by validator.
-    submit_before: int = 0  # Allocated time to submit the results.
+    version: Version | None = None  # Current protocol version.
+    task: Task | None = None  # Task assigned by validator to be completed by miner.
+    submit_before: int = 0  # Unix timestamp deadline for submitting task results.
 
-    cooldown_until: int = 0  # UTC time indicating when the miner is allowed to pull the next task from this validator.
-    cooldown_violations: int = 0  # Number of times a miner has failed to respect the mandatory cooling period.
+    # Minimum score required for task results to be accepted by validators.
+    # Results below this threshold are rejected, penalizing the miner.
+    # Miners can submit empty results to avoid penalties if unable to meet threshold.
+    validation_threshold: float = 0.68
+
+    cooldown_until: int = 0  # Unix timestamp indicating when miner can pull the next task from this validator.
+    cooldown_violations: int = 0  # Count of miner's failures to respect the mandatory cooling period.
 
 
 class SubmitResults(bt.Synapse):
