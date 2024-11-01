@@ -404,7 +404,7 @@ class Validator:
     @staticmethod
     def _get_fidelity_score(validation_score: float) -> float:
         # To avoid any randomness or luck in the validation, threshold approach is used.
-        if validation_score >= 0.8:
+        if validation_score >= 0.78:
             return 1.0
         if validation_score >= 0.68:
             return 0.75
