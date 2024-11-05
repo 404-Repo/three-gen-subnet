@@ -13,16 +13,17 @@ from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLA
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
 from pydantic import BaseModel
-from storage_subnet import Storage, StoredData
 from substrateinterface import Keypair
 
-from . import fidelity_check
-from .api import PublicAPIServer
-from .api.task_registry import TaskRegistry
-from .dataset import Dataset
-from .metagraph_sync import MetagraphSynchronizer
-from .miner_data import MinerData
-from .version import VALIDATOR_VERSION
+from validator import fidelity_check
+from validator.api import PublicAPIServer
+from validator.api.task_registry import TaskRegistry
+from validator.dataset import Dataset
+from validator.fidelity_check import ValidationResponse
+from validator.metagraph_sync import MetagraphSynchronizer
+from validator.miner_data import MinerData
+from validator.storage import StorageWrapper
+from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
@@ -46,8 +47,8 @@ class Validator:
     miners: list[MinerData]
     """List of neurons."""
     metagraph_sync: MetagraphSynchronizer
-    """Simple wrapper to encapsulate metagraph syncs."""
-    storage: Storage | None
+    """Simple wrapper to encapsulate the assets storage interaction."""
+    storage: StorageWrapper
     """Bittensor storage subnet is used to store generated assets (if enabled)."""
     updater: AutoUpdater
     """Simple wrapper to encapsulate neuron auto-updates."""
@@ -169,18 +170,20 @@ class Validator:
             self.task_registry = None
             self.public_server = None
 
+    def _prepare_storage(self) -> None:
+        self.storage = StorageWrapper(
+            self.config.storage.enabled,
+            self.config.storage.service_api_key,
+            self.config.storage.endpoint_url,
+            self.config.storage.validation_score_threshold,
+        )
+
     def _prepare_updater(self) -> None:
         self.updater = AutoUpdater(
             disabled=self.config.neuron.auto_update_disabled,
             interval=self.config.neuron.auto_update_interval,
             local_version=VALIDATOR_VERSION,
         )
-
-    def _prepare_storage(self) -> None:
-        if self.config.storage.enabled:
-            self.storage = Storage(self.config)
-        else:
-            self.storage = None
 
     def pull_task(self, synapse: PullTask) -> PullTask:
         """Miner requesting new task from the validator."""
@@ -286,7 +289,9 @@ class Validator:
             return self._add_feedback_and_strip(synapse, miner)
 
         validation_endpoint = self.config.validation.endpoints[uid % len(self.config.validation.endpoints)]
-        validation_res = await fidelity_check.validate(validation_endpoint, synapse)
+        validation_res = await fidelity_check.validate(
+            validation_endpoint, synapse, self.storage.enabled, self.storage.validation_score_threshold
+        )
         if validation_res is None:
             self._reset_miner_on_failure(miner, synapse.dendrite.hotkey, synapse.task.id)  # type: ignore[union-attr]
             return self._add_feedback_and_strip(synapse, miner, validation_failed=True)
@@ -295,7 +300,7 @@ class Validator:
         if fidelity_score == 0:
             return self._handle_low_fidelity(synapse, miner, uid)
 
-        res = await self._process_valid_submission(synapse, miner, fidelity_score, validation_res.score)
+        res = await self._process_valid_submission(synapse, miner, fidelity_score, validation_res)
 
         return res
 
@@ -326,12 +331,16 @@ class Validator:
         return self._add_feedback_and_strip(synapse, miner)
 
     async def _process_valid_submission(
-        self, synapse: SubmitResults, miner: MinerData, fidelity_score: float, validation_score: float
+        self, synapse: SubmitResults, miner: MinerData, fidelity_score: float, validation_res: ValidationResponse
     ) -> SubmitResults:
         miner.reset_task(cooldown=self.config.generation.task_cooldown)
 
-        if self.storage is not None:
-            asyncio.create_task(self.storage.store(StoredData.from_results(synapse)))
+        if self.storage.enabled:
+            is_organic = self.task_registry and synapse.task and self.task_registry.is_organic(synapse.task.id)
+            if not is_organic:
+                asyncio.create_task(
+                    self.storage.save_assets(synapse, synapse.results, synapse.signature, validation_res)
+                )
 
         current_time = int(time.time())
         miner.add_observation(
@@ -341,7 +350,7 @@ class Validator:
         )
 
         if self.task_registry is not None:
-            self.task_registry.complete_task(synapse, validation_score)
+            self.task_registry.complete_task(synapse, validation_res.score)
 
         return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
@@ -395,7 +404,7 @@ class Validator:
     @staticmethod
     def _get_fidelity_score(validation_score: float) -> float:
         # To avoid any randomness or luck in the validation, threshold approach is used.
-        if validation_score >= 0.8:
+        if validation_score >= 0.78:
             return 1.0
         if validation_score >= 0.68:
             return 0.75

@@ -110,6 +110,12 @@ class TaskRegistry:
     def wait_after_first_copy(self) -> int:
         return self._wait_after_first_copy
 
+    def is_organic(self, task_id: str) -> bool:
+        """
+        Verifies that the specified task is organic.
+        """
+        return task_id in self._tasks
+
     def add_task(self, prompt: str) -> str:
         """
         Add new task to the registry.

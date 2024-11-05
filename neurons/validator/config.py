@@ -188,41 +188,24 @@ def add_storage_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--storage.enabled",
         action="store_true",
-        help="If enabled, generated assets are stored on the Bittensor storage subnet (SN21).",
+        help="Enables storing 3D assets that exceed the validation score threshold",
         default=False,
     )
-    parser.add_argument("--storage.netuid", type=int, help="Storage subnet netuid.", default=21)
     parser.add_argument(
-        "--storage.testnet", action="store_true", help="Set if testnet is used for storage", default=False
+        "--storage.endpoint_url",
+        type=str,
+        help="Base URL for the storage service (must handle /store/ POST route)",
+        default="http://127.0.0.1:8100",
     )
     parser.add_argument(
-        "--storage.validator.hotkey",
+        "--storage.service_api_key",
         type=str,
-        help="Storage subnet validator to use for storing",
+        help="API key for storage service authentication (min 8 alphanumeric chars)",
         default="",
     )
     parser.add_argument(
-        "--storage.wallet.name",
-        type=str,
-        help="Wallet to use for assets storing on storage subnet",
-        default=bt.defaults.wallet.name,
+        "--storage.validation_score_threshold",
+        type=float,
+        help="Minimum validation score required for storing 3D assets (0.0 to 1.0)",
+        default=0.68,
     )
-    parser.add_argument(
-        "--storage.wallet.hotkey",
-        type=str,
-        help="Wallet to use for assets storing on storage subnet",
-        default=bt.defaults.wallet.hotkey,
-    )
-    parser.add_argument(
-        "--storage.queue_size",
-        type=int,
-        help="Maximum, concurrent number of generated assets waiting in queue to be saved.",
-        default=256,
-    )
-    parser.add_argument(
-        "--storage.ttl",
-        type=int,
-        help="Assets storing time.",
-        default=60 * 60 * 24 * 30 * 12,  # almost 1 year
-    )
-    # We expect to significantly increase the assets quality. Storing for one year only.

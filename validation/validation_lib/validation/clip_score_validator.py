@@ -51,8 +51,7 @@ class ClipScoreValidator(BaseValidator):
             text_features = self._model.encode_text(tokenized_prompts)
             image_features /= image_features.norm(dim=-1, keepdim=True)
             text_features /= text_features.norm(dim=-1, keepdim=True)
-
-        clip_scores = image_features @ text_features.T
+            clip_scores = image_features @ text_features.T
 
         t3 = time()
         if self._debug:
