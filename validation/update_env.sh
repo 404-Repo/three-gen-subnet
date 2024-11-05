@@ -35,6 +35,6 @@ conda activate three-gen-validation
 conda info --env
 
 CUDA_HOME=${CONDA_PREFIX}
-pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.0.0
+pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.4.0
 
 echo "Environment update completed successfully."

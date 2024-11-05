@@ -11,7 +11,7 @@ class GaussianRenderer:
     def __init__(self) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
-        self._bg_color = torch.tensor([1, 1, 1, 1], dtype=torch.float32, device=self._device)
+        self._bg_color = torch.tensor([1, 1, 1], dtype=torch.float32, device=self._device)
 
     def render(
         self,
