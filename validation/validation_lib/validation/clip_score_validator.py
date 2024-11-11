@@ -89,7 +89,7 @@ class ClipScoreValidator(BaseValidator):
 
         return stacked_images, tokenized_prompts
 
-    def preload_model(self, model_name: str = "ViT-B-16-quickgelu", pretrained: str = "metaclip_fullcc") -> None:
+    def preload_model(self, model_name: str, pretrained: str) -> None:
         """
         Function for preloading one of the openclip models
 
@@ -99,7 +99,7 @@ class ClipScoreValidator(BaseValidator):
         pretrained: the pretrained checkpoint to use
         """
 
-        logger.info(" Preloading MetaClip model for validation.")
+        logger.info(" Preloading OpenClip model for validation.")
         self._model, _, _ = open_clip.create_model_and_transforms(
             model_name, pretrained=pretrained, device=self._device
         )

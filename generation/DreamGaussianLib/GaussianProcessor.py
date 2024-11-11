@@ -1,84 +1,75 @@
-import numpy as np
+import os
+
 import cv2
 import tqdm
 import rembg
-import os
-
 import torch
 import torch.nn.functional as F
-
+import numpy as np
 from omegaconf import OmegaConf
+from loguru import logger
 
-from .CameraUtils import orbit_camera, OrbitCamera
-from .GaussianSplattingModel import Renderer, MiniCam
+from .GaussianSplattingModel import GaussianModel
+from .rendering.gs_camera import OrbitCamera
+from .rendering.gs_renderer import GaussianRenderer
 
 
 class GaussianProcessor:
-    def __init__(self, opt: OmegaConf, prompt: str = ""):
-        self.__opt = opt
-        self.__W = opt.W
-        self.__H = opt.H
-        self.__cam = OrbitCamera(self.__W, self.__H, r=self.__opt.radius, fovy=self.__opt.fovy)
-        self.__fixed_cam = None
+    def __init__(self, opt: OmegaConf, prompt: str):
+        self._opt = opt
+        self._W = opt.W
+        self._H = opt.H
+        self._fixed_cam = None
 
-        self.__mode = "image"
-        self.__seed = "random"
-        self.__last_seed = 0
+        self._mode = "image"
+        self._seed = "random"
+        self._last_seed = 0
 
-        self.__buffer_image = np.ones((self.__W, self.__H, 3), dtype=np.float32)
-        self.__need_update = True
+        self._buffer_image = np.ones((self._W, self._H, 3), dtype=np.float32)
+        self._need_update = True
 
-        # models
-        self.__device = torch.device("cuda")
-        self.__optimizer = None
-        self.__bg_remover = None
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.__guidance_sd = None
-        self.__guidance_zero123 = None
-        self.__enable_sd = False
-        self.__enable_zero123 = False
+        self._model = GaussianModel(opt.sh_degree)
+        self._render1 = GaussianRenderer()
 
-        # renderer
-        self.__renderer = Renderer(sh_degree=self.__opt.sh_degree)
-        self.__gaussian_scale_factor = 1
+        self._optimizer = None
+        self._bg_remover = None
+        self._guidance_sd = None
+        self._guidance_zero123 = None
+
+        self._enable_sd = False
+        self._enable_zero123 = False
 
         # input image
-        self.__input_image = None
-        self.__input_mask = None
-        self.__input_img_torch = None
-        self.__input_mask_torch = None
-        self.__overlay_input_img = False
-        self.__overlay_input_img_ratio = 0.5
-        self.__step = 0
-        self.__train_steps = 1  # steps per rendering loop
-
-        # input text
-        self.__prompt = ""
-        self.__negative_prompt = ""
+        self._input_image = None
+        self._input_mask = None
+        self._input_img_torch = None
+        self._input_mask_torch = None
+        self._overlay_input_img = False
+        self._overlay_input_img_ratio = 0.5
+        self._step = 0
+        self._train_steps = 1   # steps per rendering loop
 
         # load input data from cmdline
-        if self.__opt.input is not None:
-            self._load_image_prompt(self.__opt.input)
+        if self._opt.input is not None:
+            self._load_image_prompt(self._opt.input)
 
         # override prompt from cmdline
-        if self.__opt.prompt is not None and prompt == "":
-            self.__prompt = self.__opt.prompt
+        if self._opt.prompt is not None and prompt == "":
+            self._prompt = self._opt.prompt
         else:
-            self.__prompt = prompt
+            self._prompt = prompt
 
-        if self.__opt.negative_prompt is not None:
-            self.__negative_prompt = self.__opt.negative_prompt
+        if self._opt.negative_prompt is not None:
+            self._negative_prompt = self._opt.negative_prompt
 
-        # override if provide a checkpoint
-        if self.__opt.load is not None:
-            self.__renderer.initialize(self.__opt.load)
-        else:
-            # initialize gaussians to a blob
-            self.__renderer.initialize(num_pts=self.__opt.num_pts)
+        # initialize gaussians to a blob
+        self._model.initialize(num_pts=self._opt.num_pts)
 
     def _set_torch_seed(self):
         try:
-            seed = int(self.__seed)
+            seed = int(self._seed)
         except Exception:
             seed = np.random.randint(0, 1000000)
 
@@ -88,112 +79,138 @@ class GaussianProcessor:
         torch.cuda.manual_seed(seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = True
+        self._last_seed = seed
 
-        self.__last_seed = seed
-
-    def _prepare_training_model(self, models: list):
-        self.__step = 0
+    def _prepare_training_model(self, models: list[str]):
+        self._step = 0
 
         # setting up training
-        self.__renderer.gaussians.training_setup(self.__opt)
+        self._model.training_setup(self._opt)
 
         # do not do progressive sh-level
-        self.__renderer.gaussians.active_sh_degree = self.__renderer.gaussians.max_sh_degree
-        self.__optimizer = self.__renderer.gaussians.optimizer
+        self._model.active_sh_degree = self._model.max_sh_degree
+        self._optimizer = self._model.optimizer
 
-        # default camera
-        if self.__opt.mvdream or self.__opt.imagedream:
-            # the second view is the front view for mvdream/imagedream.
-            pose = orbit_camera(self.__opt.elevation, 90, self.__opt.radius)
-        else:
-            pose = orbit_camera(self.__opt.elevation, 0, self.__opt.radius)
-
-        self.__fixed_cam = MiniCam(
-            pose,
-            self.__opt.ref_size,
-            self.__opt.ref_size,
-            self.__cam.fovy,
-            self.__cam.fovx,
-            self.__cam.near,
-            self.__cam.far,
+        self._fixed_cam = OrbitCamera(
+            self._opt.ref_size,
+            self._opt.ref_size,
+            self._opt.fovy
         )
 
-        self.__enable_sd = self.__opt.lambda_sd > 0 and self.__prompt != ""
-        self.__enable_zero123 = self.__opt.lambda_zero123 > 0 and self.__input_image is not None
+        if self._opt.mvdream or self._opt.imagedream:
+            # the second view is the front view for mvdream/imagedream.
+            self._fixed_cam.compute_transform_orbit(self._opt.elevation, 90, self._opt.radius)
+        else:
+            self._fixed_cam.compute_transform_orbit(self._opt.elevation, 0, self._opt.radius)
 
-        if self.__guidance_sd is None and self.__enable_sd:
-            self.__guidance_sd = models[0]
+        self._enable_sd = self._opt.lambda_sd > 0 and self._prompt != ""
+        self._enable_zero123 = self._opt.lambda_zero123 > 0 and self._input_image is not None
 
-        if self.__guidance_zero123 is None and self.__enable_zero123:
+        if self._guidance_sd is None and self._enable_sd:
+            self._guidance_sd = models[0]
+
+        if self._guidance_zero123 is None and self._enable_zero123:
             if len(models) > 1:
-                self.__guidance_zero123 = models[1]
+                self._guidance_zero123 = models[1]
             else:
-                self.__guidance_zero123 = models[0]
+                self._guidance_zero123 = models[0]
 
         # input image
-        if self.__input_image is not None:
-            self.__input_img_torch = (
-                torch.from_numpy(self.__input_image).permute(2, 0, 1).unsqueeze(0).to(self.__device)
+        if self._input_image is not None:
+            self._input_img_torch = (
+                torch.from_numpy(self._input_image).permute(2, 0, 1).unsqueeze(0).to(self._device)
             )
-            self.__input_img_torch = F.interpolate(
-                self.__input_img_torch,
-                (self.__opt.ref_size, self.__opt.ref_size),
+
+            self._input_img_torch = F.interpolate(
+                self._input_img_torch,
+                (self._opt.ref_size, self._opt.ref_size),
                 mode="bilinear",
                 align_corners=False,
             )
-            self.__input_mask_torch = (
-                torch.from_numpy(self.__input_mask).permute(2, 0, 1).unsqueeze(0).to(self.__device)
+
+            self._input_mask_torch = (
+                torch.from_numpy(self._input_mask).permute(2, 0, 1).unsqueeze(0).to(self._device)
             )
-            self.__input_mask_torch = F.interpolate(
-                self.__input_mask_torch,
-                (self.__opt.ref_size, self.__opt.ref_size),
+
+            self._input_mask_torch = F.interpolate(
+                self._input_mask_torch,
+                (self._opt.ref_size, self._opt.ref_size),
                 mode="bilinear",
                 align_corners=False,
             )
 
         # prepare embeddings
         with torch.no_grad():
-            if self.__enable_sd:
-                if self.__opt.imagedream:
-                    self.__guidance_sd.get_image_text_embeds(
-                        self.__input_img_torch,
-                        [self.__prompt],
-                        [self.__negative_prompt],
+            if self._enable_sd:
+                if self._opt.imagedream:
+                    self._guidance_sd.get_image_text_embeds(
+                        self._input_img_torch,
+                        [self._prompt],
+                        [self._negative_prompt],
                     )
                 else:
-                    self.__guidance_sd.get_text_embeds([self.__prompt], [self.__negative_prompt])
+                    self._guidance_sd.get_text_embeds([self._prompt], [self._negative_prompt])
 
-            if self.__enable_zero123:
-                self.__guidance_zero123.get_img_embeds(self.__input_img_torch)
+            if self._enable_zero123:
+                self._guidance_zero123.get_img_embeds(self._input_img_torch)
 
-    def _train_step(self):
+    def get_gs_data(self, return_rgb_colors: bool = False):
+        means3D = self._model.get_xyz
+        rotations = self._model.get_rotation
+        scales = self._model.get_scaling
+        opacity = self._model.get_opacity.squeeze(1)
+        if return_rgb_colors:
+            features = self._model.get_features_dc.transpose(1, 2).flatten(start_dim=1).contiguous()
+            SH_C0 = 0.28209479177387814
+            rgbs = (0.5 + SH_C0 * features)
+        else:
+            rgbs = self._model.get_features
+
+        gs_data = [means3D, rotations, scales, opacity, rgbs]
+        return gs_data
+
+    def _train_step(self, i: int):
         starter = torch.cuda.Event(enable_timing=True)
         ender = torch.cuda.Event(enable_timing=True)
         starter.record()
 
-        for _ in range(self.__train_steps):
-            self.__step += 1
-            step_ratio = min(1, self.__step / self.__opt.iters)
+        for _ in range(self._train_steps):
+            self._step += 1
+            step_ratio = min(1, self._step / self._opt.iters)
 
             # update lr
-            self.__renderer.gaussians.update_learning_rate(self.__step)
+            self._model.update_learning_rate(self._step)
             loss = 0
 
             # known view
-            if self.__input_img_torch is not None and not self.__opt.imagedream:
-                cur_cam = self.__fixed_cam
-                out = self.__renderer.render(cur_cam)
+            if self._input_img_torch is not None and not self._opt.imagedream:
+                cur_cam = self._fixed_cam
+
+                # getting gaussian data
+                gs_data = self.get_gs_data()
+
+                # rendering images
+                image, mask, _, _ = self._render1.render(
+                    cur_cam.world_to_camera_transform.unsqueeze(0),
+                    cur_cam.intrinsics.unsqueeze(0),
+                    (cur_cam.image_width, cur_cam.image_height),
+                    cur_cam.z_near,
+                    cur_cam.z_far,
+                    gs_data,
+                    sh_degree=self._model.active_sh_degree
+                )
 
                 # rgb loss
-                image = out["image"].unsqueeze(0)  # [1, 3, H, W] in [0, 1]
-                loss = loss + 10000 * (step_ratio if self.__opt.warmup_rgb_loss else 1) * F.mse_loss(
-                    image, self.__input_img_torch
+                image = image.pemute(0, 3, 1, 2)
+
+                loss = loss + 10000 * (step_ratio if self._opt.warmup_rgb_loss else 1) * F.mse_loss(
+                    image, self._input_img_torch
                 )
 
                 # mask loss
-                mask = out["alpha"].unsqueeze(0)  # [1, 1, H, W] in [0, 1]
-                loss = loss + 1000 * (step_ratio if self.__opt.warmup_rgb_loss else 1) * F.mse_loss(
-                    mask, self.__input_mask_torch
+                mask = mask.permute(0, 3, 1, 2)
+                loss = loss + 1000 * (step_ratio if self._opt.warmup_rgb_loss else 1) * F.mse_loss(
+                    mask, self._input_mask_torch
                 )
 
             # novel view (manual batch)
@@ -204,15 +221,19 @@ class GaussianProcessor:
 
             # avoid too large elevation (> 80 or < -80), and make sure it always cover [min_ver, max_ver]
             min_ver = max(
-                min(self.__opt.min_ver, self.__opt.min_ver - self.__opt.elevation),
-                -80 - self.__opt.elevation,
-            )
-            max_ver = min(
-                max(self.__opt.max_ver, self.__opt.max_ver - self.__opt.elevation),
-                80 - self.__opt.elevation,
+                min(self._opt.min_ver, self._opt.min_ver - self._opt.elevation),
+                -80 - self._opt.elevation,
             )
 
-            for _ in range(self.__opt.batch_size):
+            max_ver = min(
+                max(self._opt.max_ver, self._opt.max_ver - self._opt.elevation),
+                80 - self._opt.elevation,
+            )
+
+            cur_cam = OrbitCamera(render_resolution, render_resolution, self._opt.fovy)
+            cur_cam_i = OrbitCamera(render_resolution, render_resolution, self._opt.fovy)
+
+            for _ in range(self._opt.batch_size):
                 # render random view
                 ver = np.random.randint(min_ver, max_ver)
                 hor = np.random.randint(-180, 180)
@@ -222,211 +243,232 @@ class GaussianProcessor:
                 hors.append(hor)
                 radii.append(radius)
 
-                pose = orbit_camera(self.__opt.elevation + ver, hor, self.__opt.radius + radius)
+                cur_cam.compute_transform_orbit(
+                    self._opt.elevation + ver,
+                    hor,
+                    self._opt.radius + radius
+                )
+
+                pose = cur_cam.camera_to_world_tr
                 poses.append(pose)
 
-                cur_cam = MiniCam(
-                    pose,
-                    render_resolution,
-                    render_resolution,
-                    self.__cam.fovy,
-                    self.__cam.fovx,
-                    self.__cam.near,
-                    self.__cam.far,
-                )
-
                 bg_color = torch.tensor(
-                    [1, 1, 1] if np.random.rand() > self.__opt.invert_bg_prob else [0, 0, 0],
+                    [1, 1, 1] if np.random.rand() > self._opt.invert_bg_prob else [0, 0, 0],
                     dtype=torch.float32,
-                    device="cuda",
+                    device=self._device,
                 )
-                out = self.__renderer.render(cur_cam, bg_color=bg_color)
 
-                image = out["image"].unsqueeze(0)  # [1, 3, H, W] in [0, 1]
+                # loading gaussian data
+                gs_data = self.get_gs_data()
+
+                # rendering images
+                image, _, _, meta = self._render1.render(
+                    cur_cam.world_to_camera_transform.unsqueeze(0),
+                    cur_cam.intrinsics.unsqueeze(0),
+                    (cur_cam.image_width, cur_cam.image_height),
+                    cur_cam.z_near,
+                    cur_cam.z_far,
+                    gs_data,
+                    bg_color=bg_color,
+                    sh_degree=self._model.active_sh_degree
+                )
+
+                image = image.permute(0, 3, 1, 2)
                 images.append(image)
 
                 # enable mvdream training
-                if self.__opt.mvdream or self.__opt.imagedream:
+                if self._opt.mvdream or self._opt.imagedream:
                     for view_i in range(1, 4):
-                        pose_i = orbit_camera(
-                            self.__opt.elevation + ver,
+                        cur_cam_i.compute_transform_orbit(
+                            self._opt.elevation + ver,
                             hor + 90 * view_i,
-                            self.__opt.radius + radius,
+                            self._opt.radius + radius
                         )
+                        pose_i = cur_cam_i.camera_to_world_tr
                         poses.append(pose_i)
 
-                        cur_cam_i = MiniCam(
-                            pose_i,
-                            render_resolution,
-                            render_resolution,
-                            self.__cam.fovy,
-                            self.__cam.fovx,
-                            self.__cam.near,
-                            self.__cam.far,
+                        # loading gaussian data
+                        gs_data_i = self.get_gs_data(return_rgb_colors=True)
+
+                        # rendering images
+                        image_i, _, _, _ = self._render1.render(
+                            cur_cam_i.world_to_camera_transform.unsqueeze(0),
+                            cur_cam_i.intrinsics.unsqueeze(0),
+                            (cur_cam_i.image_width, cur_cam_i.image_height),
+                            cur_cam_i.z_near,
+                            cur_cam_i.z_far,
+                            gs_data_i,
+                            bg_color=bg_color
                         )
 
-                        # bg_color = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device="cuda")
-                        out_i = self.__renderer.render(cur_cam_i, bg_color=bg_color, convert_SHs_python=True)
-
-                        image = out_i["image"].unsqueeze(0)  # [1, 3, H, W] in [0, 1]
-                        images.append(image)
+                        image_i = image_i.permute(0, 3, 1, 2)
+                        images.append(image_i)
 
                 images = torch.cat(images, dim=0)
-                poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.__device)
+                poses = torch.stack(poses, dim=0).to(self._device)
 
                 # guidance loss
-                if self.__enable_sd:
-                    if self.__opt.mvdream or self.__opt.imagedream:
-                        loss = loss + self.__opt.lambda_sd * self.__guidance_sd.train_step(
+                if self._enable_sd:
+                    if self._opt.mvdream or self._opt.imagedream:
+                        loss = loss + self._opt.lambda_sd * self._guidance_sd.train_step(
                             images,
                             poses,
-                            step_ratio=step_ratio if self.__opt.anneal_timestep else None,
+                            step_ratio=step_ratio if self._opt.anneal_timestep else None,
                         )
                     else:
-                        loss = loss + self.__opt.lambda_sd * self.__guidance_sd.train_step(
+                        loss = loss + self._opt.lambda_sd * self._guidance_sd.train_step(
                             images,
-                            step_ratio=step_ratio if self.__opt.anneal_timestep else None,
+                            step_ratio=step_ratio if self._opt.anneal_timestep else None,
                         )
 
-                if self.__enable_zero123:
-                    loss = loss + self.__opt.lambda_zero123 * self.__guidance_zero123.train_step(
+                if self._enable_zero123:
+                    loss = loss + self._opt.lambda_zero123 * self._guidance_zero123.train_step(
                         images,
                         vers,
                         hors,
                         radii,
-                        step_ratio=step_ratio if self.__opt.anneal_timestep else None,
-                        default_elevation=self.__opt.elevation,
+                        step_ratio=step_ratio if self._opt.anneal_timestep else None,
+                        default_elevation=self._opt.elevation,
                     )
+
                 # optimize step
                 loss.backward()
-                self.__optimizer.step()
-                self.__optimizer.zero_grad()
+                self._optimizer.step()
+                self._optimizer.zero_grad()
 
                 # densify and prune
-                if (self.__step >= self.__opt.density_start_iter) and (self.__step <= self.__opt.density_end_iter):
+                if ((self._step >= self._opt.density_start_iter)
+                        and (self._step <= self._opt.density_end_iter)):
+
                     viewspace_point_tensor, visibility_filter, radii = (
-                        out["viewspace_points"],
-                        out["visibility_filter"],
-                        out["radii"],
+                        meta["means2d"],
+                        meta["radii"] > 0,
+                        meta["radii"],
                     )
-                    self.__renderer.gaussians.max_radii2D[visibility_filter] = torch.max(
-                        self.__renderer.gaussians.max_radii2D[visibility_filter],
+
+                    self._model.max_radii2D[visibility_filter.squeeze(0)] = torch.max(
+                        self._model.max_radii2D[visibility_filter.squeeze(0)],
                         radii[visibility_filter],
                     )
-                    self.__renderer.gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                    self._model.add_densification_stats(viewspace_point_tensor, visibility_filter.squeeze(0))
 
-                    if self.__step % self.__opt.densification_interval == 0:
-                        self.__renderer.gaussians.densify_and_prune(
-                            self.__opt.densify_grad_threshold,
+                    if self._step % self._opt.densification_interval == 0:
+                        self._model.densify_and_prune(
+                            self._opt.densify_grad_threshold,
                             min_opacity=0.01,
                             extent=4,
                             max_screen_size=1,
                         )
 
-                    if self.__step % self.__opt.opacity_reset_interval == 0:
-                        self.__renderer.gaussians.reset_opacity()
+                    if self._step % self._opt.opacity_reset_interval == 0:
+                        self._model.reset_opacity()
 
         ender.record()
         torch.cuda.synchronize()
 
-        self.__need_update = True
+        self._need_update = True
 
     @torch.no_grad()
     def _test_step(self):
         # ignore if no need to update
-        if not self.__need_update:
+        if not self._need_update:
             return
 
         starter = torch.cuda.Event(enable_timing=True)
         ender = torch.cuda.Event(enable_timing=True)
         starter.record()
 
+        gs_data = self.get_gs_data(return_rgb_colors=True)
+
         # should update image
-        if self.__need_update:
+        if self._need_update:
             # render image
+            cur_cam = OrbitCamera(self._W, self._H, self._opt.fovy)
+            cur_cam.compute_transform_orbit(0, 0, self._opt.radius)
 
-            cur_cam = MiniCam(
-                self.__cam.pose,
-                self.__W,
-                self.__H,
-                self.__cam.fovy,
-                self.__cam.fovx,
-                self.__cam.near,
-                self.__cam.far,
-            )
-            out = self.__renderer.render(cur_cam, self.__gaussian_scale_factor)
-            buffer_image = out[self.__mode]  # [3, H, W]
+            image, alpha, depth, _ = self._render1.render(
+                cur_cam.world_to_camera_transform.unsqueeze(0),
+                cur_cam.intrinsics.unsqueeze(0),
+                (cur_cam.image_width, cur_cam.image_height),
+                cur_cam.z_near,
+                cur_cam.z_far,
+                gs_data)
 
-            if self.__mode in ["depth", "alpha"]:
-                buffer_image = buffer_image.repeat(3, 1, 1)
-                if self.__mode == "depth":
-                    buffer_image = (buffer_image - buffer_image.min()) / (
+            if self._mode == "alpha":
+                buffer_image = alpha.repeat(3, 1, 1)
+
+            elif self._mode == "depth":
+                buffer_image = depth.repeat(3, 1, 1)
+                buffer_image = (buffer_image - buffer_image.min()) / (
                         buffer_image.max() - buffer_image.min() + 1e-20
-                    )
+                )
+            else:
+                buffer_image = image.permute(0, 3, 1, 2)
 
             buffer_image = F.interpolate(
                 buffer_image.unsqueeze(0),
-                size=(self.__H, self.__W),
+                size=(self._H, self._W),
                 mode="bilinear",
                 align_corners=False,
             ).squeeze(0)
-            self.__buffer_image = (
+
+            self._buffer_image = (
                 buffer_image.permute(1, 2, 0).contiguous().clamp(0, 1).contiguous().detach().cpu().numpy()
             )
 
             # display input_image
-            if self.__overlay_input_img and self.__input_image is not None:
-                self.__buffer_image = (
-                    self.__buffer_image * (1 - self.__overlay_input_img_ratio)
-                    + self.__input_image * self.__overlay_input_img_ratio
+            if self._overlay_input_img and self._input_image is not None:
+                self._buffer_image = (
+                        self._buffer_image * (1 - self._overlay_input_img_ratio)
+                        + self._input_image * self._overlay_input_img_ratio
                 )
 
-            self.__need_update = False
+            self._need_update = False
 
         ender.record()
         torch.cuda.synchronize()
-        # print("[INFO] Training time (log): ", t, " ms")
 
     def _load_image_prompt(self, file: str):
         # load image
-        print(f"[INFO] load image from {file}...")
+        logger.info(f"Load image from {file}...")
+
         img = cv2.imread(file, cv2.IMREAD_UNCHANGED)
         if img.shape[-1] == 3:
-            if self.__bg_remover is None:
-                self.__bg_remover = rembg.new_session()
-            img = rembg.remove(img, session=self.__bg_remover)
+            if self._bg_remover is None:
+                self._bg_remover = rembg.new_session()
+            img = rembg.remove(img, session=self._bg_remover)
 
-        img = cv2.resize(img, (self.__W, self.__H), interpolation=cv2.INTER_AREA)
+        img = cv2.resize(img, (self._W, self._H), interpolation=cv2.INTER_AREA)
         img = img.astype(np.float32) / 255.0
 
-        self.__input_mask = img[..., 3:]
+        self._input_mask = img[..., 3:]
 
         # white bg
-        self.__input_image = img[..., :3] * self.__input_mask + (1 - self.__input_mask)
+        self._input_image = img[..., :3] * self._input_mask + (1 - self._input_mask)
 
         # bgr to rgb
-        self.__input_image = self.__input_image[..., ::-1].copy()
+        self._input_image = self._input_image[..., ::-1].copy()
 
         # load prompt
         file_prompt = file.replace("_rgba.png", "_caption.txt")
         if os.path.exists(file_prompt):
-            print(f"[INFO] load prompt from {file_prompt}...")
+            logger.info(f"Load prompt from {file_prompt}...")
             with open(file_prompt, "r") as f:
-                self.__prompt = f.read().strip()
-
-    def get_gs_model_data(self):
-        return self.__renderer.gaussians.get_model_data()
-
-    def get_gs_model(self):
-        return self.__renderer.gaussians
+                self._prompt = f.read().strip()
 
     def train(self, models: list, iters=500):
         if iters > 0:
             self._prepare_training_model(models)
             for i in tqdm.trange(iters):
-                self._train_step()
+                self._train_step(i)
 
             # do a last prune
-            self.__renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
+            self._model.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
         return self.get_gs_model_data()
+
+    def get_gs_model_data(self):
+        return self._model.get_model_data()
+
+    def get_gs_model(self):
+        return self._model
