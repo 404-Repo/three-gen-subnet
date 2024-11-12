@@ -130,8 +130,14 @@ class MVDream(nn.Module):
         # camera = convert_opengl_to_blender(camera)
         # flip_yz = torch.tensor([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]).unsqueeze(0)
         # camera = torch.matmul(flip_yz.to(camera), camera)
-        camera = camera[:, [0, 2, 1, 3]]  # to blender convention (flip y & z axis)
-        camera[:, 1] *= -1
+
+        R_flip_X = torch.tensor([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=torch.float32).to(self.device)
+        M_swap_Y_X = torch.tensor([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32).to(self.device)
+
+        camera = torch.stack([M_swap_Y_X @ (R_flip_X @ cam @ torch.linalg.inv(R_flip_X)) @ M_swap_Y_X.T for cam in camera], dim=0)
+
+        # camera = camera[:, [0, 2, 1, 3]]  # to blender convention (flip y & z axis)
+        # camera[:, 1] *= -1
         camera = normalize_camera(camera).view(batch_size, 16)
 
         ###############

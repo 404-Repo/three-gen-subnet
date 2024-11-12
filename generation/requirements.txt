@@ -1,7 +1,6 @@
-h5py==3.10.0
-numpy==1.22.4
+numpy==1.26.4
 rich==13.4.2
-tqdm==4.65.2
+tqdm==4.66.5
 scipy==1.11.4
 scikit-learn==1.3.0
 opencv-python==4.8.0.76
@@ -19,3 +18,4 @@ xformers==0.0.23
 gradio==4.19.2
 open-clip-torch==2.24.0
 plyfile==1.0.3
+loguru==0.7.2

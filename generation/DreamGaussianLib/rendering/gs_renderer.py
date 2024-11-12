@@ -2,16 +2,21 @@ from pathlib import Path
 
 import torch
 from gsplat.rendering import rasterization
+from gsplat.strategy import DefaultStrategy
 from PIL import Image
 
 
 class GaussianRenderer:
     """Class with implementation of the Gaussian Splatting Renderer"""
 
-    def __init__(self) -> None:
+    def __init__(self, scene_scale: float = 1) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
         self._bg_color = torch.tensor([1, 1, 1], dtype=torch.float32, device=self._device)
+        self._scene_scale = scene_scale
+        self.strategy = DefaultStrategy()
+        self.strategy_state = self.strategy.initialize_state()
+        self.splats_params = torch.nn.ParameterDict({})
 
     def render(
         self,
@@ -22,7 +27,8 @@ class GaussianRenderer:
         z_far: float,
         gaussian_data: list[torch.Tensor],
         bg_color: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        sh_degree: int | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """
         Function that renders input gaussian splatting data using single camera view
         or multiple camera views as a single batch
@@ -44,18 +50,17 @@ class GaussianRenderer:
         rendered_depths - torch tensor with rendered image/s (depth maps only)
         """
 
-        means3D = gaussian_data[0]
-        rotations = gaussian_data[1]
-        scales = gaussian_data[2]
-        opacity = gaussian_data[3]
-        rgbs = gaussian_data[4]
+        means3D = gaussian_data[0].contiguous()
+        means3D.requires_grad = True
+        rotations = gaussian_data[1].contiguous()
+        scales = gaussian_data[2].contiguous()
+        opacity = gaussian_data[3].contiguous()
+        rgbs = gaussian_data[4].contiguous()
 
         # Pre-allocate tensors
         num_cameras = len(cameras_view_proj)
         background_col = self._bg_color if bg_color is None else bg_color
-        backgrounds = background_col
-        if background_col is not None:
-            backgrounds = background_col.expand(num_cameras, *background_col.shape).to(self._device)
+        backgrounds = background_col.expand(num_cameras, *background_col.shape).to(self._device)
 
         rendered_colors, rendered_alphas, meta = rasterization(
             means3D,
@@ -69,6 +74,9 @@ class GaussianRenderer:
             img_res[1],
             z_near,
             z_far,
+            sh_degree=sh_degree,
+            absgrad=True,
+            packed=False,
             backgrounds=backgrounds,
             render_mode="RGB+D",
         )
@@ -82,7 +90,7 @@ class GaussianRenderer:
         rendered_depths = rendered_colors[..., 3:4]
         rendered_depths = rendered_depths / rendered_depths.max()
 
-        return rendered_images, rendered_alphas, rendered_depths
+        return rendered_images, rendered_alphas, rendered_depths, meta
 
     @staticmethod
     def save_images(images: list[Image.Image], file_name: str, path: str) -> None:

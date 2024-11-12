@@ -17,8 +17,6 @@ class ValidationPipeline:
         ----------
         verbose: enable/disable debugging
         """
-
-        # self._clip_validator = ClipScoreValidator(preproc_img_size=256)
         self._clip_validator = ClipScoreValidator()
         self._debug = debug
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
