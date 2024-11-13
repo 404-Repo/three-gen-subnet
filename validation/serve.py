@@ -20,7 +20,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -72,7 +72,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     t1 = time()
 
     # Load data
-    pcl_raw = base64.b64decode(request.data)
+    pcl_raw = base64.b64decode(request.data, validate=True)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
     t2 = time()

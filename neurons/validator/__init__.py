@@ -396,7 +396,7 @@ class Validator:
             f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
         )
         legacy_message = f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
-        encoded_signature = base64.b64decode(synapse.signature.encode(encoding="utf-8"))
+        encoded_signature = base64.b64decode(synapse.signature.encode(encoding="utf-8"), validate=True)
         return bool(keypair.verify(message, encoded_signature)) or bool(
             keypair.verify(legacy_message, encoded_signature)
         )
