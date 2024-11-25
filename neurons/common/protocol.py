@@ -15,7 +15,7 @@ class Version(BaseModel):
 
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))  # Unique task identifier.
-    prompt: str  # Prompt to use for 3D generation.
+    prompt: str = Field(default="")  # Prompt to use for 3D generation.
 
 
 class Feedback(BaseModel):
@@ -45,7 +45,7 @@ class PullTask(bt.Synapse):
 class SubmitResults(bt.Synapse):
     """Miner submitting generation results."""
 
-    task: Task | None  # The original task miner is submitting results for.
+    task: Task = Field(default_factory=Task)  # The original task miner is submitting results for.
     results: str  # Generated assets, encoded as a string.
 
     data_format: str = "ply"  # Reserved for future use.

@@ -5,9 +5,10 @@ import time
 from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
-import torch
+import numpy as np
 from auto_updater import AutoUpdater
-from bittensor.utils import weight_utils
+from bittensor.utils.weight_utils import convert_weights_and_uids_for_emit, process_weights_for_netuid
+from bittensor_wallet.mock import MockWallet
 from common import create_neuron_dir, owner
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
@@ -61,12 +62,14 @@ class Validator:
         self.config: bt.config = copy.deepcopy(config)
         create_neuron_dir(self.config)
 
-        bt.logging(config=config, logging_dir=config.full_path)
+        bt.logging.set_config(config=self.config.logging)
+
+        bt.logging.info(f"Starting with config: {config}")
 
         if not mock:
             self.wallet = bt.wallet(config=self.config)
         else:
-            self.wallet = bt.MockWallet(config=self.config)
+            self.wallet = MockWallet(config=self.config)
         bt.logging.info(f"Wallet: {self.wallet}")
 
         if not mock:
@@ -305,10 +308,6 @@ class Validator:
         return res
 
     def _is_task_and_result_valid(self, synapse: SubmitResults, miner: MinerData, uid: int) -> bool:
-        if synapse.task is None:
-            bt.logging.warning(f"[{uid}] submitted results with no original task")
-            return False
-
         if miner.assigned_task != synapse.task:
             bt.logging.warning(f"[{uid}] submitted results for the wrong task")
             return False
@@ -385,11 +384,6 @@ class Validator:
 
     @staticmethod
     def _verify_results_signature(synapse: SubmitResults) -> bool:
-        # This security measure is redundant for results validation process, however
-        # it's needed for stored results verification.
-        if synapse.task is None:
-            return False
-
         keypair = Keypair(ss58_address=synapse.dendrite.hotkey)
         message = (
             f"{MINER_LICENSE_CONSENT_DECLARATION}"
@@ -529,18 +523,22 @@ class Validator:
             return
 
         current_time = int(time.time())
-        rewards = torch.tensor([miner.calculate_reward(current_time) for miner in self.miners])
-
+        rewards = np.array([miner.calculate_reward(current_time) for miner in self.miners])
         bt.logging.debug(f"Rewards: {rewards}")
 
-        raw_weights = torch.nn.functional.normalize(rewards, p=1, dim=0)
+        norm = np.linalg.norm(rewards, ord=1, axis=0, keepdims=True)
+        bt.logging.debug(f"Total reward: {norm}")
 
-        # bt.logging.debug(f"Normalized weights: {raw_weights}")
+        if np.any(norm == 0) or np.isnan(norm).any():
+            norm = np.ones_like(norm)
+
+        raw_weights = rewards / norm
+        bt.logging.debug("Raw weights", raw_weights)
 
         (
             processed_weight_uids,
             processed_weights,
-        ) = weight_utils.process_weights_for_netuid(
+        ) = process_weights_for_netuid(
             uids=self.metagraph.uids,
             weights=raw_weights,
             netuid=self.config.netuid,
@@ -549,18 +547,20 @@ class Validator:
         )
 
         (
-            converted_uids,
-            converted_weights,
-        ) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(
-            uids=processed_weight_uids, weights=processed_weights
-        )
+            uint_uids,
+            uint_weights,
+        ) = convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
 
-        self.subtensor.set_weights(
+        result, msg = self.subtensor.set_weights(
             wallet=self.wallet,
             netuid=self.config.netuid,
-            uids=converted_uids,
-            weights=converted_weights,
+            uids=uint_uids,
+            weights=uint_weights,
             wait_for_finalization=False,
             wait_for_inclusion=False,
             version_key=int(NEURONS_VERSION),
         )
+        if result:
+            bt.logging.info("set_weights on chain successfully!")
+        else:
+            bt.logging.error(f"set_weights failed with {msg}")

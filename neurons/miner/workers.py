@@ -127,7 +127,7 @@ async def _submit_results(
 
 def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     feedback = submit.feedback
-    if submit.task is None or feedback is None:
+    if feedback is None:
         return
     score = "failed" if feedback.validation_failed else feedback.task_fidelity_score
     bt.logging.debug(f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {score}")
