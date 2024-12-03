@@ -1,6 +1,6 @@
 import bittensor as bt
 import uvicorn
-from bittensor.axon import FastAPIThreadedServer
+from bittensor.core.axon import FastAPIThreadedServer
 from fastapi import FastAPI
 
 from validator.api.api_key_manager import ApiKeyManager

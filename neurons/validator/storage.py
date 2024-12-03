@@ -24,9 +24,6 @@ class StorageWrapper:
     async def save_assets(
         self, synapse: SubmitResults, results: str, signature: str, validation: ValidationResponse
     ) -> None:
-        if synapse.task is None:
-            return None
-
         if validation.score < self.validation_score_threshold:
             return None
 

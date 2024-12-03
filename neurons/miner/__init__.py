@@ -31,7 +31,9 @@ class Miner:
         self.config: bt.config = copy.deepcopy(config)
         create_neuron_dir(self.config)
 
-        bt.logging(config=config, logging_dir=config.full_path)
+        bt.logging.set_config(config=self.config.logging)
+
+        bt.logging.info(f"Starting with config: {config}")
 
         self.wallet = bt.wallet(config=self.config)
         bt.logging.info(f"Wallet: {self.wallet}")

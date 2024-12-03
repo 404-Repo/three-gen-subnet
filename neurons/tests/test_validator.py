@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import pytest
 import bittensor as bt
 import time_machine
-from bittensor.mock.wallet_mock import get_mock_hotkey, get_mock_coldkey, get_mock_keypair
+from bittensor_wallet.mock.wallet_mock import get_mock_hotkey, get_mock_coldkey, get_mock_keypair, MockWallet
 from pytest_httpserver import HTTPServer
 
 from common.protocol import PullTask, SubmitResults, Task, Feedback
@@ -53,24 +53,67 @@ def config(make_httpserver: HTTPServer) -> bt.config:
     )
 
 
+def register_neuron(subtensor: bt.MockSubtensor, hotkey: str, coldkey: str) -> None:
+    uid = subtensor.chain_state["SubtensorModule"]["SubnetworkN"][17][0]
+    subtensor.chain_state["SubtensorModule"]["SubnetworkN"][17][0] += 1
+
+    subtensor.chain_state["SubtensorModule"]["Uids"][17][hotkey] = {0: uid}
+    subtensor.chain_state["SubtensorModule"]["Owner"][hotkey] = {0: coldkey}
+    subtensor.chain_state["SubtensorModule"]["Keys"][17][uid] = {0: hotkey}
+    for x in [
+        "Active",
+        "Rank",
+        "Emission",
+        "Incentive",
+        "Consensus",
+        "Trust",
+        "ValidatorTrust",
+        "Dividends",
+        "PruningScores",
+        "LastUpdate",
+        "ValidatorPermit",
+    ]:
+        subtensor.chain_state["SubtensorModule"][x][17][uid] = {0: 0}
+
+    subtensor.chain_state["SubtensorModule"]["Weights"][17][uid] = {0: []}
+    subtensor.chain_state["SubtensorModule"]["Bonds"][17][uid] = {0: []}
+
+    subtensor.chain_state["SubtensorModule"]["Stake"][hotkey] = {coldkey: {0: 0}}
+
+
 @pytest.fixture(scope="module")
 def subtensor() -> bt.MockSubtensor:
-    mock = bt.MockSubtensor()
-    mock.setup()
-    mock.create_subnet(17)
+    subtensor_mock = bt.MockSubtensor()
+    subtensor_mock.setup()
+    subtensor_mock.create_subnet(17)
+
+    for x in [
+        "Active",
+        "Rank",
+        "Emission",
+        "Incentive",
+        "Consensus",
+        "Trust",
+        "ValidatorTrust",
+        "Dividends",
+        "PruningScores",
+        "LastUpdate",
+        "ValidatorPermit",
+        "Weights",
+        "Bonds",
+    ]:
+        subtensor_mock.chain_state["SubtensorModule"][x] = {17: {}}
 
     # Default wallet is used by the validator.
-    wallet = bt.MockWallet()
-    mock.force_register_neuron(
-        netuid=17, hotkey=wallet.hotkey.ss58_address, coldkey=wallet.coldkey.ss58_address, stake=10000
-    )
+    wallet = MockWallet()
+    register_neuron(subtensor_mock, wallet.hotkey.ss58_address, "coldkey")
 
     # Miners.
     for uid in range(1, 200):
         hotkey = get_mock_hotkey(uid)
         coldkey = get_mock_coldkey(uid)
-        mock.force_register_neuron(netuid=17, hotkey=hotkey, coldkey=coldkey)
-    return mock
+        register_neuron(subtensor_mock, hotkey, coldkey)
+    return subtensor_mock
 
 
 @pytest.fixture()
@@ -81,13 +124,13 @@ def validator(config: bt.config, subtensor: bt.MockSubtensor) -> Validator:
 def create_pull_task(uid: int) -> PullTask:
     synapse = PullTask()
     synapse.dendrite.hotkey = get_mock_hotkey(uid)
-    synapse.axon.hotkey = bt.MockWallet().hotkey.ss58_address
+    synapse.axon.hotkey = MockWallet().hotkey.ss58_address
     return synapse
 
 
 def create_submit_results(uid: int, task: Task) -> SubmitResults:
     keypair = get_mock_keypair(uid)
-    default_wallet = bt.MockWallet()  # Validator wallet
+    default_wallet = MockWallet()  # Validator wallet
     signature = b64encode(keypair.sign(f"{0}{task.prompt}{default_wallet.hotkey.ss58_address}{keypair.ss58_address}"))
     synapse = SubmitResults(task=task, results="dummy", submit_time=0, signature=signature)
 
@@ -202,18 +245,6 @@ async def test_submit_task_unknown_neuron(validator: Validator) -> None:
     submit = await validator.submit_results(create_submit_results(300, pull.task))
 
     assert submit.feedback is None
-    assert validator.miners[1].assigned_task == pull.task  # No task reset
-
-
-@pytest.mark.asyncio
-async def test_submit_task_none_tasks(validator: Validator) -> None:
-    pull = validator.pull_task(create_pull_task(1))
-    synapse = create_submit_results(1, Task(prompt="invalid task"))
-    synapse.task = None
-    submit = await validator.submit_results(synapse)
-
-    assert submit.results == ""
-    assert submit.feedback == Feedback(average_fidelity_score=1)
     assert validator.miners[1].assigned_task == pull.task  # No task reset
 
 
