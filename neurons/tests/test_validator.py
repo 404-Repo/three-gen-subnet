@@ -222,15 +222,15 @@ async def test_pull_task_request_cooldown_penalty(validator: Validator, time_tra
 
 @pytest.mark.asyncio
 async def test_submit_task(validator: Validator, httpserver: HTTPServer, time_travel: time_machine.travel) -> None:
-    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.71})
+    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.76})
 
     pull = validator.pull_task(create_pull_task(1))
     submit = await validator.submit_results(create_submit_results(1, pull.task))
 
     assert submit.results == ""
     assert submit.feedback is not None
-    assert submit.feedback.task_fidelity_score == 0.75
-    assert submit.feedback.average_fidelity_score == 1 * 0.95 + 0.05 * 0.75
+    assert submit.feedback.task_fidelity_score == 0.625
+    assert submit.feedback.average_fidelity_score == 1 * 0.95 + 0.05 * 0.625
     assert submit.feedback.generations_within_8_hours == 1
     assert submit.cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
 
