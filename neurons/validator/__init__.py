@@ -247,6 +247,7 @@ class Validator:
 
         synapse.task = task
         synapse.submit_before = int(time.time()) + self.config.generation.task_timeout
+        synapse.validation_threshold = MIN_QUALITY_THRESHOLD
         synapse.version = NEURONS_VERSION
         return synapse
 
