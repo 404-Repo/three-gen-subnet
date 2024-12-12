@@ -10,7 +10,7 @@ import bittensor as bt
 
 async def main() -> None:
     config = await get_config()
-    bt.logging(config=config)
+    bt.logging.set_config(config=config.logging)
 
     with Path(config.data).open() as f:  # noqa
         data = f.read()

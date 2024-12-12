@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 class ValidationResponse(BaseModel):
     score: float
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+    vqa: float = Field(default=0.0, description="VQA score")
     clip: float = Field(default=0.0, description="Metaclip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")

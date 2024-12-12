@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torchmetrics import StructuralSimilarityIndexMeasure
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 

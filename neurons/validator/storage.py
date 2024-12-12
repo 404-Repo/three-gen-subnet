@@ -38,7 +38,8 @@ class StorageWrapper:
                     "submit_time": synapse.submit_time,
                     "signature": signature,
                     "score": {
-                        "1.9.0": validation.score,
+                        "1.10.0": validation.score,
+                        "vqa": validation.vqa,
                         "clip": validation.clip,
                         "ssim": validation.ssim,
                         "lpips": validation.lpips,

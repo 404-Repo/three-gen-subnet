@@ -73,7 +73,7 @@ class RenderingPipeline:
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
 
-        data_proc = self.rescale_input(data)
+        data_proc = self.transform_input(data)
 
         # converting input data to tensors on GPU
         means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
@@ -138,7 +138,7 @@ class RenderingPipeline:
         camera_view_proj[0] = camera.world_to_camera_transform
         camera_intr[0] = camera.intrinsics
 
-        data_proc = data
+        data_proc = self.transform_input(data)
 
         # converting input data to tensors on GPU
         means3D = torch.tensor(data_proc["points"], dtype=torch.float32).contiguous().squeeze().to(self._device)
@@ -330,7 +330,12 @@ class RenderingPipeline:
         images_pil = [img.detach().cpu().numpy() for img in images]
         iio.imwrite(gif_path.as_posix(), images_pil, duration=duration, loop=0)
 
-    def rescale_input(self, gaussian_data: dict, ref_side_size: float = 1.2) -> dict:
+    @staticmethod
+    def recenter_object(points: np.ndarray) -> Any:
+        means3d = points - points.mean()
+        return means3d.astype(np.float32)
+
+    def transform_input(self, gaussian_data: dict, ref_side_size: float = 1.5) -> dict:
         """
         Function for rescaling the model to the fixed size
 
@@ -353,9 +358,12 @@ class RenderingPipeline:
         bbox = bbox.create_from_points(pcd.points)
         extent = np.array(bbox.get_extent())
 
-        scaling = ref_side_size / extent[1]
+        max_size = np.max(extent)
+        scaling = ref_side_size / max_size
 
-        data_out["points"] *= scaling
+        points_centered = self.recenter_object(points)
+
+        data_out["points"] = points_centered * scaling
         data_out["scale"] *= scaling
         volume_scale = np.prod(scaling)
         data_out["opacities"] = np.clip(data_out["opacities"] * (1.0 / volume_scale), 0.0, 1.0)
