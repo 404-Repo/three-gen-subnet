@@ -1,11 +1,11 @@
 numpy==1.26.4
 torch==2.5.0
-torchmetrics==1.5.1
+torchmetrics[multimodal]==1.5.1
 transformers==4.44.2
 open_clip_torch==2.29.0
 pytest==8.3.2
 scikit-video==1.1.11
-scikit-learn==1.5.1
+scikit-learn==1.5.2
 loguru==0.7.2
 meshio==5.3.5
 ninja==1.11.1.1
@@ -16,3 +16,4 @@ pandas==2.2.2
 pytod==0.0.3
 imageio==2.35.1
 open3d==0.18.0
+git+https://github.com/404-Repo/vqa_score_repository.git@v.1.0.0

@@ -25,55 +25,31 @@ class ValidationPipeline:
         self._metrics_utils = MetricUtils()
         self._clf = KNN(device=self._device.type)
 
-    def validate(self, images: list[torch.Tensor], prompt: str) -> tuple[Any, Any, Any, Any]:
+    def validate(
+        self, source_images: list[torch.Tensor], images: list[torch.Tensor], prompt: str
+    ) -> tuple[Any, Any, Any, Any, Any]:
         """
         Function for validating the input data
 
         Parameters
         ----------
+        source_image: a torch tensor with source image (rendered from a selected view)
         images: a list with rendered images stored as torch.tensors, type = torch.uint8, same device
         prompt: a string with input prompt that was used for generating the 3D model
 
         Returns
         -------
         final_score: combined score
+        vqa_score: combined score
         clip_score: clip similarity score
         ssim: structure similarity index score
         lpips: perceptive similarity score
         """
 
-        return self.compute_clip_score(images, prompt)
+        # compute two clip scores
+        vqa_score, clip_score = self.compute_clip_score(source_images, images, prompt)
 
-    def compute_clip_score(self, images: list[torch.Tensor], prompt: str) -> tuple[Any, Any, Any, Any]:
-        """
-        Function for validating the input data using clip-based model
-
-        Parameters
-        ----------
-        images: a list with rendered images stored as torch.tensors, type = torch.uint8, same device
-        prompt: a string with input prompt that was used for generating the 3D model
-
-        Returns
-        -------
-        final_score: combined score
-        clip_score: clip similarity score
-        ssim: structure similarity index score
-        lpips: perceptive similarity score
-        """
-        # clip score
-        dists = self._clip_validator.validate(images, prompt)
-        dists_sorted, _ = torch.sort(dists)
-
-        # normalizing clip score to range [0, 1]
-        dists_sorted = dists_sorted.reshape(-1, 1) / 0.35
-
-        # searching for the anomalies
-        self._clf.fit(dists_sorted)
-        preds = self._clf.labels_
-        outliers = np.where(preds == 1)[0]
-        filtered_dists = np.delete(dists_sorted.cpu().detach().numpy(), outliers)
-        clip_score = np.exp(np.log(filtered_dists).mean())
-
+        # compute other metrics
         # ssim score
         _, ssim_scores = self._metrics_utils.compute_ssim_across_views(images)
         self._clf.fit(torch.tensor(ssim_scores).reshape(-1, 1))
@@ -93,20 +69,72 @@ class ValidationPipeline:
 
         # compute final score
         final_score = (
-            0.8 * clip_score
-            + 0.1 * self._metrics_utils.sigmoid_function(ssim_score, 35, 0.83)
-            + 0.1 * lpips_score * self._metrics_utils.sigmoid_function(lpips_score, 30, 0.7)
+            0.5 * vqa_score
+            + 0.4 * clip_score
+            + 0.05 * self._metrics_utils.sigmoid_function(ssim_score, 35, 0.83)
+            + 0.05 * lpips_score * self._metrics_utils.sigmoid_function(lpips_score, 30, 0.7)
         )
 
         if self._debug:
             logger.debug(f" ssim score: {ssim_score}")
             logger.debug(f" lpips score: {lpips_score}")
+            logger.debug(f" vqa score, prev.image: {vqa_score}")
             logger.debug(f" clip score: {clip_score}")
             logger.debug(f" final score: {final_score}")
 
-        return final_score, clip_score, ssim_score, lpips_score
+        return final_score, vqa_score, clip_score, ssim_score, lpips_score
 
-    def preload_model(self, clip_model: str = "convnext_large_d", preload: str = "laion2b_s26b_b102k_augreg") -> None:
+    def compute_clip_score(
+        self, source_image: list[torch.Tensor], images: list[torch.Tensor], prompt: str
+    ) -> tuple[Any, Any]:
+        """
+        Function for validating the input data using clip-based model
+
+        Parameters
+        ----------
+        source_image: a torch tensor with source image (rendered from a selected view)
+        images: a list with rendered images stored as torch.tensors, type = torch.uint8, same device
+        prompt: a string with input prompt that was used for generating the 3D model
+
+        Returns
+        -------
+        vqa_score: vqa score computed for source image + prompt
+        clip_score_final: clip score computed for source image + rendered images
+        """
+        # clip score
+        vqa_score = self._clip_validator.validate_source_image(source_image[0], prompt)
+        clip_score = self._clip_validator.validate_images(source_image[1], images)
+
+        # filtering outliers
+        filtered_scores = self.filter_outliers(clip_score)
+        clip_score_final = torch.exp(torch.log(filtered_scores).mean())
+
+        return vqa_score, clip_score_final
+
+    def filter_outliers(self, input_data: torch.Tensor) -> torch.Tensor:
+        """
+        Function for filtering the outliers
+        Parameters
+        ----------
+        input_data: an input torch tensor that will be processed
+
+        Returns
+        -------
+        filtered_input: a torch tensor with filtered values
+        """
+        # normalizing clip scores to range [0, 1] and sorting
+        input_sorted, _ = torch.sort(input_data)
+        input_sorted = input_sorted.reshape(-1, 1)
+
+        # searching for the anomalies
+        self._clf.fit(input_sorted)
+        preds = self._clf.labels_
+        outliers = np.where(preds == 1)[0]
+        filtered_input = np.delete(input_sorted.cpu().detach().numpy(), outliers)
+
+        return torch.tensor(filtered_input).to(self._device)
+
+    def preload_model(self, clip_model: str = "ViT-B-16-SigLIP", preload: str = "webli") -> None:
         """
         Function for preloading the scoring model (clip-based) for rendered images analysis
         metaclip: ViT-B-16-quickgelu, metaclip_fullcc

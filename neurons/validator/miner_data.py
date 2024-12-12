@@ -47,7 +47,7 @@ class MinerData(BaseModel):
         self.fidelity_score = prev_fidelity_score * (1 - moving_average_alpha) + moving_average_alpha * fidelity_score
 
         bt.logging.debug(
-            f"[{self.uid}] score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
+            f"[{self.uid}] score: {fidelity_score}. Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
             f" Observations (8h): {len(self.observations)}"
         )
 

@@ -28,10 +28,13 @@ def test_validator(ply_data):
     prompt = "A hamburger"
     data = ply_data
     render = RenderingPipeline(16, "gs")
-    images = render.render_gaussian_splatting_views(data, 512, 512, 2.8)
+    images = render.render_gaussian_splatting_views(data, 512, 512, 2.5)
+
+    preview_image_input0 = render.render_preview_image(data, 512, 512, 25.0, -10.0, cam_rad=2.5)
+    preview_image_input1 = render.render_preview_image(data, 512, 512, 0.0, 0.0, cam_rad=2.5)
 
     validator = ValidationPipeline()
     validator.preload_model()
-    score, _, _, _ = validator.validate(images, prompt)
+    score, _, _, _, _ = validator.validate([preview_image_input0, preview_image_input1], images, prompt)
 
-    assert score > 0.86
+    assert score >= 0.7422

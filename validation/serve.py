@@ -20,7 +20,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline
 
 
-VERSION = "1.9.1"
+VERSION = "1.10.0"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -44,6 +44,7 @@ class RequestData(BaseModel):
 
 class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
+    vqa: float = Field(default=0.0, description="VQA score")
     clip: float = Field(default=0.0, description="Metaclip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
@@ -85,13 +86,17 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.8)
+    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.5)
+    preview_image_input0 = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
+    preview_image_input1 = renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    score, clip, ssim, lpips = app.state.validator.validate(images, request.prompt)
+    score, vqa, clip, ssim, lpips = app.state.validator.validate(
+        [preview_image_input0, preview_image_input1], images, request.prompt
+    )
     logger.info(f" Score: {score}. Prompt: {request.prompt}")
 
     t4 = time()
@@ -99,7 +104,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     if request.generate_preview and score > request.preview_score_threshold:
         buffered = io.BytesIO()
-        rendered_image = renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
+        rendered_image = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
         preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
         preview_image.save(buffered, format="PNG")
         encoded_preview = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -108,7 +113,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     app.state.metrics.update(score)
 
-    return ResponseData(score=score, clip=clip, ssim=ssim, lpips=lpips, preview=encoded_preview)
+    return ResponseData(score=score, vqa=vqa, clip=clip, ssim=ssim, lpips=lpips, preview=encoded_preview)
 
 
 def _cleanup() -> None:

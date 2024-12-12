@@ -75,9 +75,7 @@ class BenchmarkLoader:
         """
         logger.info(f"Loading files for processing from folder: {folder_path}")
         folder = Path(folder_path)
-        h5_files = list(folder.rglob("*.h5"))
-        ply_files = list(folder.rglob("*.ply"))
-        files = h5_files + ply_files
+        files = list(folder.rglob("*.ply"))
 
         test_match = re.search(r"(\d+)", str(files[0].stem))
         digit_checker = int(test_match.group(1)) if test_match else False

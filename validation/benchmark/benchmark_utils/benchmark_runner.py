@@ -54,16 +54,21 @@ class BenchmarkRunner:
 
         t1 = time()
         images = self._gs_renderer.render_gaussian_splatting_views(data_dict, img_width, img_height, cam_rad)
+        preview_image1 = self._gs_renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
+        preview_image2 = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
         t2 = time()
 
-        score, _, _, _ = self._validator.validate(images, prompt)
+        score, _, _, _, _ = self._validator.validate([preview_image1, preview_image2], images, prompt)
         t3 = time()
 
         dt = t3 - t1
         preview_image = None
         if generate_preview:
-            preview_image = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
-            preview_image.detach().cpu()
+            preview_image = self._gs_renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
+            preview_image = preview_image.detach().cpu()
+
+            file_name = prompt.replace(" ", "_")
+            Image.fromarray(preview_image2.detach().cpu().numpy()).save(f"./tmp/{file_name}.png")
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")

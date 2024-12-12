@@ -5,19 +5,34 @@ import torch
 
 class BaseValidator(ABC):
     @abstractmethod
-    def validate(self, images: list[torch.Tensor], prompt: str, instruction_prompt: str = "") -> torch.Tensor:
+    def validate_images(self, preview_image: torch.Tensor, images: list[torch.Tensor]) -> torch.Tensor:
         """
         Function that validates input images against input prompt that was used for generation of the 3D model;
 
         Parameters
         ----------
+        preview_image:
         images: a list with images (renders of the generated 3D object) stored as torch tensors on the device;
-        prompt_list: a list of prompts or a single prompt defines as string/s;
-        instruction_prompt: additional instruction prompt to guide VLM model if used [optional];
 
         Returns
         -------
         a score stored as a torch.Tensor
+        """
+        pass
+
+    @abstractmethod
+    def validate_source_image(self, source_image: torch.Tensor, prompt: str) -> torch.Tensor:
+        """
+        Function for validating the rendered front view of the object
+        Parameters
+        ----------
+        validate_source_image: a rendered view of the object that can be considered as a source (preview)
+                               image for generating 3D object;
+        prompt: input prompt that was used for generating 3D object
+
+        Returns
+        -------
+        vqa_clip_score: a float score value
         """
         pass
 

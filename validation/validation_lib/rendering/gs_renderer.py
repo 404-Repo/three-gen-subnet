@@ -53,9 +53,7 @@ class GaussianRenderer:
         # Pre-allocate tensors
         num_cameras = len(cameras_view_proj)
         background_col = self._bg_color if bg_color is None else bg_color
-        backgrounds = background_col
-        if background_col is not None:
-            backgrounds = background_col.expand(num_cameras, *background_col.shape).to(self._device)
+        backgrounds = background_col.expand(num_cameras, *background_col.shape).to(self._device)
 
         rendered_colors, rendered_alphas, meta = rasterization(
             means3D,
