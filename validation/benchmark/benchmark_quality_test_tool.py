@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import pandas as pd
 from benchmark_utils.benchmark_loader import BenchmarkLoader
 from benchmark_utils.benchmark_runner import BenchmarkRunner
 from loguru import logger
@@ -14,6 +17,7 @@ def main() -> None:
     save_previews = config_data["save_previews"]
     generate_raw_template = config_data["generate_raw_template"]
     evaluate_validation = config_data["evaluate_validation"]
+    scores_labels = config_data["output_scores_list"]
 
     if not (config_data["img_width"] and config_data["img_width"] > 0):
         raise ValueError("Image width must be a positive number")
@@ -32,9 +36,18 @@ def main() -> None:
 
     benchmark_runner = BenchmarkRunner(config_data["views"], debug=debug_output)
     logger.info(f" Validating input data: {len(files)} files.")
-    images, preview_images, scores, _, file_names = benchmark_runner.run_validation_benchmark(
+    images, preview_images, score_sets, _, file_names = benchmark_runner.run_validation_benchmark(
         config_data, prompts, files, save_images, save_previews
     )
+
+    scores = [[scores[0]] for scores in score_sets]
+    data = {"files": file_names, "prompt": prompts}
+    for i, label in enumerate(scores_labels):
+        data[label] = score_sets[:, i]
+
+    df = pd.DataFrame(data)
+    data_folder_path = Path(config_data["data_folder"])
+    df.to_csv(data_folder_path.parent.name + ".csv", float_format="%.5f")
 
     logger.info(" Done. \n")
 

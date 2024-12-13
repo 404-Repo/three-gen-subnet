@@ -8,7 +8,7 @@ from common.protocol import GetVersion
 
 async def main() -> None:
     config = await get_config()
-    bt.logging(config=config)
+    bt.logging.set_config(config=config.logging)
 
     wallet = bt.wallet(config=config)
     subtensor = bt.subtensor(config=config)
@@ -17,7 +17,7 @@ async def main() -> None:
     dendrite = bt.dendrite(wallet)
 
     validators = [neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and neuron.stake.tao > 1000]
-    validators.append(47)
+    validators.append(62)
     bt.logging.info(f"Active validators: {validators}")
 
     versions = typing.cast(

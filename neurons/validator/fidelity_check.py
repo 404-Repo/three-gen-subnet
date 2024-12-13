@@ -14,6 +14,7 @@ class ValidationResponse(BaseModel):
     clip: float = Field(default=0.0, description="Metaclip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
+    sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
 
 
 async def validate(
