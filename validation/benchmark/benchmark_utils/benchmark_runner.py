@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from validation_lib.io.ply import PlyLoader
 from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
 class BenchmarkRunner:
@@ -57,26 +57,25 @@ class BenchmarkRunner:
 
         t1 = time()
         images = self._gs_renderer.render_gaussian_splatting_views(data_dict, img_width, img_height, cam_rad)
-        preview_image1 = self._gs_renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
-        preview_image2 = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
-        t2 = time()
 
-        scores = self._validator.validate([preview_image1, preview_image2], images, prompt)
+        t2 = time()
+        thetas = [45, 135, 225, 315]
+        preview_images = []
+        for theta in thetas:
+            image = self._gs_renderer.render_preview_image(data_dict, img_width, img_height, theta, -15.0, cam_rad=2.5)
+            preview_images.append(image)
+
+        scores = self._validator.validate(preview_images, images, prompt)
         t3 = time()
 
         dt = t3 - t1
-        preview_image = None
+        preview_image: torch.Tensor | None = None
         if generate_preview:
-            preview_image = self._gs_renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
-            preview_image = preview_image.detach().cpu()
-
-            file_name = prompt.replace(" ", "_")
-
-            # quick hack, add output to benchmark_output
-            tmp_dir = Path("./tmp")
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            tmp_file_path = (tmp_dir / file_name).as_posix() + ".png"
-            Image.fromarray(preview_image2.detach().cpu().numpy()).save(tmp_file_path)
+            preview_image = (
+                self._gs_renderer.render_preview_image(data_dict, img_width, img_height, 25.0, -10.0, cam_rad=2.5)
+                .detach()
+                .cpu()
+            )
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
@@ -161,7 +160,7 @@ class BenchmarkRunner:
 
         return rendered_images, preview_images, np.array(score_sets), timings, file_names
 
-    def run_evaluation_benchmark(self, files: list[Path], scores: list[list[float]], template_path: str) -> None:
+    def run_evaluation_benchmark(self, files: list[Path], scores: list[ValidationResult], template_path: str) -> None:
         """
         Function for evaluating the quality of the validation
 
@@ -172,15 +171,13 @@ class BenchmarkRunner:
         template_path: path to the template with reference data against which current validator will be evaluated
         """
         logger.info(f" Evaluating validation results against reference data from file: {template_path}")
-        if len(scores) != len(files):
-            raise ValueError("The number of scores must be equal to the number of files.")
 
         data_frame = pd.read_csv(template_path)
         assigned_tags = []
         positive_detection = 0
         false_detection = 0
         for i in tqdm.trange(len(files)):
-            tag = self._assign_tag(scores[i][0])
+            tag = self._assign_tag(scores[i])
             assigned_tags.append(tag)
 
             if (
@@ -252,7 +249,7 @@ class BenchmarkRunner:
         files: list[Path],
         images: list[list[torch.Tensor]],
         prompts: list[str],
-        scores: list[list[float]],
+        scores: list[ValidationResult],
         output_folder: str,
         template_name: str = "quality_assessment.csv",
     ) -> None:
@@ -302,7 +299,7 @@ class BenchmarkRunner:
             file_ext = file_path.suffix
             file_names.append(file_name)
 
-            tag = self._assign_tag(scores[i][0])
+            tag = self._assign_tag(scores[i])
             file_tags.append(tag)
 
             if tag == "hq":
@@ -322,7 +319,7 @@ class BenchmarkRunner:
                     self.save_rendered_images(images[i], output_imgs_lowq_folder_path, [file_name])
 
         logger.info(f"Creating raw template: {template_name}")
-        data = {"files": file_names, "prompt": prompts, "scores": scores, "quality": file_tags}
+        data = {"files": file_names, "prompt": prompts, "final score": scores, "quality": file_tags}
 
         df = pd.DataFrame(data)
         df.to_csv(template_name, float_format="%.5f")

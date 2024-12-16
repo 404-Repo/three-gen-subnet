@@ -28,7 +28,7 @@ from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
-MIN_QUALITY_THRESHOLD = 0.68
+MIN_QUALITY_THRESHOLD = 0.6
 
 
 class Validator:
@@ -378,7 +378,7 @@ class Validator:
             validation_failed=validation_failed,
             task_fidelity_score=fidelity_score,
             average_fidelity_score=miner.fidelity_score,
-            generations_within_8_hours=len(miner.observations),
+            generations_within_the_window=len(miner.observations),
             current_miner_reward=reward,
         )
         synapse.cooldown_until = miner.cooldown_until
@@ -401,7 +401,7 @@ class Validator:
     def _get_fidelity_score(validation_score: float) -> float:
         if validation_score < MIN_QUALITY_THRESHOLD:
             return 0.0
-        return 0.5 + 0.5 * (min(1.0, validation_score) - MIN_QUALITY_THRESHOLD) / (1 - MIN_QUALITY_THRESHOLD)
+        return min(1.0, validation_score)
 
     def blacklist_submitting_results(self, synapse: SubmitResults) -> Tuple[bool, str]:  # noqa: UP006, UP035
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)

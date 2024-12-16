@@ -113,7 +113,7 @@ def add_generation_args(parser: argparse.ArgumentParser) -> None:
         "--generation.cooldown_penalty",
         type=int,
         help="Penalty cooldown if miner submits unacceptable results.",
-        default=60,
+        default=600,
     )
 
 
@@ -207,5 +207,5 @@ def add_storage_args(parser: argparse.ArgumentParser) -> None:
         "--storage.validation_score_threshold",
         type=float,
         help="Minimum validation score required for storing 3D assets (0.0 to 1.0)",
-        default=0.68,
+        default=0.6,
     )

@@ -229,9 +229,9 @@ async def test_submit_task(validator: Validator, httpserver: HTTPServer, time_tr
 
     assert submit.results == ""
     assert submit.feedback is not None
-    assert submit.feedback.task_fidelity_score == 0.625
-    assert submit.feedback.average_fidelity_score == 1 * 0.95 + 0.05 * 0.625
-    assert submit.feedback.generations_within_8_hours == 1
+    assert submit.feedback.task_fidelity_score == 0.76
+    assert submit.feedback.average_fidelity_score == 1 * 0.95 + 0.05 * 0.76
+    assert submit.feedback.generations_within_the_window == 1
     assert submit.cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
 
     assert validator.miners[1].assigned_task is None
@@ -310,3 +310,26 @@ async def test_submit_task_low_fidelity(
     assert submit.cooldown_until == int(time_machine.time()) + TASK_COOLDOWN + TASK_COOLDOWN_PENALTY
 
     assert validator.miners[1].observations == deque([])
+
+
+@pytest.mark.asyncio
+async def test_submit_task_window_check(validator: Validator, httpserver: HTTPServer) -> None:
+    httpserver.expect_request("/validate_ply/", method="POST").respond_with_json({"score": 1})
+
+    with time_machine.travel(FROZEN_TIME):
+        first_time = int(time_machine.time())
+        pull = validator.pull_task(create_pull_task(1))
+        await validator.submit_results(create_submit_results(1, pull.task))
+        assert validator.miners[1].observations == deque([first_time])
+
+    with time_machine.travel(FROZEN_TIME + timedelta(hours=3, minutes=59)):
+        second_time = int(time_machine.time())
+        pull = validator.pull_task(create_pull_task(1))
+        await validator.submit_results(create_submit_results(1, pull.task))
+        assert validator.miners[1].observations == deque([first_time, second_time])
+
+    with time_machine.travel(FROZEN_TIME + timedelta(hours=4, minutes=1)):
+        third_time = int(time_machine.time())
+        pull = validator.pull_task(create_pull_task(1))
+        await validator.submit_results(create_submit_results(1, pull.task))
+        assert validator.miners[1].observations == deque([second_time, third_time])

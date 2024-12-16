@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from benchmark_utils.benchmark_loader import BenchmarkLoader
+from benchmark_utils.benchmark_plotter import Plotter
 from benchmark_utils.benchmark_runner import BenchmarkRunner
 from loguru import logger
 
@@ -17,7 +19,6 @@ def main() -> None:
     save_previews = config_data["save_previews"]
     generate_raw_template = config_data["generate_raw_template"]
     evaluate_validation = config_data["evaluate_validation"]
-    scores_labels = config_data["output_scores_list"]
 
     if not (config_data["img_width"] and config_data["img_width"] > 0):
         raise ValueError("Image width must be a positive number")
@@ -40,14 +41,25 @@ def main() -> None:
         config_data, prompts, files, save_images, save_previews
     )
 
-    scores = [[scores[0]] for scores in score_sets]
+    scores = [scores.final_score for scores in score_sets]
     data = {"files": file_names, "prompt": prompts}
-    for i, label in enumerate(scores_labels):
-        data[label] = score_sets[:, i]
+    data["final_score"] = [score.final_score for score in score_sets]
+    data["quality_score"] = [score.quality_score for score in score_sets]
+    data["clip_score"] = [score.clip_score for score in score_sets]
+    data["ssim_score"] = [score.ssim_score for score in score_sets]
+    data["lpis_score"] = [score.lpips_score for score in score_sets]
+    data["sharpness"] = [score.sharpness_score for score in score_sets]
 
     df = pd.DataFrame(data)
     data_folder_path = Path(config_data["data_folder"])
     df.to_csv(data_folder_path.parent.name + ".csv", float_format="%.5f")
+
+    plotter = Plotter()
+    dataset_name = Path(config_data["data_folder"]).name
+    plotter.plot_line_chart([np.array(data["final_score"])], "ply_file", "final_score", dataset_name)
+    plotter.plot_line_chart([np.array(data["quality_score"])], "ply_file", "quality_score", dataset_name)
+    plotter.plot_line_chart([np.array(data["clip_score"])], "ply_file", "clip_score", dataset_name)
+    plotter.plot_line_chart([np.array(data["sharpness"])], "ply_file", "sharpness", dataset_name)
 
     logger.info(" Done. \n")
 
@@ -57,10 +69,12 @@ def main() -> None:
             files, images, prompts, scores, "benchmark_output", template_file
         )
         logger.info(" Done.")
+
     elif evaluate_validation:
         logger.info(f" Evaluating validation using reference in data from file: {template_file}")
         benchmark_runner.run_evaluation_benchmark(files, scores, template_file)
         logger.info(" Done.")
+
     else:
         logger.warning(
             " Please enable one of the options in the config file: "

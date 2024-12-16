@@ -22,7 +22,12 @@ class Feedback(BaseModel):
     validation_failed: bool = False  # Set if validation failed.
     task_fidelity_score: float = 0.0  # Calculated fidelity score for the given task.
     average_fidelity_score: float = 0.0  # Average of all computed fidelity scores.
-    generations_within_8_hours: int = 0  # Total accepted generations (non-zero fidelity score) within the last 8 hours.
+    generations_within_8_hours: int = (
+        0  # [Deprecated] Total accepted generations (non-zero fidelity score) within the last 8 hours.
+    )
+    generations_within_the_window: int = (
+        0  # Total accepted generations (non-zero fidelity score) within the last 4 hours.
+    )
     current_miner_reward: float = 0  # Recent miners reward value.
 
 
@@ -36,7 +41,7 @@ class PullTask(bt.Synapse):
     # Minimum score required for task results to be accepted by validators.
     # Results below this threshold are rejected, penalizing the miner.
     # Miners can submit empty results to avoid penalties if unable to meet threshold.
-    validation_threshold: float = 0.68
+    validation_threshold: float = 0.6
 
     cooldown_until: int = 0  # Unix timestamp indicating when miner can pull the next task from this validator.
     cooldown_violations: int = 0  # Count of miner's failures to respect the mandatory cooling period.
@@ -50,6 +55,7 @@ class SubmitResults(bt.Synapse):
 
     data_format: str = "ply"  # Reserved for future use.
     data_ver: int = 0  # Reserved for future use.
+    compression: int = 0  # Experimental feature.
 
     submit_time: int  # time.time_ns()
     signature: str  # Miner signature: b64encode(sign(f'{submit_time}{prompt}{validator.hotkey}{miner.hotkey}'))

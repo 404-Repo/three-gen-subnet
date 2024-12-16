@@ -1,5 +1,5 @@
 import argparse
-import base64
+import pybase64
 import inspect
 import json
 import os
@@ -22,7 +22,7 @@ def send_post_request(prompt: str, file_path: str, url: str, version: str, gener
             file_data = file.read()
 
         # Encode the binary data to base64
-        encoded_data = base64.b64encode(file_data).decode("utf-8")
+        encoded_data = pybase64.b64encode(file_data).decode("utf-8")
 
         # Create the payload
         payload = {"prompt": prompt, "data": encoded_data, "generate_preview": generate_preview}

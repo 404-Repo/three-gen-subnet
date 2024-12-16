@@ -13,7 +13,7 @@ class MinerData(BaseModel):
     """Miner hotkey."""
 
     observations: deque[int] = Field(default_factory=deque)
-    """Observation window containing task finish times (seconds), limited to the last 8 hours."""
+    """Observation window containing task finish times (seconds), limited to the last 4 hours."""
 
     fidelity_score: float = 1.0
     """Exponential moving average (EMA) of the fidelity score."""
@@ -48,7 +48,7 @@ class MinerData(BaseModel):
 
         bt.logging.debug(
             f"[{self.uid}] score: {fidelity_score}. Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
-            f" Observations (8h): {len(self.observations)}"
+            f" Observations (4h): {len(self.observations)}"
         )
 
     def is_task_expired(self, expiration_time: int) -> bool:
@@ -64,11 +64,11 @@ class MinerData(BaseModel):
     def cooldown_left(self) -> int:
         return 0 if self.cooldown_until == 0 else self.cooldown_until - int(time.time())
 
-    def _expire_observations(self, current_time: int, observation_window: int = 8 * 60 * 60) -> None:
+    def _expire_observations(self, current_time: int, observation_window: int = 4 * 60 * 60) -> None:
         expiration_threshold = current_time - observation_window
         while self.observations and self.observations[0] < expiration_threshold:
             self.observations.popleft()
 
-    def calculate_reward(self, current_time: int, observation_window: int = 8 * 60 * 60) -> float:
+    def calculate_reward(self, current_time: int, observation_window: int = 4 * 60 * 60) -> float:
         self._expire_observations(current_time, observation_window)
         return len(self.observations) * self.fidelity_score
