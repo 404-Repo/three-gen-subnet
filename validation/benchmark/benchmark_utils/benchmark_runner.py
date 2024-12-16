@@ -1,7 +1,9 @@
 import shutil
 from pathlib import Path
 from time import time
+from typing import Any
 
+import numpy as np
 import pandas as pd
 import torch
 import tqdm
@@ -33,8 +35,9 @@ class BenchmarkRunner:
         prompt: str,
         cam_rad: float,
         generate_preview: bool = False,
-    ) -> tuple[list[torch.Tensor], float, torch.Tensor | None, float]:
-        """Function for validating the input data
+    ) -> tuple[list[torch.Tensor], Any, torch.Tensor | None, float]:
+        """
+        Function for validating the input data
 
         Parameters
         ----------
@@ -58,7 +61,7 @@ class BenchmarkRunner:
         preview_image2 = self._gs_renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
         t2 = time()
 
-        score, _, _, _, _ = self._validator.validate([preview_image1, preview_image2], images, prompt)
+        scores = self._validator.validate([preview_image1, preview_image2], images, prompt)
         t3 = time()
 
         dt = t3 - t1
@@ -68,7 +71,12 @@ class BenchmarkRunner:
             preview_image = preview_image.detach().cpu()
 
             file_name = prompt.replace(" ", "_")
-            Image.fromarray(preview_image2.detach().cpu().numpy()).save(f"./tmp/{file_name}.png")
+
+            # quick hack, add output to benchmark_output
+            tmp_dir = Path("./tmp")
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_file_path = (tmp_dir / file_name).as_posix() + ".png"
+            Image.fromarray(preview_image2.detach().cpu().numpy()).save(tmp_file_path)
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
@@ -76,7 +84,7 @@ class BenchmarkRunner:
 
         images = [img.detach().cpu() for img in images]
 
-        return images, score, preview_image, dt
+        return images, scores, preview_image, dt
 
     def run_validation_benchmark(
         self,
@@ -85,7 +93,7 @@ class BenchmarkRunner:
         files: list[Path],
         return_images: bool = False,
         return_previews: bool = False,
-    ) -> tuple[list[list[torch.Tensor]], list[torch.Tensor] | list, list[list[float]], list[list[float]], list[str]]:
+    ) -> tuple[list[list[torch.Tensor]], list[torch.Tensor] | list, Any, list[list[float]], list[str]]:
         """
         Function for running validation over provided dataset
 
@@ -106,7 +114,7 @@ class BenchmarkRunner:
         """
         rendered_images = []
         preview_images = []
-        scores = []
+        score_sets = []
         timings = []
         file_names = []
         for j, data_file in enumerate(files):
@@ -133,7 +141,7 @@ class BenchmarkRunner:
             if not enough_gpu_mem_available(data_dict):
                 raise RuntimeError("Not enough GPU memory to process the current data.")
 
-            images, score, preview_img, dt = self.validate(
+            images, scores, preview_img, dt = self.validate(
                 data_dict,
                 int(config_data["img_width"]),
                 int(config_data["img_height"]),
@@ -147,10 +155,11 @@ class BenchmarkRunner:
             if return_previews:
                 preview_images.append(preview_img)
 
-            scores.append([score])
+            score_sets.append(scores)
             timings.append([dt])
             file_names.append(file_name)
-        return rendered_images, preview_images, scores, timings, file_names
+
+        return rendered_images, preview_images, np.array(score_sets), timings, file_names
 
     def run_evaluation_benchmark(self, files: list[Path], scores: list[list[float]], template_path: str) -> None:
         """

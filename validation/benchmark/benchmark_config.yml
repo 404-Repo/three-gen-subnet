@@ -33,10 +33,14 @@ generate_raw_template: True
 evaluate_validation: False
 
 # flag that allows to save rendering images per input GS for debugging purposes
-save_images: False
+save_images: True
 
 # flag that allows to save rendered preview images per input GS for debugging purposes
-save_previews: False
+save_previews: True
 
 # enables / disables extra debugging output in the terminal
 debug_output: True
+
+# fill in this list with names according to the return statement in /validation/validation_lib/validation/validation_pipeline.py
+# function def validate(...), lines 28 - 85
+output_scores_list: ["final", "vqa_score", "clip_score", "ssim_score", "lpips_score", "sharpness"]

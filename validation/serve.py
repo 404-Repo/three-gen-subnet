@@ -17,10 +17,11 @@ from validation_lib.io.base import BaseLoader
 from validation_lib.io.ply import PlyLoader
 from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
-VERSION = "1.10.0"
+VERSION = "1.11.0"
+SHARPNESS_THRESHOLD = 620.0
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -48,6 +49,7 @@ class ResponseData(BaseModel):
     clip: float = Field(default=0.0, description="Metaclip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
+    sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
@@ -57,6 +59,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_model()
     app.state.metrics = Metrics()
+    gc.collect()
+    torch.cuda.empty_cache()
 
     yield
 
@@ -94,15 +98,23 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    score, vqa, clip, ssim, lpips = app.state.validator.validate(
+    val_res: ValidationResult = app.state.validator.validate(
         [preview_image_input0, preview_image_input1], images, request.prompt
     )
-    logger.info(f" Score: {score}. Prompt: {request.prompt}")
+    logger.info(f" Score: {val_res.final_score}. Prompt: {request.prompt}")
 
     t4 = time()
     logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
 
-    if request.generate_preview and score > request.preview_score_threshold:
+    # Sharpness check
+    if val_res.sharpness_score < SHARPNESS_THRESHOLD:
+        logger.info(
+            f"Sharpness score ({val_res.sharpness_score:.1f}) too low. Resetting the score. "
+            f"Prompt: {request.prompt}"
+        )
+        val_res.final_score = 0.0
+
+    if request.generate_preview and val_res.final_score > request.preview_score_threshold:
         buffered = io.BytesIO()
         rendered_image = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
         preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
@@ -111,9 +123,17 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     else:
         encoded_preview = None
 
-    app.state.metrics.update(score)
+    app.state.metrics.update(val_res.final_score)
 
-    return ResponseData(score=score, vqa=vqa, clip=clip, ssim=ssim, lpips=lpips, preview=encoded_preview)
+    return ResponseData(
+        score=val_res.final_score,
+        vqa=val_res.vqa_score,
+        clip=val_res.clip_score,
+        ssim=val_res.ssim_score,
+        lpips=val_res.lpips_score,
+        sharpness=val_res.sharpness_score,
+        preview=encoded_preview,
+    )
 
 
 def _cleanup() -> None:

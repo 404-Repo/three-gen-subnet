@@ -3,9 +3,19 @@ from typing import Any
 import numpy as np
 import torch
 from loguru import logger
+from pydantic import BaseModel
 from pytod.models.knn import KNN
 from validation_lib.validation.clip_score_validator import ClipScoreValidator
 from validation_lib.validation.metric_utils import MetricUtils
+
+
+class ValidationResult(BaseModel):
+    final_score: float  # combined score
+    vqa_score: float  # VQA score
+    clip_score: float  # clip similarity score
+    ssim_score: float  # structure similarity index score
+    lpips_score: float  # perceptive similarity score
+    sharpness_score: float  # laplacian variance score
 
 
 class ValidationPipeline:
@@ -25,25 +35,15 @@ class ValidationPipeline:
         self._metrics_utils = MetricUtils()
         self._clf = KNN(device=self._device.type)
 
-    def validate(
-        self, source_images: list[torch.Tensor], images: list[torch.Tensor], prompt: str
-    ) -> tuple[Any, Any, Any, Any, Any]:
+    def validate(self, source_images: list[torch.Tensor], images: list[torch.Tensor], prompt: str) -> ValidationResult:
         """
         Function for validating the input data
 
         Parameters
         ----------
-        source_image: a torch tensor with source image (rendered from a selected view)
+        source_images: a list of torch tensors with the source image (rendered from a selected view)
         images: a list with rendered images stored as torch.tensors, type = torch.uint8, same device
         prompt: a string with input prompt that was used for generating the 3D model
-
-        Returns
-        -------
-        final_score: combined score
-        vqa_score: combined score
-        clip_score: clip similarity score
-        ssim: structure similarity index score
-        lpips: perceptive similarity score
         """
 
         # compute two clip scores
@@ -67,6 +67,9 @@ class ValidationPipeline:
         lpips_score = np.exp(np.log(filtered_lpips).mean())
         lpips_score = 1 - lpips_score
 
+        # laplacian variance
+        sharpness_score = self._metrics_utils.compute_laplacian_variance(images)
+
         # compute final score
         final_score = (
             0.5 * vqa_score
@@ -80,9 +83,17 @@ class ValidationPipeline:
             logger.debug(f" lpips score: {lpips_score}")
             logger.debug(f" vqa score, prev.image: {vqa_score}")
             logger.debug(f" clip score: {clip_score}")
+            logger.debug(f" sharpness score: {sharpness_score}")
             logger.debug(f" final score: {final_score}")
 
-        return final_score, vqa_score, clip_score, ssim_score, lpips_score
+        return ValidationResult(
+            final_score=float(final_score.detach().cpu().numpy()[0]),
+            vqa_score=float(vqa_score.detach().cpu().numpy()[0]),
+            clip_score=float(clip_score.detach().cpu().numpy()),
+            ssim_score=float(ssim_score),
+            lpips_score=float(lpips_score),
+            sharpness_score=float(sharpness_score.detach().cpu().numpy()),
+        )
 
     def compute_clip_score(
         self, source_image: list[torch.Tensor], images: list[torch.Tensor], prompt: str
