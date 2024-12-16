@@ -20,7 +20,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 SHARPNESS_THRESHOLD = 620.0
 
 
@@ -45,8 +45,8 @@ class RequestData(BaseModel):
 
 class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
-    vqa: float = Field(default=0.0, description="VQA score")
-    clip: float = Field(default=0.0, description="Metaclip similarity score")
+    iqa: float = Field(default=0.0, description="Prompt-IQA (quality) score")
+    clip: float = Field(default=0.0, description="Clip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
@@ -91,16 +91,18 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
     images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.5)
-    preview_image_input0 = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
-    preview_image_input1 = renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
+
+    thetas = [45, 135, 225, 315]
+    preview_images = []
+    for theta in thetas:
+        image = renderer.render_preview_image(data_dict, 512, 512, theta, -15.0, cam_rad=2.5)
+        preview_images.append(image)
 
     t3 = time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    val_res: ValidationResult = app.state.validator.validate(
-        [preview_image_input0, preview_image_input1], images, request.prompt
-    )
+    val_res: ValidationResult = app.state.validator.validate(preview_images, images, request.prompt)
     logger.info(f" Score: {val_res.final_score}. Prompt: {request.prompt}")
 
     t4 = time()
@@ -127,7 +129,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     return ResponseData(
         score=val_res.final_score,
-        vqa=val_res.vqa_score,
+        iqa=val_res.quality_score,
         clip=val_res.clip_score,
         ssim=val_res.ssim_score,
         lpips=val_res.lpips_score,

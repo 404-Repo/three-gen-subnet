@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 import torch
 
@@ -21,20 +22,20 @@ class BaseValidator(ABC):
         pass
 
     @abstractmethod
-    def validate_source_image(self, source_image: torch.Tensor, prompt: str) -> torch.Tensor:
+    def validate(self, images: list[torch.Tensor], prompt: str) -> Any:
         """
-        Function for validating the rendered front view of the object
+        Function for validating the input data using transformers model
+
         Parameters
         ----------
-        validate_source_image: a rendered view of the object that can be considered as a source (preview)
-                               image for generating 3D object;
-        prompt: input prompt that was used for generating 3D object
+        images: a list with images (renders of the generated 3D object) stored as torch tensors on the device;
+        prompt: input prompt that was used for generation of the 3D object
+        instruction_prompt: additional instruction prompt to guide VLM model if used [optional];
 
         Returns
         -------
-        vqa_clip_score: a float score value
+        clip_scores: list with estimated clip scores per input image
         """
-        pass
 
     @abstractmethod
     def preload_model(self, model_name: str, pretrained: str = "") -> None:

@@ -31,7 +31,8 @@ class RenderingPipeline:
         else:
             raise ValueError("Only Gaussian Splatting (gs) rendering is currently supported.")
 
-        self._thetas, self._phis = self.get_cameras_distribution3(views)
+        # self._thetas, self._phis = self.get_cameras_distribution3(views)
+        self._thetas = np.linspace(0, 360, num=16)
 
     def render_gaussian_splatting_views(
         self,
@@ -67,9 +68,9 @@ class RenderingPipeline:
         camera_views_proj = torch.empty((self._views, 4, 4)).to(self._device)
         camera_intrs = torch.empty((self._views, 3, 3)).to(self._device)
 
-        for theta, phi, j in zip(self._thetas, self._phis, range(self._views), strict=False):
-            dtheta = np.random.uniform(-3, 3)
-            camera.compute_transform_orbit(phi, theta + dtheta, cam_rad, is_degree=True)
+        for theta, j in zip(self._thetas, range(self._views), strict=False):
+            # dtheta = np.random.uniform(-3, 3)
+            camera.compute_transform_orbit(-15, theta, cam_rad, is_degree=True)
             camera_views_proj[j] = camera.world_to_camera_transform
             camera_intrs[j] = camera.intrinsics
 
