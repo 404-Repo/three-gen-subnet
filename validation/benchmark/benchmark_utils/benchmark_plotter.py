@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
@@ -19,5 +19,5 @@ class Plotter:
             if reply == "y":
                 fig.show()
 
-        image_file = os.path.join("./plots", dataset_name + "_" + y_label + ".png")
+        image_file = Path("plots") / (dataset_name + "_" + y_label + ".png")
         fig.write_image(image_file, scale=2)

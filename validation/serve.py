@@ -1,11 +1,11 @@
 import argparse
-import base64
 import gc
 import io
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from time import time
 
+import pybase64
 import torch
 import uvicorn
 from application.metrics import Metrics
@@ -77,7 +77,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     t1 = time()
 
     # Load data
-    pcl_raw = base64.b64decode(request.data, validate=True)
+    pcl_raw = pybase64.b64decode(request.data, validate=True)
     pcl_buffer = io.BytesIO(pcl_raw)
     data_dict = loader.from_buffer(pcl_buffer)
     t2 = time()
@@ -121,7 +121,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
         rendered_image = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
         preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
         preview_image.save(buffered, format="PNG")
-        encoded_preview = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        encoded_preview = pybase64.b64encode(buffered.getvalue()).decode("utf-8")
     else:
         encoded_preview = None
 

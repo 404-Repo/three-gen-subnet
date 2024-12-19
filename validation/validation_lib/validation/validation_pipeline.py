@@ -80,7 +80,6 @@ class ValidationPipeline:
         # laplacian variance
         sharpness_score = self._metrics_utils.compute_laplacian_variance(images)
 
-
         if quality_score < 0.5:
             updated_quality_score = 0.0
         else:

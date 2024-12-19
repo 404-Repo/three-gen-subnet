@@ -69,13 +69,13 @@ class BenchmarkRunner:
         t3 = time()
 
         dt = t3 - t1
+        preview_image: torch.Tensor | None = None
         if generate_preview:
-            preview_image = self._gs_renderer.render_preview_image(
-                data_dict, img_width, img_height, 25.0, -10.0, cam_rad=2.5
+            preview_image = (
+                self._gs_renderer.render_preview_image(data_dict, img_width, img_height, 25.0, -10.0, cam_rad=2.5)
+                .detach()
+                .cpu()
             )
-            preview_image = preview_image.detach().cpu()
-        else:
-            preview_image: torch.Tensor | None = None
 
         logger.info(f" Rendering took: {t2 - t1} sec")
         logger.info(f" Validation took: {t3 - t2} sec")
