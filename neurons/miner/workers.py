@@ -133,7 +133,7 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     bt.logging.debug(f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {score}")
     bt.logging.debug(
         f"Average score: {feedback.average_fidelity_score}. "
-        f"Accepted results (last 8h): {feedback.generations_within_8_hours}. "
+        f"Accepted results (last 4h): {feedback.generations_within_the_window}. "
         f"Reward: {feedback.current_miner_reward}."
     )
 

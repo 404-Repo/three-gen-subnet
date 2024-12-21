@@ -1,13 +1,14 @@
 import argparse
-import base64
 import gc
 import io
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from time import time
 
+import pybase64
 import torch
 import uvicorn
+import zstandard
 from application.metrics import Metrics
 from fastapi import FastAPI
 from loguru import logger
@@ -20,7 +21,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 SHARPNESS_THRESHOLD = 620.0
 
 
@@ -39,14 +40,15 @@ args, _ = get_args()
 class RequestData(BaseModel):
     prompt: str = Field(max_length=1024, description="Prompt used to generate assets")
     data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
+    compression: int = Field(default=0, description="Experimental feature")
     generate_preview: bool = Field(default=False, description="Optional. Pass to render and return a preview")
     preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
 
 
 class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
-    vqa: float = Field(default=0.0, description="VQA score")
-    clip: float = Field(default=0.0, description="Metaclip similarity score")
+    iqa: float = Field(default=0.0, description="Prompt-IQA (quality) score")
+    clip: float = Field(default=0.0, description="Clip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_model()
     app.state.metrics = Metrics()
+    app.state.decompressor = zstandard.ZstdDecompressor()
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -71,16 +74,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 app.router.lifespan_context = lifespan
 
 
-def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
-    logger.info(f"Validating started. Prompt: {request.prompt}")
+def _validate(
+    prompt: str, assets: bytes, loader: BaseLoader, generate_preview: bool, preview_score_threshold: float
+) -> ResponseData:
+    logger.info(f"Validating started. Prompt: {prompt}")
 
-    t1 = time()
+    t1 = time.time()
 
     # Load data
-    pcl_raw = base64.b64decode(request.data, validate=True)
-    pcl_buffer = io.BytesIO(pcl_raw)
+    pcl_buffer = io.BytesIO(assets)
     data_dict = loader.from_buffer(pcl_buffer)
-    t2 = time()
+    t2 = time.time()
 
     logger.info(f"Loading data took: {t2 - t1} sec.")
 
@@ -91,35 +95,36 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
     images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.5)
-    preview_image_input0 = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
-    preview_image_input1 = renderer.render_preview_image(data_dict, 512, 512, 0.0, 0.0, cam_rad=2.5)
 
-    t3 = time()
+    thetas = [25, 135, 205, 315]
+    preview_images = []
+    for theta in thetas:
+        image = renderer.render_preview_image(data_dict, 512, 512, theta, -15.0, cam_rad=2.5)
+        preview_images.append(image)
+
+    t3 = time.time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    val_res: ValidationResult = app.state.validator.validate(
-        [preview_image_input0, preview_image_input1], images, request.prompt
-    )
-    logger.info(f" Score: {val_res.final_score}. Prompt: {request.prompt}")
+    val_res: ValidationResult = app.state.validator.validate(preview_images, images, prompt)
+    logger.info(f" Score: {val_res.final_score}. Prompt: {prompt}")
 
-    t4 = time()
+    t4 = time.time()
     logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
 
     # Sharpness check
     if val_res.sharpness_score < SHARPNESS_THRESHOLD:
         logger.info(
-            f"Sharpness score ({val_res.sharpness_score:.1f}) too low. Resetting the score. "
-            f"Prompt: {request.prompt}"
+            f"Sharpness score ({val_res.sharpness_score:.1f}) too low. Resetting the score. " f"Prompt: {prompt}"
         )
         val_res.final_score = 0.0
 
-    if request.generate_preview and val_res.final_score > request.preview_score_threshold:
+    if generate_preview and val_res.final_score > preview_score_threshold:
         buffered = io.BytesIO()
         rendered_image = renderer.render_preview_image(data_dict, 512, 512, 25.0, -10.0, cam_rad=2.5)
         preview_image = Image.fromarray(rendered_image.detach().cpu().numpy())
         preview_image.save(buffered, format="PNG")
-        encoded_preview = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        encoded_preview = pybase64.b64encode(buffered.getvalue()).decode("utf-8")
     else:
         encoded_preview = None
 
@@ -127,7 +132,7 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
     return ResponseData(
         score=val_res.final_score,
-        vqa=val_res.vqa_score,
+        iqa=val_res.quality_score,
         clip=val_res.clip_score,
         ssim=val_res.ssim_score,
         lpips=val_res.lpips_score,
@@ -137,14 +142,34 @@ def _validate(request: RequestData, loader: BaseLoader) -> ResponseData:
 
 
 def _cleanup() -> None:
-    t1 = time()
+    t1 = time.time()
 
     # gc.collect()
     torch.cuda.empty_cache()
     gpu_memory_free, gpu_memory_total = torch.cuda.mem_get_info()
 
-    t2 = time()
+    t2 = time.time()
     logger.info(f"Cache purge took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
+
+
+def decode_assets(request: RequestData, decompressor: zstandard.ZstdDecompressor) -> bytes:
+    t1 = time.time()
+    assets = pybase64.b64decode(request.data, validate=True)
+    t2 = time.time()
+    logger.info(
+        f"Assets decoded. Size: {len(request.data)} -> {len(assets)}. "
+        f"Time taken: {t2 - t1:.2f} sec. Prompt: {request.prompt}."
+    )
+
+    if request.compression == 1:  # Experimental. Compression.
+        compressed_size = len(assets)
+        assets = decompressor.decompress(assets)
+        logger.info(
+            f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
+            f"Time taken: {time.time() - t2:.2f} sec. Prompt: {request.prompt}."
+        )
+
+    return assets
 
 
 @app.post("/validate_ply/", response_model=ResponseData)
@@ -160,7 +185,14 @@ async def validate_ply(request: RequestData) -> ResponseData:
 
     """
     try:
-        response = _validate(request, PlyLoader())
+        assets = decode_assets(request, app.state.decompressor)
+        response = _validate(
+            prompt=request.prompt,
+            assets=assets,
+            generate_preview=request.generate_preview,
+            preview_score_threshold=request.preview_score_threshold,
+            loader=PlyLoader(),
+        )
     except Exception as e:
         logger.exception(e)
         response = ResponseData(score=0.0)

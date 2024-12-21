@@ -31,6 +31,7 @@ async def validate(
                 json={
                     "prompt": prompt,
                     "data": data,
+                    "compression": synapse.compression,
                     "generate_preview": storage_enabled,
                     "preview_score_threshold": validation_score_threshold - 0.1,
                 },

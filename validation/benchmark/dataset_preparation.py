@@ -87,10 +87,10 @@ def save_prompts(file_name: str, prompts_list: list, mode: str = "a") -> None:
 
 
 def main() -> None:
-    dataset_path = Path("/home/tesha/Documents/BenchmarkDataset/model-comparison/Dataset")
-    ply_folder = Path("/home/tesha/Documents/received/output/ply_set")
-    use_folders_names = True
-    rename_files = False
+    dataset_path = Path()
+    ply_folder = Path()
+    use_folders_names = False
+    rename_files = True
 
     prompts = []
 
@@ -129,7 +129,7 @@ def main() -> None:
             prompts.append(file_name)
 
     prompts = sorted(prompts)
-    prompts_file_path = dataset_path.parent / "prompts_dataset.txt"
+    prompts_file_path = dataset_path / "prompts_dataset.txt"
     save_prompts(prompts_file_path.as_posix(), prompts)
 
 

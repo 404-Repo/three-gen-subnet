@@ -3,7 +3,6 @@ from time import time
 from typing import Any
 
 import open_clip
-import t2v_metrics
 import torch
 import torch.nn.functional as F
 from loguru import logger
@@ -20,30 +19,9 @@ class ClipScoreValidator(BaseValidator):
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
         self._model: CLIP = None
-        self._t2v_metrcics = t2v_metrics.VQAScore().to(self._device)
         self._tokenizer: HFTokenizer = None
         self._debug = debug
         self._preproc_img_size = preproc_img_size
-
-    def validate_source_image(self, source_image: torch.Tensor, prompt: str) -> Any:
-        """
-        Function for validating the rendered front view of the object
-        Parameters
-        ----------
-        validate_source_image: a rendered view of the object that can be considered as a source (preview) image
-                               for generating 3D object;
-        prompt: input prompt that was used for generating 3D object
-
-        Returns
-        -------
-        vqa_clip_score: a float score value
-        """
-        t1 = time()
-        vqa_clip_score = self._t2v_metrcics([source_image], [prompt])
-        t2 = time()
-        if self._debug:
-            logger.debug(f"VQA score computation took: {(t2 - t1)} sec")
-        return vqa_clip_score
 
     def validate_images(self, preview_image: torch.Tensor, images: list[torch.Tensor]) -> Any:
         """
@@ -68,6 +46,43 @@ class ClipScoreValidator(BaseValidator):
             images_features /= images_features.norm(dim=-1, keepdim=True)
             preview_image_features /= preview_image_features.norm(dim=-1, keepdim=True)
             clip_scores = images_features @ preview_image_features.T
+
+        return clip_scores.to(torch.float32)
+
+    def validate(self, images: list[torch.Tensor], prompt: str) -> Any:
+        """
+        Function for validating the input data using transformers model
+
+        Parameters
+        ----------
+        images: a list with images (renders of the generated 3D object) stored as torch tensors on the device;
+        prompt: input prompt that was used for generation of the 3D object
+        instruction_prompt: additional instruction prompt to guide VLM model if used [optional];
+
+        Returns
+        -------
+        clip_scores: list with estimated clip scores per input image
+        """
+
+        t1 = time()
+        stacked_images, tokenized_prompts = self.preprocess_inputs(images, prompt, self._preproc_img_size)
+
+        t2 = time()
+
+        if self._debug:
+            logger.debug(f"Processor time: {t2 - t1} sec")
+
+        with torch.no_grad(), torch.amp.autocast("cuda"):
+            image_features = self._model.encode_image(stacked_images)
+            text_features = self._model.encode_text(tokenized_prompts)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+
+        clip_scores = image_features @ text_features.T
+
+        t3 = time()
+        if self._debug:
+            logger.debug(f"Inference time: {t3 - t2} sec")
 
         return clip_scores.to(torch.float32)
 
@@ -118,7 +133,8 @@ class ClipScoreValidator(BaseValidator):
         self._tokenizer = open_clip.get_tokenizer(model_name)
         self._model.eval()
 
-        self._t2v_metrcics.preload_model("clip-flant5-xl")
+        # self._t2v_metrcics.preload_model("clip-flant5-xl-gpt4v")
+        # self._t2v_metrcics.preload_model("clip-flant5-xl")
 
         logger.info("[INFO] Done.")
 
