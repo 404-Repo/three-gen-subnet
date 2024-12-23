@@ -7,12 +7,13 @@ from typing import Tuple  # noqa: UP035
 import bittensor as bt
 import numpy as np
 from auto_updater import AutoUpdater
-from bittensor.utils.weight_utils import convert_weights_and_uids_for_emit, process_weights_for_netuid
+from bittensor.utils.weight_utils import convert_weights_and_uids_for_emit
 from bittensor_wallet.mock import MockWallet
 from common import create_neuron_dir, owner
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from common.version import NEURONS_VERSION
+from numpy.typing import NDArray
 from pydantic import BaseModel
 from substrateinterface import Keypair
 
@@ -525,30 +526,30 @@ class Validator:
         rewards = np.array([miner.calculate_reward(current_time) for miner in self.miners])
         bt.logging.debug(f"Rewards: {rewards}")
 
-        norm = np.linalg.norm(rewards, ord=1, axis=0, keepdims=True)
-        bt.logging.debug(f"Total reward: {norm}")
+        def strip_sigmoid(x: NDArray[np.uint16], n: int) -> NDArray[np.float64]:
+            return np.array(0.003 + 0.005 / (1 + np.exp(-0.06 * (x - n / 2))), dtype=np.float64)
 
-        if np.any(norm == 0) or np.isnan(norm).any():
-            norm = np.ones_like(norm)
+        reward_mask = rewards > 30.0
+        processed_uids = np.nonzero(reward_mask)[0]
+        processed_rewards = rewards[reward_mask]
+        n = len(processed_rewards)
 
-        raw_weights = rewards / norm
-        bt.logging.debug("Raw weights", raw_weights)
+        if n == 0:
+            bt.logging.warning("No miner is qualified to get incentive")
+            return
 
-        (
-            processed_weight_uids,
-            processed_weights,
-        ) = process_weights_for_netuid(
-            uids=self.metagraph.uids,
-            weights=raw_weights,
-            netuid=self.config.netuid,
-            subtensor=self.subtensor,
-            metagraph=self.metagraph,
-        )
+        sort_idx = np.argsort(processed_rewards)
+        probs = strip_sigmoid(np.arange(n, dtype=np.uint16), n)
+        final_probs = probs[np.argsort(sort_idx)]
+        processed_weights = final_probs / np.sum(final_probs)
+
+        bt.logging.debug(f"Uids: {processed_uids}")
+        bt.logging.debug(f"Weights: {processed_weights}")
 
         (
             uint_uids,
             uint_weights,
-        ) = convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
+        ) = convert_weights_and_uids_for_emit(uids=processed_uids, weights=processed_weights)
 
         result, msg = self.subtensor.set_weights(
             wallet=self.wallet,
@@ -560,6 +561,6 @@ class Validator:
             version_key=int(NEURONS_VERSION),
         )
         if result:
-            bt.logging.info("set_weights on chain successfully!")
+            bt.logging.info("Weights set on chain successfully!")
         else:
-            bt.logging.error(f"set_weights failed with {msg}")
+            bt.logging.error(f"Setting weights failed with {msg}")
