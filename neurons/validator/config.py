@@ -107,7 +107,7 @@ def add_generation_args(parser: argparse.ArgumentParser) -> None:
         "--generation.task_cooldown",
         type=int,
         help="Cooldown period between tasks from the same miner (in seconds).",
-        default=60,
+        default=120,
     )
     parser.add_argument(
         "--generation.cooldown_penalty",
