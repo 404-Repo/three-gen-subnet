@@ -21,6 +21,7 @@ conda info --env
 
 CUDA_HOME=${CONDA_PREFIX}
 pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.4.0
+pip install git+https://github.com/404-Repo/vqa_score_repository.git@archive
 
 # Store the path of the Conda interpreter
 CONDA_INTERPRETER_PATH=$(which python)
