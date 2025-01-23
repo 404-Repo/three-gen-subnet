@@ -49,6 +49,7 @@ class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
     iqa: float = Field(default=0.0, description="Prompt-IQA (quality) score")
     clip: float = Field(default=0.0, description="Clip similarity score")
+    vqascore: float = Field(default=0.0, description="VQA similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
@@ -138,6 +139,7 @@ def _validate(
         lpips=val_res.lpips_score,
         sharpness=val_res.sharpness_score,
         preview=encoded_preview,
+        vqascore=val_res.vqa_score
     )
 
 
