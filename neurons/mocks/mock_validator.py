@@ -3,7 +3,7 @@ import asyncio
 import time
 
 import bittensor as bt
-from common.protocol import Feedback, PullTask, SubmitResults, Task, Version
+from common.protocol import Feedback, PullTask, SubmitResults, Task
 
 
 async def main() -> None:
@@ -34,9 +34,7 @@ async def main() -> None:
 
 
 def pull_task(synapse: PullTask) -> PullTask:
-    synapse.version = Version(major=0, minor=0, patch=17)
     synapse.task = Task(prompt="Yeti")
-    synapse.submit_before = int(time.time() + 600)
     return synapse
 
 
@@ -44,7 +42,7 @@ def submit_results(synapse: SubmitResults) -> SubmitResults:
     synapse.feedback = Feedback(
         task_fidelity_score=0.75,
         average_fidelity_score=0.8,
-        generations_within_8_hours=42,
+        generations_within_the_window=42,
         current_miner_reward=0.8 * 42,
     )
     synapse.cooldown_until = int(time.time() + 60.0)

@@ -44,7 +44,7 @@ def add_neuron_args(parser: argparse.ArgumentParser) -> None:
         "--neuron.weight_set_interval",
         type=int,
         help="Weight set interval, measured in blocks.",
-        default=100,  # 100 * 12 seconds = 20 minutes
+        default=100,  # 100 * 12 seconds ~ 20 minutes
     )
     parser.add_argument(
         "--neuron.min_stake_to_set_weights",
@@ -53,22 +53,10 @@ def add_neuron_args(parser: argparse.ArgumentParser) -> None:
         default=1000,
     )
     parser.add_argument(
-        "--neuron.moving_average_alpha",
-        type=float,
-        help="Alpha parameter for fidelity factor update.",
-        default=0.05,
-    )
-    parser.add_argument(
         "--neuron.log_info_interval",
         type=int,
         help="Logging interval for the node state (in seconds).",
         default=30,
-    )
-    parser.add_argument(
-        "--neuron.strong_miners_count",
-        type=int,
-        help="Number of top miners that are considered strong. Used for Public API",
-        default=100,
     )
     parser.add_argument(
         "--neuron.auto_update_disabled",
@@ -82,38 +70,45 @@ def add_neuron_args(parser: argparse.ArgumentParser) -> None:
         help="Version check interval",
         default=30 * 60,  # 30 minutes
     )
-    parser.add_argument(
-        "--neuron.cooldown_violation_penalty",
-        type=int,
-        help="If miner asks for a new task while on a cooldown, additional cooldown is added",
-        default=10,
-    )
-    parser.add_argument(
-        "--neuron.cooldown_violations_threshold",
-        type=int,
-        help="Cooldown violation threshold to consider the miner behaviour malicious",
-        default=100,
-    )
 
 
 def add_generation_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--generation.task_timeout",
+        "--generation.throttle_period",
         type=int,
-        help="Time limit for submitting tasks (in seconds).",
-        default=10 * 60,  # 10 minutes
+        help="Minimum throttle period (in seconds) for task completion.",
+        default=30,
     )
     parser.add_argument(
         "--generation.task_cooldown",
         type=int,
         help="Cooldown period between tasks from the same miner (in seconds).",
-        default=120,
+        default=150,
     )
+    parser.add_argument(
+        "--generation.cooldown_violation_penalty",
+        type=int,
+        help="If miner asks for a new task while on a cooldown, additional cooldown is added",
+        default=10,
+    )
+    parser.add_argument(
+        "--generation.cooldown_violations_threshold",
+        type=int,
+        help="Cooldown violation threshold to consider the miner behaviour malicious",
+        default=100,
+    )
+
     parser.add_argument(
         "--generation.cooldown_penalty",
         type=int,
         help="Penalty cooldown if miner submits unacceptable results.",
         default=600,
+    )
+    parser.add_argument(
+        "--generation.quality_threshold",
+        type=int,
+        help="Minimum score required for task results to be accepted by validator.",
+        default=0.6,
     )
 
 
@@ -126,6 +121,12 @@ def add_validation_args(parser: argparse.ArgumentParser) -> None:
         help="Specifies the URL of the endpoint responsible for scoring 3D assets. "
         "This endpoint should handle the /validate/ POST route.",
         default=["http://127.0.0.1:8094"],
+    )
+    parser.add_argument(
+        "--validation.moving_average_alpha",
+        type=float,
+        help="Alpha parameter for fidelity factor update.",
+        default=0.05,
     )
 
 
@@ -175,6 +176,18 @@ def add_public_api_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Maximum wait time for the second copy after the first acceptable copy was generated.",
         default=30,
+    )
+    parser.add_argument(
+        "--public_api.task_timeout",
+        type=int,
+        help="Time limit for submitting tasks (in seconds).",
+        default=10 * 60,  # 10 minutes
+    )
+    parser.add_argument(
+        "--public_api.strong_miners_count",
+        type=int,
+        help="Number of top miners that are considered strong",
+        default=100,
     )
     parser.add_argument(
         "--public_api.sync_api_keys_interval",
