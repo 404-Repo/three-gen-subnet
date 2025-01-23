@@ -6,22 +6,6 @@ import torch
 
 class BaseValidator(ABC):
     @abstractmethod
-    def validate_images(self, preview_image: torch.Tensor, images: list[torch.Tensor]) -> torch.Tensor:
-        """
-        Function that validates input images against input prompt that was used for generation of the 3D model;
-
-        Parameters
-        ----------
-        preview_image:
-        images: a list with images (renders of the generated 3D object) stored as torch tensors on the device;
-
-        Returns
-        -------
-        a score stored as a torch.Tensor
-        """
-        pass
-
-    @abstractmethod
     def validate(self, images: list[torch.Tensor], prompt: str) -> Any:
         """
         Function for validating the input data using transformers model

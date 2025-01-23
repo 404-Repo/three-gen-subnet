@@ -21,8 +21,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
-VERSION = "1.12.0"
-SHARPNESS_THRESHOLD = 620.0
+VERSION = "1.14.0"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -47,11 +46,10 @@ class RequestData(BaseModel):
 
 class ResponseData(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
-    iqa: float = Field(default=0.0, description="Prompt-IQA (quality) score")
+    iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
     clip: float = Field(default=0.0, description="Clip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
-    sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
@@ -94,30 +92,17 @@ def _validate(
 
     # Render images
     renderer = RenderingPipeline(16, mode="gs")
-    images = renderer.render_gaussian_splatting_views(data_dict, 512, 512, 2.5)
-
-    thetas = [25, 135, 205, 315]
-    preview_images = []
-    for theta in thetas:
-        image = renderer.render_preview_image(data_dict, 512, 512, theta, -15.0, cam_rad=2.5)
-        preview_images.append(image)
+    images = renderer.render_gaussian_splatting_views(data_dict, 224, 224, 2.5)
 
     t3 = time.time()
     logger.info(f"Image Rendering took: {t3 - t2} sec.")
 
     # Validate images
-    val_res: ValidationResult = app.state.validator.validate(preview_images, images, prompt)
+    val_res: ValidationResult = app.state.validator.validate(images, prompt)
     logger.info(f" Score: {val_res.final_score}. Prompt: {prompt}")
 
     t4 = time.time()
     logger.info(f"Validation took: {t4 - t3} sec. Total time: {t4 - t1} sec.")
-
-    # Sharpness check
-    if val_res.sharpness_score < SHARPNESS_THRESHOLD:
-        logger.info(
-            f"Sharpness score ({val_res.sharpness_score:.1f}) too low. Resetting the score. " f"Prompt: {prompt}"
-        )
-        val_res.final_score = 0.0
 
     if generate_preview and val_res.final_score > preview_score_threshold:
         buffered = io.BytesIO()
@@ -132,11 +117,10 @@ def _validate(
 
     return ResponseData(
         score=val_res.final_score,
-        iqa=val_res.quality_score,
+        iqa=val_res.combined_quality_score,
         clip=val_res.clip_score,
         ssim=val_res.ssim_score,
         lpips=val_res.lpips_score,
-        sharpness=val_res.sharpness_score,
         preview=encoded_preview,
     )
 

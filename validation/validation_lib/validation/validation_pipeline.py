@@ -1,23 +1,21 @@
-import math
 from typing import Any
 
 import numpy as np
 import torch
 from loguru import logger
-from PromptIQA.prompt_iqa_pipeline import PromptIQAPipeline
 from pydantic import BaseModel
 from pytod.models.knn import KNN
 from validation_lib.validation.clip_score_validator import ClipScoreValidator
+from validation_lib.validation.combined_models_validator import CombinedModelQualityValidator
 from validation_lib.validation.metric_utils import MetricUtils
 
 
 class ValidationResult(BaseModel):
     final_score: float  # combined score
-    quality_score: float  # prompy-iqa output
-    clip_score: float  # clip similarity score
+    combined_quality_score: float  # (non-normalized) combined models predictor - score
+    clip_score: float  # clip similarity scores
     ssim_score: float  # structure similarity index score
     lpips_score: float  # perceptive similarity score
-    sharpness_score: float  # laplacian variance score
 
 
 class ValidationPipeline:
@@ -30,7 +28,7 @@ class ValidationPipeline:
         verbose: enable/disable debugging
         """
         self._clip_validator = ClipScoreValidator()
-        self._quality_validator = PromptIQAPipeline()
+        self._combined_model_quality_validator = CombinedModelQualityValidator()
         self._debug = debug
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
@@ -38,7 +36,7 @@ class ValidationPipeline:
         self._metrics_utils = MetricUtils()
         self._clf = KNN(device=self._device.type)
 
-    def validate(self, source_images: list[torch.Tensor], images: list[torch.Tensor], prompt: str) -> ValidationResult:
+    def validate(self, images: list[torch.Tensor], prompt: str) -> ValidationResult:
         """
         Function for validating the input data
 
@@ -51,11 +49,8 @@ class ValidationPipeline:
 
         # compute two clip scores
         clip_score = self.compute_clip_score(images, prompt)
-        quality_scores = []
-        for img in source_images:
-            quality_score = self._quality_validator.compute_quality(img)
-            quality_scores.append(quality_score.detach().cpu().numpy()[0])
-        quality_score = np.array(quality_scores).mean()
+        # raw_quality_score = self._quality_validator.validate(images)
+        combined_quality_score = self._combined_model_quality_validator.validate(images)
 
         # normalization to [0, 1]
         clip_score = clip_score / 0.35
@@ -78,18 +73,18 @@ class ValidationPipeline:
         lpips_score = np.exp(np.log(filtered_lpips).mean())
         lpips_score = 1 - lpips_score
 
-        # laplacian variance
-        sharpness_score = self._metrics_utils.compute_laplacian_variance(images)
-
-        updated_quality_score = min(1.0, math.exp(2 * quality_score - 1.5) - 0.45)
-
         # compute final score
         final_score = (
-            0.75 * updated_quality_score
-            + 0.2 * clip_score
-            + 0.025 * self._metrics_utils.sigmoid_function(ssim_score, 35, 0.83)
-            + 0.025 * lpips_score * self._metrics_utils.sigmoid_function(lpips_score, 30, 0.7)
-        ).detach().cpu().numpy()
+            (
+                0.75 * combined_quality_score
+                + 0.2 * clip_score
+                + 0.025 * self._metrics_utils.sigmoid_function(ssim_score, 35, 0.83)
+                + 0.025 * lpips_score * self._metrics_utils.sigmoid_function(lpips_score, 30, 0.7)
+            )
+            .detach()
+            .cpu()
+            .numpy()
+        )
 
         if clip_score < 0.3:
             final_score = 0.0
@@ -98,17 +93,15 @@ class ValidationPipeline:
             logger.debug(f" ssim score: {ssim_score}")
             logger.debug(f" lpips score: {lpips_score}")
             logger.debug(f" clip score: {clip_score}")
-            logger.debug(f" quality score: {quality_score}")
-            logger.debug(f" sharpness score: {sharpness_score}")
+            logger.debug(f" combined models quality score: {combined_quality_score}")
             logger.debug(f" final score: {final_score}")
 
         return ValidationResult(
             final_score=float(final_score),
-            quality_score=float(quality_score),
+            combined_quality_score=float(combined_quality_score),
             clip_score=float(clip_score.detach().cpu().numpy()),
             ssim_score=float(ssim_score),
             lpips_score=float(lpips_score),
-            sharpness_score=float(sharpness_score.detach().cpu().numpy()),
         )
 
     def compute_clip_score(self, images: list[torch.Tensor], prompt: str) -> Any:
@@ -170,9 +163,10 @@ class ValidationPipeline:
         """
 
         self._clip_validator.preload_model(clip_model, preload)
-        self._quality_validator.load_pipeline()
+        # self._quality_validator.preload_model("")
 
     def unload_model(self) -> None:
         """Function for unloading validation model from the VRAM."""
 
         self._clip_validator.unload_model()
+        # self._quality_validator.unload_model()

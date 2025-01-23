@@ -5,7 +5,7 @@ transformers==4.44.2
 open_clip_torch==2.29.0
 pytest==8.3.2
 scikit-video==1.1.11
-scikit-learn==1.5.2
+scikit-learn==1.6.1
 loguru==0.7.3
 meshio==5.3.5
 ninja==1.11.1.1
@@ -20,4 +20,5 @@ plotly==6.0.0rc0
 kaleido==0.2.1
 pybase64==1.4.0
 zstandard==0.23.0
-git+https://github.com/404-Repo/prompt-iqa.git@v.0.0.2
+openai-clip==1.0.1
+pytorch_lightning==2.5.0.post0
