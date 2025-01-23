@@ -23,32 +23,6 @@ class ClipScoreValidator(BaseValidator):
         self._debug = debug
         self._preproc_img_size = preproc_img_size
 
-    def validate_images(self, preview_image: torch.Tensor, images: list[torch.Tensor]) -> Any:
-        """
-        Function for validating the input data using transformers model
-
-        Parameters
-        ----------
-        preview_image:
-        images: a list with images (renders of the generated 3D object) stored as torch tensors on the device;
-
-        Returns
-        -------
-        clip_scores: list with estimated clip scores per input image
-        """
-
-        stacked_images, _ = self.preprocess_inputs(images, "", self._preproc_img_size)
-        image, _ = self.preprocess_inputs([preview_image], "", self._preproc_img_size)
-
-        with torch.no_grad(), torch.amp.autocast("cuda"):
-            images_features = self._model.encode_image(stacked_images)
-            preview_image_features = self._model.encode_image(image)
-            images_features /= images_features.norm(dim=-1, keepdim=True)
-            preview_image_features /= preview_image_features.norm(dim=-1, keepdim=True)
-            clip_scores = images_features @ preview_image_features.T
-
-        return clip_scores.to(torch.float32)
-
     def validate(self, images: list[torch.Tensor], prompt: str) -> Any:
         """
         Function for validating the input data using transformers model
@@ -132,9 +106,6 @@ class ClipScoreValidator(BaseValidator):
         )
         self._tokenizer = open_clip.get_tokenizer(model_name)
         self._model.eval()
-
-        # self._t2v_metrcics.preload_model("clip-flant5-xl-gpt4v")
-        # self._t2v_metrcics.preload_model("clip-flant5-xl")
 
         logger.info("[INFO] Done.")
 
