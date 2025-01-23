@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
-from validation_lib.validation.laplacian_variance import LaplacianVarianceMetric
 
 
 class MetricUtils:
@@ -71,13 +70,6 @@ class MetricUtils:
 
         lpips_score_mean = np.exp(np.log(lpips_scores).mean())
         return lpips_score_mean, np.array(lpips_scores).T
-
-    def compute_laplacian_variance(self, images: list[torch.Tensor]) -> torch.Tensor:
-        batched_images = torch.stack(images)
-        batched_images = batched_images.permute(0, 3, 1, 2)
-        laplacian_metric = LaplacianVarianceMetric()
-        laplacian_metric.update(batched_images)
-        return laplacian_metric.compute()
 
     @staticmethod
     def sigmoid_function(x: float, slope: float, x_shift: float) -> Any:

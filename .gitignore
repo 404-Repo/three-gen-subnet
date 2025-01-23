@@ -43,3 +43,8 @@ validation/extras/diff_gaussian_rasterization/third_party/
 validation/extras/simple-knn/build/
 validation/extras/simple-knn/simple_knn.egg-info/
 
+validation/bulky_orange_robot_with_tank-like.ply
+validation/statistics.csv
+validation/validation_lib/validation/trained_models/aesthetic_predictor.ckpt
+validation/validation_lib/validation/trained_models/best_model_20250128_134411.pth
+validation/validation_lib/validation/trained_models/polynomial_pipeline_model_4_deg_32_fea.joblib
