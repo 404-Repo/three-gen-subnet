@@ -8,6 +8,7 @@ from PromptIQA.prompt_iqa_pipeline import PromptIQAPipeline
 from pydantic import BaseModel
 from pytod.models.knn import KNN
 from validation_lib.validation.clip_score_validator import ClipScoreValidator
+from validation_lib.validation.vqascore_validator import VQAScoreValidator
 from validation_lib.validation.metric_utils import MetricUtils
 
 
@@ -18,6 +19,7 @@ class ValidationResult(BaseModel):
     ssim_score: float  # structure similarity index score
     lpips_score: float  # perceptive similarity score
     sharpness_score: float  # laplacian variance score
+    vqa_score: float # vqascore
 
 
 class ValidationPipeline:
@@ -31,6 +33,7 @@ class ValidationPipeline:
         """
         self._clip_validator = ClipScoreValidator()
         self._quality_validator = PromptIQAPipeline()
+        self._vqa_validator = VQAScoreValidator()
         self._debug = debug
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self._device)
@@ -59,6 +62,9 @@ class ValidationPipeline:
 
         # normalization to [0, 1]
         clip_score = clip_score / 0.35
+
+        vqa_scores = self._vqa_validator.validate(images, prompt)
+        vqa_score = vqa_scores.mean()
 
         # compute other metrics
         # ssim score
@@ -98,6 +104,7 @@ class ValidationPipeline:
             logger.debug(f" ssim score: {ssim_score}")
             logger.debug(f" lpips score: {lpips_score}")
             logger.debug(f" clip score: {clip_score}")
+            logger.debug(f" vqa score: {vqa_score}")
             logger.debug(f" quality score: {quality_score}")
             logger.debug(f" sharpness score: {sharpness_score}")
             logger.debug(f" final score: {final_score}")
@@ -109,6 +116,7 @@ class ValidationPipeline:
             ssim_score=float(ssim_score),
             lpips_score=float(lpips_score),
             sharpness_score=float(sharpness_score.detach().cpu().numpy()),
+            vqa_score=vqa_score
         )
 
     def compute_clip_score(self, images: list[torch.Tensor], prompt: str) -> Any:
@@ -170,6 +178,7 @@ class ValidationPipeline:
         """
 
         self._clip_validator.preload_model(clip_model, preload)
+        self._vqa_validator.preload_model("llava-v1.5-7b")
         self._quality_validator.load_pipeline()
 
     def unload_model(self) -> None:
