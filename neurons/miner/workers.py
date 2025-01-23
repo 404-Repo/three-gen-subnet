@@ -10,7 +10,6 @@ from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import PullTask, SubmitResults
-from common.version import NEURONS_VERSION, compare_versions
 
 from miner import ValidatorSelector
 
@@ -95,10 +94,6 @@ async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
             target_axon=metagraph.axons[validator_uid], synapse=synapse, deserialize=False, timeout=12.0
         ),
     )
-    if response.version is not None:
-        compare_versions(
-            miner=NEURONS_VERSION, validator=response.version, validator_hotkey=metagraph.hotkeys[validator_uid]
-        )
     return response
 
 

@@ -114,6 +114,7 @@ minversion = "6.0"
 addopts = "-ra -v --asyncio-mode=auto"
 testpaths = ["tests",]
 pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.poe]
 poetry_command = ""

@@ -12,7 +12,6 @@ from bittensor_wallet.mock import MockWallet
 from common import create_neuron_dir, owner
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
-from common.version import NEURONS_VERSION
 from numpy.typing import NDArray
 from pydantic import BaseModel
 from substrateinterface import Keypair
@@ -29,7 +28,6 @@ from validator.version import VALIDATOR_VERSION
 
 
 NEURONS_LIMIT = 256
-MIN_QUALITY_THRESHOLD = 0.6
 
 
 class Validator:
@@ -38,7 +36,7 @@ class Validator:
     config: bt.config
     """Copy of the original config."""
     wallet: bt.wallet
-    """The wallet holds the cryptographic key pairs for the miner."""
+    """The wallet holds the cryptographic key pairs for the validator."""
     subtensor: bt.subtensor
     """The subtensor is the connection to the Bittensor blockchain."""
     metagraph: bt.metagraph
@@ -48,13 +46,13 @@ class Validator:
     dataset: Dataset
     """Prompts for synthetic tasks."""
     miners: list[MinerData]
-    """List of neurons."""
+    """List of miners."""
     metagraph_sync: MetagraphSynchronizer
     """Simple wrapper to encapsulate the assets storage interaction."""
     storage: StorageWrapper
-    """Bittensor storage subnet is used to store generated assets (if enabled)."""
+    """Simple wrapper to encapsulate the communication with the storage service (if enabled)."""
     updater: AutoUpdater
-    """Simple wrapper to encapsulate neuron auto-updates."""
+    """Simple wrapper to encapsulate validator auto-updates."""
     task_registry: TaskRegistry | None
     """Organic tasks registry."""
     public_server: PublicAPIServer | None
@@ -86,22 +84,17 @@ class Validator:
         self.load_state()
 
         self._prepare_metagraph()
+        self._prepare_axon()
+        self._prepare_dataset()
+        self._prepare_public_api()
+        self._prepare_updater()
+        self._prepare_storage()
 
         if not self._is_enough_stake_to_set_weights():
             bt.logging.warning(
                 f"You need t{self.config.neuron.min_stake_to_set_weights} to set weights. "
                 f"You have t{self.metagraph.S[self.uid]}"
             )
-
-        self._prepare_axon()
-
-        self._prepare_dataset()
-
-        self._prepare_public_api()
-
-        self._prepare_updater()
-
-        self._prepare_storage()
 
     def _self_check_for_registration(self) -> None:
         if not self.subtensor.is_hotkey_registered(
@@ -123,7 +116,7 @@ class Validator:
             self.subtensor,
             self.config.neuron.sync_interval,
             self.config.neuron.log_info_interval,
-            self.config.neuron.strong_miners_count,
+            self.config.public_api.strong_miners_count,
         )
         self.metagraph_sync.sync(self.miners)
 
@@ -165,7 +158,7 @@ class Validator:
             self.task_registry = TaskRegistry(
                 copies=self.config.public_api.copies,
                 wait_after_first_copy=self.config.public_api.wait_after_first_copy,
-                task_timeout=self.config.generation.task_timeout,
+                task_timeout=self.config.public_api.task_timeout,
             )
 
             self.public_server = PublicAPIServer(config=self.config, task_registry=self.task_registry)
@@ -199,25 +192,20 @@ class Validator:
             return synapse
 
         miner = self.miners[miner_uid]
-        self._reset_expired_task(miner, miner_uid)
-
         cooldown_detected, response_synapse = self._detect_cooldown_violation(synapse, miner, miner_uid)
         if cooldown_detected:
             return response_synapse
 
         return self._assign_new_task(synapse, miner, miner_uid)
 
-    def _reset_expired_task(self, miner: MinerData, miner_uid: int) -> None:
-        if miner.is_task_expired(self.config.generation.task_timeout):
-            bt.logging.debug(f"[{miner_uid}] asked for a new task while having expired task. New task will be assigned")
-            miner.reset_task()
-
     def _detect_cooldown_violation(self, synapse: PullTask, miner: MinerData, uid: int) -> tuple[bool, PullTask]:
         if miner.assigned_task is not None:
             bt.logging.debug(
                 f"[{uid}] asked for a new task while having assigned task. Resetting the task and setting cooldown"
             )
-            miner.reset_task(cooldown=self.config.generation.task_cooldown)
+            miner.reset_task(
+                throttle_period=self.config.generation.throttle_period, cooldown=self.config.generation.task_cooldown
+            )
             return True, self._add_cooldown_data(synapse, miner)
 
         if miner.is_on_cooldown():
@@ -227,10 +215,10 @@ class Validator:
                 f"Total violations: {miner.cooldown_violations}"
             )
             cooldown_violations_threshold_reached = (
-                miner.cooldown_violations > self.config.neuron.cooldown_violations_threshold
+                miner.cooldown_violations > self.config.generation.cooldown_violations_threshold
             )
             if cooldown_violations_threshold_reached:
-                miner.cooldown_until += self.config.neuron.cooldown_violation_penalty
+                miner.cooldown_until += self.config.generation.cooldown_violation_penalty
                 bt.logging.debug(f"[{uid}] Cooldown penalty added.")
 
             return True, self._add_cooldown_data(synapse, miner)
@@ -247,9 +235,8 @@ class Validator:
         miner.assign_task(task)
 
         synapse.task = task
-        synapse.submit_before = int(time.time()) + self.config.generation.task_timeout
-        synapse.validation_threshold = MIN_QUALITY_THRESHOLD
-        synapse.version = NEURONS_VERSION
+        synapse.validation_threshold = self.config.generation.quality_threshold
+        synapse.throttle_period = self.config.generation.throttle_period
         return synapse
 
     def _get_task(self, hotkey: str, is_strong_miner: bool, uid: int) -> Task:
@@ -335,7 +322,9 @@ class Validator:
     async def _process_valid_submission(
         self, synapse: SubmitResults, miner: MinerData, fidelity_score: float, validation_res: ValidationResponse
     ) -> SubmitResults:
-        miner.reset_task(cooldown=self.config.generation.task_cooldown)
+        miner.reset_task(
+            throttle_period=self.config.generation.throttle_period, cooldown=self.config.generation.task_cooldown
+        )
 
         if self.storage.enabled:
             is_organic = self.task_registry and synapse.task and self.task_registry.is_organic(synapse.task.id)
@@ -348,7 +337,7 @@ class Validator:
         miner.add_observation(
             task_finish_time=current_time,
             fidelity_score=fidelity_score,
-            moving_average_alpha=self.config.neuron.moving_average_alpha,
+            moving_average_alpha=self.config.validation.moving_average_alpha,
         )
 
         if self.task_registry is not None:
@@ -357,7 +346,10 @@ class Validator:
         return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
     def _reset_miner_on_failure(self, miner: MinerData, hotkey: str, task_id: str, cooldown_penalty: int = 0) -> None:
-        miner.reset_task(cooldown=self.config.generation.task_cooldown + cooldown_penalty)
+        miner.reset_task(
+            throttle_period=self.config.generation.throttle_period,
+            cooldown=self.config.generation.task_cooldown + cooldown_penalty,
+        )
         if self.task_registry is not None:
             self.task_registry.fail_task(task_id, hotkey)
 
@@ -392,15 +384,11 @@ class Validator:
             f"{MINER_LICENSE_CONSENT_DECLARATION}"
             f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
         )
-        legacy_message = f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
         encoded_signature = base64.b64decode(synapse.signature.encode(encoding="utf-8"), validate=True)
-        return bool(keypair.verify(message, encoded_signature)) or bool(
-            keypair.verify(legacy_message, encoded_signature)
-        )
+        return bool(keypair.verify(message, encoded_signature))
 
-    @staticmethod
-    def _get_fidelity_score(validation_score: float) -> float:
-        if validation_score < MIN_QUALITY_THRESHOLD:
+    def _get_fidelity_score(self, validation_score: float) -> float:
+        if validation_score < self.config.generation.quality_threshold:
             return 0.0
         return min(1.0, validation_score)
 
@@ -558,7 +546,6 @@ class Validator:
             weights=uint_weights,
             wait_for_finalization=False,
             wait_for_inclusion=False,
-            version_key=int(NEURONS_VERSION),
         )
         if result:
             bt.logging.info("Weights set on chain successfully!")
