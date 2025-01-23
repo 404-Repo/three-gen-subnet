@@ -8,13 +8,13 @@ from pydantic import BaseModel, Field
 
 
 class ValidationResponse(BaseModel):
-    score: float
-    preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
-    vqa: float = Field(default=0.0, description="VQA score")
-    clip: float = Field(default=0.0, description="Metaclip similarity score")
+    score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
+    raw_iqa: float = Field(default=0.0, description="Raw Aesthetic Predictor (quality) score")
+    iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
+    clip: float = Field(default=0.0, description="Clip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
-    sharpness: float = Field(default=0.0, description="Laplacian variance (sharpness) score")
+    preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
 async def validate(

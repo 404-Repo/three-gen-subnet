@@ -31,6 +31,7 @@ class StorageWrapper:
             data = {
                 "prompt": synapse.task.prompt,
                 "assets": results,
+                "compression": synapse.compression,
                 "preview": validation.preview,
                 "meta": {
                     "validator": synapse.axon.hotkey,
@@ -38,8 +39,8 @@ class StorageWrapper:
                     "submit_time": synapse.submit_time,
                     "signature": signature,
                     "score": {
-                        "1.10.0": validation.score,
-                        "vqa": validation.vqa,
+                        "1.14.0": validation.score,
+                        "iqa": validation.raw_iqa,
                         "clip": validation.clip,
                         "ssim": validation.ssim,
                         "lpips": validation.lpips,

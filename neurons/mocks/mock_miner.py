@@ -6,7 +6,7 @@ from base64 import b64encode
 from pathlib import Path
 
 import bittensor as bt
-from common.protocol import Feedback, PullTask, SubmitResults, Task, Version
+from common.protocol import Feedback, PullTask, SubmitResults, Task
 
 
 async def main() -> None:
@@ -41,7 +41,7 @@ async def main() -> None:
 
 
 async def pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int) -> Task | None:
-    synapse = PullTask(version=Version(major=0, minor=0, patch=1))
+    synapse = PullTask()
     axon = metagraph.axons[validator_uid]
     response = typing.cast(
         PullTask,

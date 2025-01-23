@@ -1,4 +1,5 @@
 import base64
+import time
 from base64 import b64encode
 from collections import deque
 from datetime import datetime, timedelta
@@ -9,20 +10,22 @@ import time_machine
 from bittensor_wallet.mock.wallet_mock import get_mock_hotkey, get_mock_coldkey, get_mock_keypair, MockWallet
 from pytest_httpserver import HTTPServer
 
+from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import PullTask, SubmitResults, Task, Feedback
 from validator import Validator
 from validator.config import _build_parser
 
 FROZEN_TIME = datetime(year=2024, month=1, day=1)
-TASK_COOLDOWN = 10
-TASK_COOLDOWN_PENALTY = 20
-COOLDOWN_VIOLATION_PENALTY = 100
+TASK_THROTTLE_PERIOD = 20
+TASK_COOLDOWN = 60
+TASK_COOLDOWN_PENALTY = 120
+COOLDOWN_VIOLATION_PENALTY = 30
 COOLDOWN_VIOLATIONS_THRESHOLD = 10
 
 
 @pytest.fixture()
 def time_travel() -> time_machine.travel:
-    traveller = time_machine.travel(FROZEN_TIME)
+    traveller = time_machine.travel(FROZEN_TIME, tick=False)
     traveller.start()
     yield traveller
     traveller.stop()
@@ -40,11 +43,13 @@ def config(make_httpserver: HTTPServer) -> bt.config:
             "./neurons/tests/resources/prompts.txt",
             "--generation.task_cooldown",
             f"{TASK_COOLDOWN}",
+            "--generation.throttle_period",
+            f"{TASK_THROTTLE_PERIOD}",
             "--generation.cooldown_penalty",
             f"{TASK_COOLDOWN_PENALTY}",
-            "--neuron.cooldown_violation_penalty",
+            "--generation.cooldown_violation_penalty",
             f"{COOLDOWN_VIOLATION_PENALTY}",
-            "--neuron.cooldown_violations_threshold",
+            "--generation.cooldown_violations_threshold",
             f"{COOLDOWN_VIOLATIONS_THRESHOLD}",
             "--public_api.enabled",
             f"--validation.endpoint",
@@ -131,7 +136,11 @@ def create_pull_task(uid: int) -> PullTask:
 def create_submit_results(uid: int, task: Task) -> SubmitResults:
     keypair = get_mock_keypair(uid)
     default_wallet = MockWallet()  # Validator wallet
-    signature = b64encode(keypair.sign(f"{0}{task.prompt}{default_wallet.hotkey.ss58_address}{keypair.ss58_address}"))
+    signature = b64encode(
+        keypair.sign(
+            f"{MINER_LICENSE_CONSENT_DECLARATION}{0}{task.prompt}{default_wallet.hotkey.ss58_address}{keypair.ss58_address}"
+        )
+    )
     synapse = SubmitResults(task=task, results="dummy", submit_time=0, signature=signature)
 
     synapse.dendrite.hotkey = keypair.ss58_address
@@ -178,25 +187,6 @@ async def test_pull_task_repeated_request(validator: Validator, time_travel: tim
 
 
 @pytest.mark.asyncio
-async def test_pull_task_repeated_request_if_expired(validator: Validator) -> None:
-    with time_machine.travel(FROZEN_TIME):
-        pull = validator.pull_task(create_pull_task(1))
-
-    first_task = pull.task
-    assert pull.task is not None
-    assert validator.miners[1].assigned_task == pull.task
-
-    with time_machine.travel(FROZEN_TIME + timedelta(hours=1)):
-        pull = validator.pull_task(create_pull_task(1))
-
-    second_task = pull.task
-    assert pull.task is not None
-    assert validator.miners[1].assigned_task == pull.task
-
-    assert first_task != second_task
-
-
-@pytest.mark.asyncio
 async def test_pull_task_request_cooldown(validator: Validator, time_travel: time_machine.travel) -> None:
     existing_cooldown = int(time_machine.time()) + TASK_COOLDOWN
     validator.miners[1].cooldown_until = existing_cooldown
@@ -208,7 +198,7 @@ async def test_pull_task_request_cooldown(validator: Validator, time_travel: tim
 
 
 async def test_pull_task_request_cooldown_penalty(validator: Validator, time_travel: time_machine.travel) -> None:
-    existing_cooldown = int(time_machine.time()) + TASK_COOLDOWN
+    existing_cooldown = int(time.time()) + TASK_COOLDOWN
     validator.miners[1].cooldown_until = existing_cooldown
     validator.miners[1].cooldown_violations = COOLDOWN_VIOLATIONS_THRESHOLD + 1
 
@@ -237,6 +227,33 @@ async def test_submit_task(validator: Validator, httpserver: HTTPServer, time_tr
     assert validator.miners[1].assigned_task is None
     assert validator.miners[1].cooldown_until == submit.cooldown_until
     assert validator.miners[1].observations == deque([int(time_machine.time())])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "completion_time,expected_cooldown",
+    [
+        (5, 55),  # 60 - 5 = 55s cooldown
+        (15, 45),  # 60 - 15 = 45s cooldown
+        (20, 40),  # 60 - 20 = 40s cooldown
+        (30, 40),  # Still 40s cooldown (capped at throttle period reduction)
+    ],
+)
+async def test_submit_task_throttle_cases(
+    validator: Validator,
+    httpserver: HTTPServer,
+    time_travel: time_machine.travel,
+    completion_time: int,
+    expected_cooldown: int,
+) -> None:
+    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.76})
+
+    pull = validator.pull_task(create_pull_task(1))
+
+    with time_machine.travel(FROZEN_TIME + timedelta(seconds=completion_time), tick=False):
+        submit = await validator.submit_results(create_submit_results(1, pull.task))
+        assert submit.cooldown_until == int(time.time()) + expected_cooldown
+        assert validator.miners[1].cooldown_until == submit.cooldown_until
 
 
 @pytest.mark.asyncio

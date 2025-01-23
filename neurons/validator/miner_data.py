@@ -30,12 +30,14 @@ class MinerData(BaseModel):
     cooldown_violations: int = 0
     """Number of times a miner has failed to respect the mandatory cooling period."""
 
-    def reset_task(self, cooldown: int | None = None) -> None:
+    def reset_task(self, throttle_period: int, cooldown: int) -> None:
+        if self.assignment_time is None:
+            self.cooldown_until = int(time.time()) + cooldown
+        else:
+            self.cooldown_until = int(max(time.time() + cooldown - throttle_period, self.assignment_time + cooldown))
+
         self.assigned_task = None
         self.assignment_time = None
-
-        if cooldown is not None:
-            self.cooldown_until = int(time.time()) + cooldown
 
     def assign_task(self, task: Task) -> None:
         self.assigned_task = task
@@ -50,11 +52,6 @@ class MinerData(BaseModel):
             f"[{self.uid}] score: {fidelity_score}. Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
             f" Observations (4h): {len(self.observations)}"
         )
-
-    def is_task_expired(self, expiration_time: int) -> bool:
-        if self.assignment_time is None:
-            return False  # No task assigned, hence no expiry.
-        return time.time() > self.assignment_time + expiration_time
 
     def is_on_cooldown(self) -> bool:
         if self.cooldown_until == 0:
