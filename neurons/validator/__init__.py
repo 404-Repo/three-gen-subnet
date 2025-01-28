@@ -1,11 +1,11 @@
 import asyncio
-import base64
 import copy
 import time
 from typing import Tuple  # noqa: UP035
 
 import bittensor as bt
 import numpy as np
+import pybase64
 from auto_updater import AutoUpdater
 from bittensor.utils.weight_utils import convert_weights_and_uids_for_emit
 from bittensor_wallet.mock import MockWallet
@@ -384,7 +384,7 @@ class Validator:
             f"{MINER_LICENSE_CONSENT_DECLARATION}"
             f"{synapse.submit_time}{synapse.task.prompt}{synapse.axon.hotkey}{synapse.dendrite.hotkey}"
         )
-        encoded_signature = base64.b64decode(synapse.signature.encode(encoding="utf-8"), validate=True)
+        encoded_signature = pybase64.b64decode(synapse.signature.encode(encoding="utf-8"), validate=True)
         return bool(keypair.verify(message, encoded_signature))
 
     def _get_fidelity_score(self, validation_score: float) -> float:
@@ -497,7 +497,7 @@ class Validator:
         try:
             with path.open("r") as f:
                 content = f.read()
-            self.miners = Validator.State.parse_raw(content).miners
+            self.miners = Validator.State.model_validate_json(content).miners
         except Exception as e:
             bt.logging.exception(f"Failed to load the state: {e}")
 

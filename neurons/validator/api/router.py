@@ -42,14 +42,13 @@ async def websocket_generate(websocket: WebSocket) -> None:
     Subsequent message format for prompt:
     {
         "prompt": "3D model prompt",
-        "send_first_results": true/false
     }
     ```
 
     Server responses for task updates:
     ```
     {
-        "status": "started/first_results/best_results",
+        "status": "started/best_results",
         "results": {
             "score": float,
             "assets": "base64_encoded_string"
@@ -60,8 +59,8 @@ async def websocket_generate(websocket: WebSocket) -> None:
 
     await websocket.accept()
 
-    message = await websocket.receive_text()
-    auth = Auth.parse_raw(message)
+    message = await websocket.receive_json()
+    auth = Auth.model_validate_json(message)
 
     api_key_manager = get_api_key_manager(websocket)
     if not api_key_manager.is_registered(auth.api_key):
@@ -87,8 +86,8 @@ async def websocket_generate(websocket: WebSocket) -> None:
 async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     task_registry = get_task_registry(websocket)
 
-    message = await websocket.receive_text()
-    prompt_data = PromptData.parse_raw(message)
+    message = await websocket.receive_json()
+    prompt_data = PromptData.model_validate_json(message)
 
     bt.logging.info(f"New organic prompt received from [{client_name}]: {prompt_data.prompt}")
 
@@ -98,7 +97,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     await task_registry.get_started(task_id)
 
     update = TaskUpdate(status=TaskStatus.STARTED)
-    await websocket.send_text(update.json())
+    await websocket.send_json(update.model_dump_json())
 
     first_results = await task_registry.get_first_results(task_id)
     if first_results is None:
@@ -108,15 +107,9 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
 
     bt.logging.debug(
         f"First results received in {time.time() - start_time:.2f} seconds. "
-        f"Prompt: {prompt_data.prompt}. Miner: {first_results.hotkey}. Size: {len(first_results.results or '')}"
+        f"Prompt: {prompt_data.prompt}. Miner: {first_results.hotkey}. "
+        f"Size: {len(first_results.compressed_results or '')}"
     )
-
-    if prompt_data.send_first_results:
-        update = TaskUpdate(
-            status=TaskStatus.FIRST_RESULTS,
-            results=TaskResults(hotkey=first_results.hotkey, assets=first_results.results, score=first_results.score),
-        )
-        await websocket.send_text(update.json())
 
     best_results = await task_registry.get_best_results(task_id)
     if best_results is None:
@@ -126,7 +119,8 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
 
     bt.logging.debug(
         f"Best results received in {time.time() - start_time:.2f} seconds. "
-        f"Prompt: {prompt_data.prompt}. Miner: {best_results.hotkey}. Size: {len(best_results.results or '')}"
+        f"Prompt: {prompt_data.prompt}. Miner: {best_results.hotkey}. "
+        f"Size: {len(best_results.compressed_results or '')}"
     )
 
     stats = task_registry.get_stats(task_id)
@@ -134,8 +128,10 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
 
     update = TaskUpdate(
         status=TaskStatus.BEST_RESULTS,
-        results=TaskResults(hotkey=best_results.hotkey, assets=best_results.results, score=best_results.score),
+        results=TaskResults(
+            hotkey=best_results.hotkey, assets=task_registry.decompress_results(best_results), score=best_results.score
+        ),
         statistics=stats,
     )
-    await websocket.send_text(update.json())
+    await websocket.send_json(update.model_dump_json())
     await websocket.close()

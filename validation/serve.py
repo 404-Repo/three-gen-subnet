@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import pybase64
+import pyspz
 import torch
 import uvicorn
 import zstandard
@@ -59,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     app.state.validator = ValidationPipeline()
     app.state.validator.preload_model()
     app.state.metrics = Metrics()
-    app.state.decompressor = zstandard.ZstdDecompressor()
+    app.state.zstd_decompressor = zstandard.ZstdDecompressor()
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -136,7 +137,7 @@ def _cleanup() -> None:
     logger.info(f"Cache purge took: {t2 - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
 
 
-def decode_assets(request: RequestData, decompressor: zstandard.ZstdDecompressor) -> bytes:
+def decode_assets(request: RequestData, zstd_decomp: zstandard.ZstdDecompressor) -> bytes:
     t1 = time.time()
     assets = pybase64.b64decode(request.data, validate=True)
     t2 = time.time()
@@ -145,9 +146,16 @@ def decode_assets(request: RequestData, decompressor: zstandard.ZstdDecompressor
         f"Time taken: {t2 - t1:.2f} sec. Prompt: {request.prompt}."
     )
 
-    if request.compression == 1:  # Experimental. Compression.
+    if request.compression == 1:  # Experimental. Zstd compression.
         compressed_size = len(assets)
-        assets = decompressor.decompress(assets)
+        assets = zstd_decomp.decompress(assets)
+        logger.info(
+            f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
+            f"Time taken: {time.time() - t2:.2f} sec. Prompt: {request.prompt}."
+        )
+    elif request.compression == 2:  # Experimental. SPZ compression.
+        compressed_size = len(assets)
+        assets = pyspz.decompress(assets, include_normals=False)
         logger.info(
             f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
             f"Time taken: {time.time() - t2:.2f} sec. Prompt: {request.prompt}."
@@ -169,7 +177,7 @@ async def validate_ply(request: RequestData) -> ResponseData:
 
     """
     try:
-        assets = decode_assets(request, app.state.decompressor)
+        assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
         response = _validate(
             prompt=request.prompt,
             assets=assets,
