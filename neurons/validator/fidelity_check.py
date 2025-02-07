@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 class ValidationResponse(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
-    raw_iqa: float = Field(default=0.0, description="Raw Aesthetic Predictor (quality) score")
     iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
     clip: float = Field(default=0.0, description="Clip similarity score")
     ssim: float = Field(default=0.0, description="Structure similarity score")

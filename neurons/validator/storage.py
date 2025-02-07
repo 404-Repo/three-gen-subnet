@@ -40,7 +40,7 @@ class StorageWrapper:
                     "signature": signature,
                     "score": {
                         "1.14.0": validation.score,
-                        "iqa": validation.raw_iqa,
+                        "iqa": validation.iqa,
                         "clip": validation.clip,
                         "ssim": validation.ssim,
                         "lpips": validation.lpips,
