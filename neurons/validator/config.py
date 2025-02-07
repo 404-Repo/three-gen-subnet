@@ -142,7 +142,7 @@ def add_dataset_args(parser: argparse.ArgumentParser) -> None:
         type=str,
         help="Specifies the URL of the endpoint responsible for providing fresh batches of prompts. "
         "This endpoint should handle the /get/ GET route.",
-        default="http://35.222.204.141:9100",
+        default="http://44.219.222.104:9100",
     )
     parser.add_argument(
         "--dataset.prompter.fetch_interval",

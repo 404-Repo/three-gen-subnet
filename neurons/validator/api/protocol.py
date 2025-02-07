@@ -11,24 +11,19 @@ class PromptData(BaseModel):
     """
     Attributes:
         prompt (str): The prompt to be used for generating the 3D model.
-        send_first_results (bool): Flag to indicate whether the first results
-                                   should also be sent, in addition to the best results.
     """
 
     prompt: str
-    send_first_results: bool = False
 
 
 class TaskStatus(str, Enum):
     """
     Attributes:
         STARTED (str): Indicates the generation process has started.
-        FIRST_RESULTS (str): Indicates the first intermediate results have been generated.
         BEST_RESULTS (str): Indicates all miners have completed the job and the best results are available.
     """
 
     STARTED = "started"
-    FIRST_RESULTS = "first_results"
     BEST_RESULTS = "best_results"
 
 

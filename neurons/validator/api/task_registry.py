@@ -4,6 +4,9 @@ import uuid
 from collections import deque
 
 import bittensor as bt
+import pybase64
+import pyspz
+import zstandard
 from common.protocol import SubmitResults
 from pydantic import BaseModel
 
@@ -13,7 +16,12 @@ from validator.api.protocol import MinerStatistics, TaskStatistics
 class AssignedMiner(BaseModel):
     hotkey: str  # Neuron hotkey
     assign_time: int  # Assign time.
-    results: str | None = None  # Submitted results.
+    compressed_results: str | None = None  # Submitted results.
+    compression: int = 0
+    # Experimental feature:
+    #   0 - no compression,
+    #   1 - zstd compression,
+    #   2 - spz compression (git+https://github.com/404-Repo/spz.git).
     score: float = 0  # Validation score.
     submit_time: int = 0  # Submit time.
     finished: bool = False  # Status whether assigned miner is finished with the task.
@@ -49,7 +57,7 @@ class OrganicTask:
     def get_best_results(self) -> AssignedMiner | None:
         best: AssignedMiner | None = None
         for miner in self.assigned.values():
-            if miner.results is None:
+            if miner.compressed_results is None:
                 continue
             if best is None:
                 best = miner
@@ -100,6 +108,7 @@ class TaskRegistry:
         self._copies = copies
         self._wait_after_first_copy = wait_after_first_copy
         self._task_timeout = task_timeout
+        self._decompressor = zstandard.ZstdDecompressor()
 
     @property
     def is_queue_full(self) -> bool:
@@ -232,7 +241,6 @@ class TaskRegistry:
         """
         task_id = synapse.task.id  # type: ignore[union-attr]
         hotkey = synapse.dendrite.hotkey
-        results = synapse.results
         task = self._tasks.get(task_id, None)
         if task is None:
             return
@@ -243,7 +251,8 @@ class TaskRegistry:
 
         bt.logging.trace(f"[{hotkey}] completed the task ({task_id}): {task.prompt}. Score: {score:.2f}")
 
-        miner.results = results
+        miner.compressed_results = synapse.results
+        miner.compression = synapse.compression
         miner.score = score
         miner.submit_time = int(time.time())
         miner.finished = True
@@ -260,6 +269,22 @@ class TaskRegistry:
             bt.logging.debug(f"All miners submitted results for the task ({task_id}): {task.prompt}")
             best_results = task.get_best_results()
             _set_future(task.best_results_future, best_results)
+
+    def decompress_results(self, miner: AssignedMiner) -> str | None:
+        if miner.compressed_results is None:
+            return None
+        if miner.compression == 0:
+            return miner.compressed_results
+        if miner.compression == 1:
+            return pybase64.b64encode(
+                self._decompressor.decompress(pybase64.b64decode(miner.compressed_results))
+            ).decode(encoding="utf-8")
+        if miner.compression == 2:
+            return pybase64.b64encode(
+                pyspz.decompress(pybase64.b64decode(miner.compressed_results), include_normals=False)
+            ).decode(encoding="utf-8")
+
+        return miner.compressed_results
 
     def fail_task(self, task_id: str, hotkey: str) -> None:
         """

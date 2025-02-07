@@ -1,4 +1,4 @@
-import base64
+import pybase64
 import time
 from base64 import b64encode
 from collections import deque
@@ -291,7 +291,7 @@ async def test_submit_task_skip_task(validator: Validator, time_travel: time_mac
 async def test_submit_task_invalid_signature(validator: Validator) -> None:
     pull = validator.pull_task(create_pull_task(1))
     synapse = create_submit_results(1, pull.task)
-    synapse.signature = base64.b64encode(get_mock_keypair(1).sign(""))
+    synapse.signature = pybase64.b64encode(get_mock_keypair(1).sign(""))
     submit = await validator.submit_results(synapse)
 
     assert submit.feedback == Feedback(average_fidelity_score=1)

@@ -72,9 +72,6 @@ sequenceDiagram
     Miner2->>Validator: Pull task
     Validator->>Miner2: Send task
     Miner1->>Validator: Submit results
-    alt If configured to do so
-        Validator->>Client: TaskUpdate (FIRST_RESULTS)
-    end
     Miner2->>Validator: Submit results
     Validator->>Validator: Select best results
     Validator->>Client: TaskUpdate (BEST_RESULTS)
@@ -99,7 +96,6 @@ sequenceDiagram
 
 4. **Submit Results**:
     - `Miner 1` submits results back to `Validator`.
-    - Optionally, the `Validator` sends a task update (`FIRST_RESULTS`) to the `Client`.
 
 5. **Final Steps**:
     - `Miner 2` submits results back to `Validator`.
@@ -121,15 +117,13 @@ async def main() -> None:
     async with ClientSession() as session:
         async with session.ws_connect("wss://1qshev6dbe7gdz-8888.proxy.runpod.net/ws/generate/") as ws:
             await ws.send_json(Auth(api_key="API KEY").dict())
-            await ws.send_json(PromptData(prompt="Donald Duck", send_first_results=True).dict())
+            await ws.send_json(PromptData(prompt="Donald Duck").dict())
 
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
                     update = TaskUpdate(**json.loads(msg.data))
                     if update.status == TaskStatus.STARTED:
                         print("Task started")
-                    elif update.status == TaskStatus.FIRST_RESULTS:
-                        print(f"First results. Score: {update.results.score}. Size: {len(update.results.assets)}")
                     elif update.status == TaskStatus.BEST_RESULTS:
                         print(f"Best results. Score: {update.results.score}. Size: {len(update.results.assets)}")
                         with Path("results.ply").open("wb") as f:
