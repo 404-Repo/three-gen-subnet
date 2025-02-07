@@ -20,6 +20,8 @@ conda activate three-gen-validation
 conda info --env
 
 CUDA_HOME=${CONDA_PREFIX}
+CPATH="$CONDA_PREFIX/targets/x86_64-linux/include:$CONDA_PREFIX/include"
+LD_LIBRARY_PATH="$CONDA_PREFIX/targets/x86_64-linux/lib:$CONDA_PREFIX/lib"
 pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.4.0
 
 # Store the path of the Conda interpreter

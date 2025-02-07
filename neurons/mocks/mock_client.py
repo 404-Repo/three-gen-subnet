@@ -28,17 +28,13 @@ async def work() -> None:
     async with ClientSession() as session:
         async with session.ws_connect("wss://1qshev6dbe7gdz-8888.proxy.runpod.net/ws/generate/") as ws:
             await ws.send_json(Auth(api_key="API KEY GOES HERE").dict())
-            await ws.send_json(PromptData(prompt=prompt, send_first_results=True).dict())
+            await ws.send_json(PromptData(prompt=prompt).dict())
 
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
                     update = TaskUpdate(**json.loads(msg.data))
                     if update.status == TaskStatus.STARTED:
                         print("Task started")
-                    elif update.status == TaskStatus.FIRST_RESULTS:
-                        score = update.results.score if update.results else None
-                        assets = update.results.assets or "" if update.results else ""
-                        print(f"First results. Score: {score}. Size: {len(assets)}")
                     elif update.status == TaskStatus.BEST_RESULTS:
                         score = update.results.score if update.results else None
                         assets = update.results.assets or "" if update.results else ""

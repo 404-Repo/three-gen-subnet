@@ -1,10 +1,10 @@
-import base64
 import random
 import time
 from pathlib import Path
 
 import aiohttp
 import bittensor as bt
+import pybase64
 
 
 FIRST_FETCH_DELAY = 5 * 60  # 5 minutes
@@ -57,7 +57,7 @@ class Dataset:
         hotkey = self._wallet.hotkey
         nonce = time.time_ns()
         message = f"{nonce}{hotkey.ss58_address}"
-        signature = base64.b64encode(self._wallet.hotkey.sign(message)).decode(encoding="utf-8")
+        signature = pybase64.b64encode(self._wallet.hotkey.sign(message)).decode(encoding="utf-8")
         payload = {"hotkey": hotkey.ss58_address, "nonce": nonce, "signature": signature}
 
         try:
