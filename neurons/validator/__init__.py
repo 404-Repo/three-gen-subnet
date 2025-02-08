@@ -517,7 +517,7 @@ class Validator:
         def strip_sigmoid(x: NDArray[np.uint16], n: int) -> NDArray[np.float64]:
             return np.array(0.003 + 0.005 / (1 + np.exp(-0.06 * (x - n / 2))), dtype=np.float64)
 
-        reward_mask = rewards > 30.0
+        reward_mask = rewards > 5.0
         processed_uids = np.nonzero(reward_mask)[0]
         processed_rewards = rewards[reward_mask]
         n = len(processed_rewards)
