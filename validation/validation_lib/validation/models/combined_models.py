@@ -9,9 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from loguru import logger
-from PIL import Image
 from torch import Tensor
 from torchvision import transforms
+from torchvision.transforms import InterpolationMode as im
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -66,7 +66,7 @@ class ClassifierModel:
         except Exception as e:
             logger.info(f"Error loading checkpoint: {e}")
             raise
-
+        logger.info(f"Classifier loaded to device {self._device}")
         self._model.eval()
 
     def score(self, images: list[torch.Tensor]) -> np.ndarray:
@@ -184,11 +184,19 @@ class AestheticModel:
             MODEL_PATH_Aesthetics: Path to the pre-trained aesthetic model checkpoint
         """
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        torch.set_default_device(self._device)
+        self._imgsize = 224
+        self._clip_model, _ = clip.load("ViT-L/14", device=self._device)
+        self._preprocess = transforms.Compose(
+            [
+                transforms.Resize(self._imgsize, interpolation=im.BICUBIC),
+                transforms.CenterCrop(self._imgsize),
+                transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+            ]
+        )
         self._model = MLP.from_pretrained(repo_id, filename)
         self._model.to(self._device)
         self._model.eval()
-        self._clip_model, self._preprocess = clip.load("ViT-L/14", device=self._device)
+        logger.info(f"Aesthetic Predictor loaded to device {self._device}")
 
     def score(self, images: list[torch.Tensor]) -> np.ndarray:
         """
@@ -200,54 +208,55 @@ class AestheticModel:
         Returns:
             numpy.ndarray: Aesthetic scores for each image
         """
-        model_scores: list[float] = []
-        for img in images:
-            np_image = img.cpu().detach().numpy()
-            pil_image = Image.fromarray(np_image, "RGB")
-            image = self._preprocess(pil_image).unsqueeze(0).to(self._device)
+        model_scores: Tensor = torch.zeros(len(images))
+
+        for i, img in enumerate(images):
+            image = img.to(torch.float16) / 255.0
+            image = image.permute(2, 0, 1)
+            image = self._preprocess(image)
 
             with torch.no_grad():
-                image_features = self._clip_model.encode_image(image)
+                image_features = self._clip_model.encode_image(image.unsqueeze(0))
 
-            im_emb_arr = self.normalized(image_features.cpu().detach().numpy())
-            img_score = self._model(torch.from_numpy(im_emb_arr).to(self._device).type(torch.cuda.FloatTensor))
-            model_scores.append(img_score.cpu().detach().numpy())
+            im_emb_arr = self.normalized(image_features).squeeze()
+            img_score = self._model(im_emb_arr.to(torch.float32))
+            model_scores[i] = img_score
 
-        return self.custom_sigmoid_function(np.array(model_scores), 0.01, 0.0)
+        score = self.custom_sigmoid(model_scores, 0.01, 0.0)
+        out: np.ndarray = score.cpu().detach().numpy()
+        return out
 
     @staticmethod
-    def normalized(a: np.ndarray, axis: int = -1, order: int = 2) -> np.ndarray:
+    def normalized(a: torch.Tensor, axis: int = -1, order: int = 2) -> torch.Tensor:
         """
-        Normalize the input array using L2 normalization.
+        Normalize the input tensor using L2 normalization.
 
         Args:
-            a: Input array to normalize
+            a: Input tensor to normalize
             axis: Axis along which to normalize
             order: Order of the normalization
 
         Returns:
-            numpy.ndarray: Normalized array
+            torch.Tensor: Normalized tensor
         """
-        l2 = np.atleast_1d(np.linalg.norm(a, order, axis))
-        l2[l2 == 0] = 1
-        normalized: np.ndarray = a / np.expand_dims(l2, axis)
-        return normalized
+        l2 = torch.norm(a, p=order, dim=axis, keepdim=True)
+        l2 = torch.where(l2 == 0, torch.tensor(1.0, device=a.device, dtype=a.dtype), l2)
+        return Tensor(a / l2)
 
     @staticmethod
-    def custom_sigmoid_function(x: np.ndarray, slope: float, x_shift: float) -> np.ndarray:
+    def custom_sigmoid(x: torch.Tensor, slope: float = 1.0, shift: float = 0.0) -> torch.Tensor:
         """
-        Apply a custom sigmoid function to remap input values.
+        Custom sigmoid function with adjustable slope and shift.
 
         Args:
-            x: Input values to remap
-            slope: Controls the steepness of the sigmoid curve
-            x_shift: Shifts the sigmoid curve along the x-axis
+            x (torch.Tensor): Input tensor.
+            slope (float): Controls the steepness of the sigmoid curve.
+            shift (float): Controls the horizontal shift of the sigmoid curve.
 
         Returns:
-            numpy.ndarray: Remapped values
+            torch.Tensor: Transformed tensor.
         """
-        sigmoid: np.ndarray = 1.0 / (1.0 + np.exp(-slope * (x - x_shift)))
-        return sigmoid
+        return Tensor(1 / (1 + torch.exp(-slope * (x - shift))))
 
 
 class MLP(pl.LightningModule):
