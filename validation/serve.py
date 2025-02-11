@@ -22,7 +22,7 @@ from validation_lib.rendering.rendering_pipeline import RenderingPipeline
 from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
-VERSION = "1.14.0"
+VERSION = "1.14.1"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
