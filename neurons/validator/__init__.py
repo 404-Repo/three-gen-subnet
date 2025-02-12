@@ -8,13 +8,12 @@ import numpy as np
 import pybase64
 from auto_updater import AutoUpdater
 from bittensor.utils.weight_utils import convert_weights_and_uids_for_emit
-from bittensor_wallet.mock import MockWallet
+from bittensor_wallet import Keypair
 from common import create_neuron_dir, owner
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import Feedback, GetVersion, PullTask, SubmitResults, Task
 from numpy.typing import NDArray
 from pydantic import BaseModel
-from substrateinterface import Keypair
 
 from validator import fidelity_check
 from validator.api import PublicAPIServer
@@ -58,7 +57,9 @@ class Validator:
     public_server: PublicAPIServer | None
     """FastApi server that serves the public API endpoint."""
 
-    def __init__(self, config: bt.config, mock: bool = False) -> None:
+    def __init__(
+        self, config: bt.config, wallet: bt.wallet | None = None, subtensor: bt.subtensor | None = None
+    ) -> None:
         self.config: bt.config = copy.deepcopy(config)
         create_neuron_dir(self.config)
 
@@ -66,16 +67,16 @@ class Validator:
 
         bt.logging.info(f"Starting with config: {config}")
 
-        if not mock:
+        if wallet is None:
             self.wallet = bt.wallet(config=self.config)
         else:
-            self.wallet = MockWallet(config=self.config)
+            self.wallet = wallet
         bt.logging.info(f"Wallet: {self.wallet}")
 
-        if not mock:
+        if subtensor is None:
             self.subtensor = bt.subtensor(config=self.config)
         else:
-            self.subtensor = bt.MockSubtensor(config=self.config)
+            self.subtensor = subtensor
         bt.logging.info(f"Subtensor: {self.subtensor}")
 
         self._self_check_for_registration()

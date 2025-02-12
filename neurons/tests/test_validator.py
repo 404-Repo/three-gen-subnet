@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import pybase64
 import time
 from base64 import b64encode
@@ -7,11 +9,13 @@ from datetime import datetime, timedelta
 import pytest
 import bittensor as bt
 import time_machine
-from bittensor_wallet.mock.wallet_mock import get_mock_hotkey, get_mock_coldkey, get_mock_keypair, MockWallet
+from bittensor import Subtensor
+from bittensor_wallet.mock import get_mock_wallet
 from pytest_httpserver import HTTPServer
 
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
 from common.protocol import PullTask, SubmitResults, Task, Feedback
+from tests.subtensor_mocks import WALLETS, METAGRAPH_INFO, NEURONS
 from validator import Validator
 from validator.config import _build_parser
 
@@ -58,93 +62,48 @@ def config(make_httpserver: HTTPServer) -> bt.config:
     )
 
 
-def register_neuron(subtensor: bt.MockSubtensor, hotkey: str, coldkey: str) -> None:
-    uid = subtensor.chain_state["SubtensorModule"]["SubnetworkN"][17][0]
-    subtensor.chain_state["SubtensorModule"]["SubnetworkN"][17][0] += 1
-
-    subtensor.chain_state["SubtensorModule"]["Uids"][17][hotkey] = {0: uid}
-    subtensor.chain_state["SubtensorModule"]["Owner"][hotkey] = {0: coldkey}
-    subtensor.chain_state["SubtensorModule"]["Keys"][17][uid] = {0: hotkey}
-    for x in [
-        "Active",
-        "Rank",
-        "Emission",
-        "Incentive",
-        "Consensus",
-        "Trust",
-        "ValidatorTrust",
-        "Dividends",
-        "PruningScores",
-        "LastUpdate",
-        "ValidatorPermit",
-    ]:
-        subtensor.chain_state["SubtensorModule"][x][17][uid] = {0: 0}
-
-    subtensor.chain_state["SubtensorModule"]["Weights"][17][uid] = {0: []}
-    subtensor.chain_state["SubtensorModule"]["Bonds"][17][uid] = {0: []}
-
-    subtensor.chain_state["SubtensorModule"]["Stake"][hotkey] = {coldkey: {0: 0}}
-
-
 @pytest.fixture(scope="module")
 def subtensor() -> bt.MockSubtensor:
     subtensor_mock = bt.MockSubtensor()
     subtensor_mock.setup()
     subtensor_mock.create_subnet(17)
 
-    for x in [
-        "Active",
-        "Rank",
-        "Emission",
-        "Incentive",
-        "Consensus",
-        "Trust",
-        "ValidatorTrust",
-        "Dividends",
-        "PruningScores",
-        "LastUpdate",
-        "ValidatorPermit",
-        "Weights",
-        "Bonds",
-    ]:
-        subtensor_mock.chain_state["SubtensorModule"][x] = {17: {}}
-
-    # Default wallet is used by the validator.
-    wallet = MockWallet()
-    register_neuron(subtensor_mock, wallet.hotkey.ss58_address, "coldkey")
-
-    # Miners.
-    for uid in range(1, 200):
-        hotkey = get_mock_hotkey(uid)
-        coldkey = get_mock_coldkey(uid)
-        register_neuron(subtensor_mock, hotkey, coldkey)
+    subtensor_mock.get_metagraph_info = Mock(return_value=METAGRAPH_INFO)
+    subtensor_mock.neurons_lite = Mock(return_value=NEURONS)
+    subtensor_mock.query_runtime_api = Mock(return_value=None)
     return subtensor_mock
 
 
 @pytest.fixture()
 def validator(config: bt.config, subtensor: bt.MockSubtensor) -> Validator:
-    return Validator(config, mock=True)
+    return Validator(config, wallet=WALLETS[0], subtensor=subtensor)
 
 
-def create_pull_task(uid: int) -> PullTask:
+def create_pull_task(uid: int | None) -> PullTask:
     synapse = PullTask()
-    synapse.dendrite.hotkey = get_mock_hotkey(uid)
-    synapse.axon.hotkey = MockWallet().hotkey.ss58_address
+    if uid is None:
+        synapse.dendrite.hotkey = "unknown"
+    else:
+        synapse.dendrite.hotkey = WALLETS[uid].hotkey.ss58_address
+    synapse.axon.hotkey = WALLETS[0].hotkey.ss58_address
     return synapse
 
 
-def create_submit_results(uid: int, task: Task) -> SubmitResults:
-    keypair = get_mock_keypair(uid)
-    default_wallet = MockWallet()  # Validator wallet
+def create_submit_results(uid: int | None, task: Task) -> SubmitResults:
+    if uid is None:
+        miner_hotkey = get_mock_wallet().hotkey
+    else:
+        miner_hotkey = WALLETS[uid].hotkey
+    validator_wallet = WALLETS[0]
     signature = b64encode(
-        keypair.sign(
-            f"{MINER_LICENSE_CONSENT_DECLARATION}{0}{task.prompt}{default_wallet.hotkey.ss58_address}{keypair.ss58_address}"
+        miner_hotkey.sign(
+            f"{MINER_LICENSE_CONSENT_DECLARATION}{0}{task.prompt}{validator_wallet.hotkey.ss58_address}{miner_hotkey.ss58_address}"
         )
     )
     synapse = SubmitResults(task=task, results="dummy", submit_time=0, signature=signature)
 
-    synapse.dendrite.hotkey = keypair.ss58_address
-    synapse.axon.hotkey = default_wallet.hotkey.ss58_address
+    synapse.dendrite.hotkey = miner_hotkey.ss58_address
+    synapse.axon.hotkey = WALLETS[0].hotkey.ss58_address
     return synapse
 
 
@@ -170,7 +129,7 @@ async def test_pull_task_organic(validator: Validator) -> None:
 
 @pytest.mark.asyncio
 async def test_pull_task_unknown_neuron(validator: Validator) -> None:
-    result = validator.pull_task(create_pull_task(300))
+    result = validator.pull_task(create_pull_task(None))
     assert result.task is None
 
 
@@ -259,7 +218,7 @@ async def test_submit_task_throttle_cases(
 @pytest.mark.asyncio
 async def test_submit_task_unknown_neuron(validator: Validator) -> None:
     pull = validator.pull_task(create_pull_task(1))
-    submit = await validator.submit_results(create_submit_results(300, pull.task))
+    submit = await validator.submit_results(create_submit_results(None, pull.task))
 
     assert submit.feedback is None
     assert validator.miners[1].assigned_task == pull.task  # No task reset
@@ -291,7 +250,7 @@ async def test_submit_task_skip_task(validator: Validator, time_travel: time_mac
 async def test_submit_task_invalid_signature(validator: Validator) -> None:
     pull = validator.pull_task(create_pull_task(1))
     synapse = create_submit_results(1, pull.task)
-    synapse.signature = pybase64.b64encode(get_mock_keypair(1).sign(""))
+    synapse.signature = pybase64.b64encode(WALLETS[1].hotkey.sign(""))
     submit = await validator.submit_results(synapse)
 
     assert submit.feedback == Feedback(average_fidelity_score=1)
