@@ -11,7 +11,7 @@ sys.path.insert(0, parentdir + "/validation")
 import pytest
 from validation_lib.io.ply import PlyLoader
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation_lib.validation.validation_pipeline import ValidationPipeline
+from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
 
 
 @pytest.fixture
@@ -28,13 +28,10 @@ def test_validator(ply_data):
     prompt = "A hamburger"
     data = ply_data
     render = RenderingPipeline(16, "gs")
-    images = render.render_gaussian_splatting_views(data, 512, 512, 2.5)
-
-    preview_image_input0 = render.render_preview_image(data, 512, 512, 25.0, -10.0, cam_rad=2.5)
-    preview_image_input1 = render.render_preview_image(data, 512, 512, 0.0, 0.0, cam_rad=2.5)
+    images = render.render_gaussian_splatting_views(data, 224, 224, 2.5)
 
     validator = ValidationPipeline()
     validator.preload_model()
-    score, _, _, _, _ = validator.validate([preview_image_input0, preview_image_input1], images, prompt)
+    score: ValidationResult = validator.validate(images, prompt)
 
-    assert score >= 0.7422
+    assert score.final_score >= 0.7422

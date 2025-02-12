@@ -17,12 +17,11 @@ from PIL import Image
 from pydantic import BaseModel, Field
 from validation_lib.io.base import BaseLoader
 from validation_lib.io.ply import PlyLoader
-from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.rendering.rendering_pipeline import RenderingPipeline
-from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult
+from validation_lib.validation.validation_pipeline import ValidationPipeline, ValidationResult, is_input_data_valid
 
 
-VERSION = "1.14.1"
+VERSION = "1.14.2"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -88,7 +87,7 @@ def _validate(
     logger.info(f"Loading data took: {t2 - t1} sec.")
 
     # Check required memory
-    if not enough_gpu_mem_available(data_dict):
+    if not is_input_data_valid(data_dict):
         return ResponseData(score=0.0)
 
     # Render images
