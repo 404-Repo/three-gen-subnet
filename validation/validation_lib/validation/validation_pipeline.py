@@ -5,9 +5,36 @@ import torch
 from loguru import logger
 from pydantic import BaseModel
 from pytod.models.knn import KNN
+from validation_lib.memory import enough_gpu_mem_available
 from validation_lib.validation.clip_score_validator import ClipScoreValidator
 from validation_lib.validation.combined_models_validator import CombinedModelQualityValidator
 from validation_lib.validation.metric_utils import MetricUtils
+
+
+def is_input_data_valid(data_dict: dict) -> bool:
+    if not enough_gpu_mem_available(data_dict):
+        return False
+
+    means3d_size = data_dict["points"].shape
+    if means3d_size[0] < 7000:
+        return False
+
+    zero_opacity_epsilon = 1e-3
+    zero_opacity_count = torch.sum(torch.tensor(data_dict["opacities"]) < zero_opacity_epsilon).item()
+    total_opacity_count = data_dict["opacities"].shape[0]
+    zero_opacity_percentage = 100 * zero_opacity_count / total_opacity_count
+    if zero_opacity_percentage > 80:
+        return False
+
+    zero_scales_epsilon = 0.05
+    zero_scales_count = torch.sum(torch.all(torch.tensor(data_dict["scale"]) < zero_scales_epsilon)).item()
+    total_scales_count = data_dict["scale"].shape[0]
+    zero_scales_percentage = 100 * zero_scales_count / total_scales_count
+
+    if zero_scales_percentage > 80:
+        return False
+
+    return True
 
 
 class ValidationResult(BaseModel):
