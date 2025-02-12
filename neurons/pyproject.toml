@@ -6,9 +6,9 @@ authors = ["Maxim Bladyko <max@404.xyz>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
-bittensor = { version = "8.5.0" }
-bittensor-wallet = { version = "2.1.3" }
+python = ">=3.11,<3.13"
+bittensor = { version = "9.0.0" }
+bittensor-wallet = { version = "3.0.3" }
 zstandard = { version = "0.23.0" }
 pybase64 = { version = "1.4.0" }
 pyspz = { git = "https://github.com/404-Repo/spz.git", tag = "0.1" }
