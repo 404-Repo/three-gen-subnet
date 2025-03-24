@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import time
 import typing
 
 import bittensor as bt
@@ -17,7 +16,9 @@ async def main() -> None:
     metagraph.sync(subtensor=subtensor)
     dendrite = bt.dendrite(wallet)
 
-    validators = [neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and metagraph.S[neuron.uid] > 1000]
+    validators = [
+        neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and metagraph.S[neuron.uid] > 1000
+    ]
     validators.append(62)
     bt.logging.info(f"Active validators: {validators}")
 
