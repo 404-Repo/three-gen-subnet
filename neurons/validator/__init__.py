@@ -133,7 +133,6 @@ class Validator:
         self.axon = bt.axon(wallet=self.wallet, config=self.config)
         self.axon.attach(
             forward_fn=self.pull_task,
-            blacklist_fn=self.blacklist_pulling_task,
         ).attach(
             forward_fn=self.submit_results,
             blacklist_fn=self.blacklist_submitting_results,
@@ -189,7 +188,8 @@ class Validator:
 
         miner_uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if miner_uid is None:
-            bt.logging.error("Unexpected behaviour, unknown neuron after blacklist")
+            bt.logging.warning(f"Unknown hotkey: {synapse.dendrite.hotkey} ({synapse.dendrite.ip})")
+            synapse.cooldown_until = int(time.time()) + 3600
             return synapse
 
         miner = self.miners[miner_uid]
@@ -251,13 +251,6 @@ class Validator:
         task = Task(prompt=self.dataset.get_random_prompt())
         bt.logging.debug(f"[{uid}] pulls synthetic task ({task.prompt} | {task.id})")
         return task
-
-    def blacklist_pulling_task(self, synapse: PullTask) -> Tuple[bool, str]:  # noqa: UP006, UP035
-        uid = self._get_neuron_uid(synapse.dendrite.hotkey)
-        if uid is None:
-            return True, f"Unrecognized hotkey {synapse.dendrite.hotkey} ({synapse.dendrite.ip})"
-
-        return False, ""
 
     async def submit_results(self, synapse: SubmitResults) -> SubmitResults:
         uid = self._get_neuron_uid(synapse.dendrite.hotkey)

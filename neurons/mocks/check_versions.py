@@ -16,14 +16,16 @@ async def main() -> None:
     metagraph.sync(subtensor=subtensor)
     dendrite = bt.dendrite(wallet)
 
-    validators = [neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and neuron.stake.tao > 1000]
+    validators = [
+        neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and metagraph.S[neuron.uid] > 1000
+    ]
     validators.append(62)
     bt.logging.info(f"Active validators: {validators}")
 
     versions = typing.cast(
         list[GetVersion],
         await dendrite.forward(
-            axons=[metagraph.axons[uid] for uid in validators], synapse=GetVersion(), deserialize=False, timeout=30
+            axons=[metagraph.axons[uid] for uid in validators], synapse=GetVersion(), deserialize=False, timeout=12
         ),
     )
 
