@@ -23,6 +23,7 @@ from validator.fidelity_check import ValidationResponse
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.storage import StorageWrapper
+from validator.telemetry import Telemetry
 from validator.version import VALIDATOR_VERSION
 
 
@@ -56,6 +57,8 @@ class Validator:
     """Organic tasks registry."""
     public_server: PublicAPIServer | None
     """FastApi server that serves the public API endpoint."""
+    telemetry: Telemetry
+    """Responsible for sending validator metrics to the metrics push gateway."""
 
     def __init__(
         self, config: bt.config, wallet: bt.wallet | None = None, subtensor: bt.subtensor | None = None
@@ -90,6 +93,7 @@ class Validator:
         self._prepare_public_api()
         self._prepare_updater()
         self._prepare_storage()
+        self._prepare_telemetry()
 
         if not self._is_enough_stake_to_set_weights():
             bt.logging.warning(
@@ -183,6 +187,9 @@ class Validator:
             local_version=VALIDATOR_VERSION,
         )
 
+    def _prepare_telemetry(self) -> None:
+        self.telemetry = Telemetry(self.miners, self.wallet, self.metagraph, self.config)
+
     def pull_task(self, synapse: PullTask) -> PullTask:
         """Miner requesting new task from the validator."""
 
@@ -245,11 +252,11 @@ class Validator:
             organic_task = self.task_registry.get_next_task(hotkey, is_strong_miner=is_strong_miner)
             if organic_task is not None:
                 task = Task(id=organic_task.id, prompt=organic_task.prompt)
-                bt.logging.debug(f"[{uid}] pulls organic task ({task.prompt} | {task.id})")
+                bt.logging.debug(f"[{uid}] pulls organic task ({task.prompt[:100]} | {task.id})")
                 return task
 
         task = Task(prompt=self.dataset.get_random_prompt())
-        bt.logging.debug(f"[{uid}] pulls synthetic task ({task.prompt} | {task.id})")
+        bt.logging.debug(f"[{uid}] pulls synthetic task ({task.prompt[:100]} | {task.id})")
         return task
 
     async def submit_results(self, synapse: SubmitResults) -> SubmitResults:
@@ -259,63 +266,91 @@ class Validator:
             return synapse
 
         miner = self.miners[uid]
-
         miner.cooldown_violations = max(0, miner.cooldown_violations - 1)
 
-        if not self._is_task_and_result_valid(synapse, miner, uid):
+        if self._is_wrong_task(synapse, miner):
             return self._add_feedback_and_strip(synapse, miner)
 
-        if not self._verify_results_signature(synapse):
-            bt.logging.error(f"[{uid}] submitted results with invalid signature")
-            self._reset_miner_on_failure(
-                miner=miner,
-                hotkey=synapse.dendrite.hotkey,
-                task_id=synapse.task.id,  # type: ignore[union-attr]
-                cooldown_penalty=self.config.generation.cooldown_penalty,
+        if self._has_miner_skipped_task(synapse, miner):
+            return self._process_task_failure(synapse=synapse, miner=miner, cooldown_penalty=0)
+
+        if self._is_wrong_signature(synapse, miner):
+            return self._process_task_failure(
+                synapse=synapse, miner=miner, cooldown_penalty=self.config.generation.cooldown_penalty
             )
-            return self._add_feedback_and_strip(synapse, miner)
 
         validation_endpoint = self.config.validation.endpoints[uid % len(self.config.validation.endpoints)]
         validation_res = await fidelity_check.validate(
             validation_endpoint, synapse, self.storage.enabled, self.storage.validation_score_threshold
         )
         if validation_res is None:
-            self._reset_miner_on_failure(miner, synapse.dendrite.hotkey, synapse.task.id)  # type: ignore[union-attr]
-            return self._add_feedback_and_strip(synapse, miner, validation_failed=True)
+            return self._process_task_failure(synapse=synapse, miner=miner, cooldown_penalty=0, validation_failed=True)
 
         fidelity_score = self._get_fidelity_score(validation_res.score)
         if fidelity_score == 0:
-            return self._handle_low_fidelity(synapse, miner, uid)
+            bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Prompt: {synapse.task.prompt[:100]}")
+            return self._process_task_failure(
+                synapse=synapse,
+                miner=miner,
+                score=validation_res.score,
+                cooldown_penalty=self.config.generation.cooldown_penalty,
+                validation_failed=False,
+            )
 
-        res = await self._process_valid_submission(synapse, miner, fidelity_score, validation_res)
+        return await self._process_valid_submission(synapse, miner, fidelity_score, validation_res)
 
-        return res
-
-    def _is_task_and_result_valid(self, synapse: SubmitResults, miner: MinerData, uid: int) -> bool:
+    def _is_wrong_task(self, synapse: SubmitResults, miner: MinerData) -> bool:
         if miner.assigned_task != synapse.task:
-            bt.logging.warning(f"[{uid}] submitted results for the wrong task")
-            return False
+            bt.logging.warning(f"[{miner.uid}] submitted results for the wrong task")
+            return True
+        return False
 
+    def _is_wrong_signature(self, synapse: SubmitResults, miner: MinerData) -> bool:
+        if not self._verify_results_signature(synapse):
+            bt.logging.error(f"[{miner.uid}] submitted results with invalid signature")
+            return True
+        return False
+
+    def _has_miner_skipped_task(self, synapse: SubmitResults, miner: MinerData) -> bool:
         if synapse.results == "":
-            bt.logging.debug(f"[{uid}] submitted empty results")
-            self._reset_miner_on_failure(miner=miner, hotkey=synapse.dendrite.hotkey, task_id=synapse.task.id)
-            return False
+            bt.logging.debug(f"[{miner.uid}] submitted empty results ({synapse.task.prompt[:100]})")
+            return True
+        return False
 
-        return True
+    def _process_task_failure(
+        self,
+        synapse: SubmitResults,
+        miner: MinerData,
+        score: float = 0.0,
+        cooldown_penalty: int = 0,
+        validation_failed: bool = False,
+    ) -> SubmitResults:
+        delivery_time = (int(time.time()) - miner.assignment_time) if miner.assignment_time else 0
 
-    def _handle_low_fidelity(self, synapse: SubmitResults, miner: MinerData, uid: int) -> SubmitResults:
-        bt.logging.debug(f"[{uid}] submitted results with low fidelity score. Results not accepted")
-        self._reset_miner_on_failure(
-            miner=miner,
-            hotkey=synapse.dendrite.hotkey,
-            task_id=synapse.task.id,  # type: ignore[union-attr]
-            cooldown_penalty=self.config.generation.cooldown_penalty,
+        miner.reset_task(
+            throttle_period=self.config.generation.throttle_period,
+            cooldown=self.config.generation.task_cooldown + cooldown_penalty,
         )
-        return self._add_feedback_and_strip(synapse, miner)
+
+        if self.task_registry is not None:
+            self.task_registry.fail_task(synapse.task.id, synapse.dendrite.hotkey)
+
+        self.telemetry.add_task_metrics(
+            miner_hotkey=synapse.dendrite.hotkey,
+            miner_coldkey=self.metagraph.coldkeys[miner.uid],
+            score=score,
+            delivery_time=delivery_time,
+            size=len(synapse.results),
+            compression=synapse.compression,
+        )
+
+        return self._add_feedback_and_strip(synapse, miner, validation_failed=validation_failed)
 
     async def _process_valid_submission(
         self, synapse: SubmitResults, miner: MinerData, fidelity_score: float, validation_res: ValidationResponse
     ) -> SubmitResults:
+        delivery_time = (int(time.time()) - miner.assignment_time) if miner.assignment_time else 0
+
         miner.reset_task(
             throttle_period=self.config.generation.throttle_period, cooldown=self.config.generation.task_cooldown
         )
@@ -337,15 +372,16 @@ class Validator:
         if self.task_registry is not None:
             self.task_registry.complete_task(synapse, validation_res.score)
 
-        return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
-
-    def _reset_miner_on_failure(self, miner: MinerData, hotkey: str, task_id: str, cooldown_penalty: int = 0) -> None:
-        miner.reset_task(
-            throttle_period=self.config.generation.throttle_period,
-            cooldown=self.config.generation.task_cooldown + cooldown_penalty,
+        self.telemetry.add_task_metrics(
+            miner_hotkey=synapse.dendrite.hotkey,
+            miner_coldkey=self.metagraph.coldkeys[miner.uid],
+            score=validation_res.score,
+            delivery_time=delivery_time,
+            size=len(synapse.results),
+            compression=synapse.compression,
         )
-        if self.task_registry is not None:
-            self.task_registry.fail_task(task_id, hotkey)
+
+        return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
     def _add_feedback_and_strip(
         self,
@@ -451,6 +487,8 @@ class Validator:
 
         if self.public_server is not None:
             self.public_server.start()
+
+        await self.telemetry.start()
 
         bt.logging.debug("Starting the validator.")
 

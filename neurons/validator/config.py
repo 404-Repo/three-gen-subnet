@@ -23,6 +23,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_dataset_args(parser)
     add_public_api_args(parser)
     add_storage_args(parser)
+    add_telemetry_args(parser)
 
     return parser
 
@@ -221,4 +222,19 @@ def add_storage_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         help="Minimum validation score required for storing 3D assets (0.0 to 1.0)",
         default=0.6,
+    )
+
+
+def add_telemetry_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--telemetry.disabled",
+        action="store_true",
+        help="Used to disable validator metrics being sent to the metrics gateway",
+        default=False,
+    )
+    parser.add_argument(
+        "--telemetry.push_gateway",
+        type=str,
+        help="Push gateway for validator metrics",
+        default="https://dashboard.404.xyz/metrics",
     )

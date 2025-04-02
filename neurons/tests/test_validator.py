@@ -58,6 +58,7 @@ def config(make_httpserver: HTTPServer) -> bt.config:
             "--public_api.enabled",
             f"--validation.endpoint",
             make_httpserver.url_for(""),
+            f"--telemetry.disabled",
         ],
     )
 
