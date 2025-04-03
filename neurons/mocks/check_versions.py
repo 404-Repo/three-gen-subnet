@@ -19,7 +19,7 @@ async def main() -> None:
     validators = [
         neuron.uid for neuron in metagraph.neurons if neuron.axon_info.is_serving and metagraph.S[neuron.uid] > 1000
     ]
-    validators.append(62)
+    validators.append(215)
     bt.logging.info(f"Active validators: {validators}")
 
     versions = typing.cast(
