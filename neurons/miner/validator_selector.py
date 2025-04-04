@@ -1,4 +1,3 @@
-import random
 import time
 import weakref
 
@@ -13,7 +12,7 @@ class ValidatorSelector:
         self._metagraph_ref = weakref.ref(metagraph)
         self._min_stake = min_stake
         self._cooldowns: dict[int | None, int] = {}
-        self._next_uid = random.randint(0, 256)  # noqa  # nosec
+        self._next_uid = 0
 
         # Temporary measure.
         # For test period organic traffic will go only through the subnet owner's validator.
