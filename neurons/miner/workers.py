@@ -36,18 +36,17 @@ async def _complete_one_task(
         await asyncio.sleep(10.0)
         return
 
-    dendrite = bt.dendrite(wallet=wallet)
-
     # Setting cooldown to prevent selecting the same validator for concurrent task.
-    validator_selector.set_cooldown(validator_uid, int(time.time()) + 60)
+    validator_selector.set_cooldown(validator_uid, int(time.time()) + 300)
 
-    pull = await _pull_task(dendrite, metagraph, validator_uid)
-    if pull.dendrite.status_code != 200:
-        bt.logging.warning(
-            f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
-        )
-        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
-        return
+    async with bt.dendrite(wallet=wallet) as dendrite:
+        pull = await _pull_task(dendrite, metagraph, validator_uid)
+        if pull.dendrite.status_code != 200:
+            bt.logging.warning(
+                f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
+            )
+            validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+            return
 
     if pull.task is None:
         if pull.cooldown_until == 0:
@@ -62,13 +61,9 @@ async def _complete_one_task(
             validator_selector.set_cooldown(validator_uid, pull.cooldown_until)
         return
 
-    bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}. Version: {pull.version}")
+    bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}.")
 
-    # Updating cooldown. Validator won't give new tasks until this one is submitted.
-    validator_selector.set_cooldown(validator_uid, pull.submit_before)
-
-    timeout = pull.submit_before - time.time() - NETWORK_DELAY_TIME_BUFFER if pull.submit_before > 0 else None
-    results = await _generate(generate_url, pull.task.prompt, timeout=timeout)
+    results = await _generate(generate_url, pull.task.prompt)
     if results is None:
         return
 
