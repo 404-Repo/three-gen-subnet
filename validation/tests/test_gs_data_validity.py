@@ -1,10 +1,18 @@
+import inspect
+import os
+import sys
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0, parentdir)
+sys.path.insert(0, parentdir + "/validation")
+
 import torch
-import numpy as np
-from validation_lib.validation.validation_pipeline import is_input_data_valid
+from engine.utils.gs_data_checker_utils import is_input_data_valid
+from engine.data_structures import GaussianSplattingData
 
 
 def test_input_data_validity():
-    data_dict = {}
     indices1 = torch.randperm(11000)[:5000]
     indices2 = torch.randperm(11000)[:9000]
 
@@ -48,10 +56,18 @@ def test_input_data_validity():
     for points in input_points:
         for scales in input_scales:
             for opacities in input_opacities:
-                data_dict["points"] = points
-                data_dict["opacities"] = opacities
-                data_dict["scale"] = scales
-                responses.append(is_input_data_valid(data_dict))
+                gs_data = GaussianSplattingData(
+                    points=points,
+                    normals=torch.zeros_like(points),
+                    opacities=opacities,
+                    scales=scales,
+                    features_dc=torch.zeros_like(points),
+                    features_rest=torch.zeros_like(points),
+                    rotations=torch.zeros(size=(points.shape[0], 4)),
+                    sh_degree=torch.tensor(1),
+                )
+                gs_data_gpu = gs_data.send_to_device(torch.device("cuda"))
+                responses.append(is_input_data_valid(gs_data_gpu))
 
     responses_gr_t = [
         True,

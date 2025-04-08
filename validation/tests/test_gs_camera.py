@@ -2,7 +2,6 @@ import inspect
 import os
 import sys
 
-
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
@@ -10,7 +9,7 @@ sys.path.insert(0, parentdir + "/validation")
 
 import numpy as np
 import torch
-from validation_lib.rendering.gs_camera import OrbitCamera
+from engine.rendering.gaussian_splatting.gs_camera import OrbitCamera
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
