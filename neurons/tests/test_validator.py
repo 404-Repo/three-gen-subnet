@@ -172,7 +172,7 @@ async def test_pull_task_request_cooldown_penalty(validator: Validator, time_tra
 
 @pytest.mark.asyncio
 async def test_submit_task(validator: Validator, httpserver: HTTPServer, time_travel: time_machine.travel) -> None:
-    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.76})
+    httpserver.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 0.76})
 
     pull = validator.pull_task(create_pull_task(1))
     submit = await validator.submit_results(create_submit_results(1, pull.task))
@@ -206,7 +206,7 @@ async def test_submit_task_throttle_cases(
     completion_time: int,
     expected_cooldown: int,
 ) -> None:
-    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.76})
+    httpserver.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 0.76})
 
     pull = validator.pull_task(create_pull_task(1))
 
@@ -261,7 +261,7 @@ async def test_submit_task_invalid_signature(validator: Validator) -> None:
 
 @pytest.mark.asyncio
 async def test_submit_task_validation_failure(validator: Validator, time_travel: time_machine.travel) -> None:
-    # httpserver.expect_request("/validate_ply/", method="POST").respond_with_json({"score": 0.23})
+    # httpserver.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 0.23})
 
     pull = validator.pull_task(create_pull_task(1))
     submit = await validator.submit_results(create_submit_results(1, pull.task))
@@ -276,7 +276,7 @@ async def test_submit_task_validation_failure(validator: Validator, time_travel:
 async def test_submit_task_low_fidelity(
     validator: Validator, httpserver: HTTPServer, time_travel: time_machine.travel
 ) -> None:
-    httpserver.expect_oneshot_request("/validate_ply/", method="POST").respond_with_json({"score": 0.23})
+    httpserver.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 0.23})
 
     pull = validator.pull_task(create_pull_task(1))
     submit = await validator.submit_results(create_submit_results(1, pull.task))
@@ -291,7 +291,7 @@ async def test_submit_task_low_fidelity(
 
 @pytest.mark.asyncio
 async def test_submit_task_window_check(validator: Validator, httpserver: HTTPServer) -> None:
-    httpserver.expect_request("/validate_ply/", method="POST").respond_with_json({"score": 1})
+    httpserver.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 1})
 
     with time_machine.travel(FROZEN_TIME):
         first_time = int(time_machine.time())

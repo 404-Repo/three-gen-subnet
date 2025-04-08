@@ -6,6 +6,7 @@ import urllib.parse
 
 import aiohttp
 import bittensor as bt
+import pyspz
 from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
@@ -36,18 +37,17 @@ async def _complete_one_task(
         await asyncio.sleep(10.0)
         return
 
-    dendrite = bt.dendrite(wallet=wallet)
-
     # Setting cooldown to prevent selecting the same validator for concurrent task.
-    validator_selector.set_cooldown(validator_uid, int(time.time()) + 60)
+    validator_selector.set_cooldown(validator_uid, int(time.time()) + 300)
 
-    pull = await _pull_task(dendrite, metagraph, validator_uid)
-    if pull.dendrite.status_code != 200:
-        bt.logging.warning(
-            f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
-        )
-        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
-        return
+    async with bt.dendrite(wallet=wallet) as dendrite:
+        pull = await _pull_task(dendrite, metagraph, validator_uid)
+        if pull.dendrite.status_code != 200:
+            bt.logging.warning(
+                f"Failed to get task from [{metagraph.hotkeys[validator_uid]}]. Reason: {pull.dendrite.status_message}."
+            )
+            validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+            return
 
     if pull.task is None:
         if pull.cooldown_until == 0:
@@ -62,24 +62,19 @@ async def _complete_one_task(
             validator_selector.set_cooldown(validator_uid, pull.cooldown_until)
         return
 
-    bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}. Version: {pull.version}")
+    bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}.")
 
-    # Updating cooldown. Validator won't give new tasks until this one is submitted.
-    validator_selector.set_cooldown(validator_uid, pull.submit_before)
+    results = await _generate(generate_url, pull.task.prompt) or ""
 
-    timeout = pull.submit_before - time.time() - NETWORK_DELAY_TIME_BUFFER if pull.submit_before > 0 else None
-    results = await _generate(generate_url, pull.task.prompt, timeout=timeout)
-    if results is None:
-        return
-
-    submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
-    if submit.feedback is None:
-        bt.logging.warning(
-            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
-            f"Reason: {submit.dendrite.status_message}."
-        )
-        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
-        return
+    async with bt.dendrite(wallet=wallet) as dendrite:
+        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
+        if submit.feedback is None:
+            bt.logging.warning(
+                f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
+                f"Reason: {submit.dendrite.status_message}."
+            )
+            validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+            return
 
     _log_feedback(validator_uid, submit)
 
@@ -98,7 +93,12 @@ async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
 
 
 async def _submit_results(
-    wallet: bt.wallet, dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
+    wallet: bt.wallet,
+    dendrite: bt.dendrite,
+    metagraph: bt.metagraph,
+    validator_uid: int,
+    pull: PullTask,
+    results: bytes,
 ) -> SubmitResults:
     submit_time = time.time_ns()
     prompt = pull.task.prompt if pull.task is not None else None
@@ -107,7 +107,13 @@ async def _submit_results(
         f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
-    synapse = SubmitResults(task=pull.task, results=results, submit_time=submit_time, signature=signature)
+    if results:
+        compressed_results = base64.b64encode(pyspz.compress(results, workers=-1)).decode(encoding="utf-8")
+    else:
+        compressed_results = ""  # Skipping task not to be penalized (same could be done for low quality results)
+    synapse = SubmitResults(
+        task=pull.task, results=compressed_results, compression=2, submit_time=submit_time, signature=signature
+    )
     response = typing.cast(
         SubmitResults,
         await dendrite.call(
@@ -133,7 +139,7 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     )
 
 
-async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:  # noqa: ASYNC109
+async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> bytes | None:  # noqa: ASYNC109
     bt.logging.debug(f"Generating for prompt: {prompt} with timeout {timeout} seconds")
 
     client_timeout = ClientTimeout(total=timeout) if timeout is not None else sentinel
@@ -141,7 +147,7 @@ async def _generate(generate_url: str, prompt: str, timeout: float | None = None
         try:
             async with session.post(generate_url, data={"prompt": prompt}) as response:
                 if response.status == 200:
-                    results = await response.text()
+                    results = await response.read()
                     bt.logging.debug(f"Generation completed. Size: {len(results)}")
                     return results
                 else:

@@ -52,7 +52,11 @@ class SubmitResults(bt.Synapse):
 
     data_format: str = "ply"  # Reserved for future use.
     data_ver: int = 0  # Reserved for future use.
-    compression: int = 0  # Experimental feature.
+    compression: int = 0
+    # End of experiment.
+    #   0 - uncompressed data (to be deprecated with the next release!)
+    #   1 - zstd compression (to be deprecated with the next release!)
+    #   2 - spz compression (https://github.com/404-Repo/spz) (switch to it now!)
 
     submit_time: int  # time.time_ns()
 

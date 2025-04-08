@@ -56,7 +56,7 @@ async def generate(
     buffer = BytesIO()
     gaussian_processor.get_gs_model().save_ply(buffer)
     buffer.seek(0)
-    buffer = base64.b64encode(buffer.getbuffer()).decode("utf-8")
+    buffer = buffer.getbuffer()
     t2 = time()
     logger.info(f" Saving and encoding took: {(t2 - t1) / 60.0} min")
 

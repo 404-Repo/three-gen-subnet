@@ -29,7 +29,7 @@ module.exports = {
     name: 'miner',
     script: 'serve_miner.py',
     interpreter: '${CONDA_INTERPRETER_PATH}',
-    args: '--wallet.name default --wallet.hotkey default --subtensor.network finney --netuid 17 --axon.port 8091 --generation.endpoint http://127.0.0.1:8093 --logging.debug'
+    args: '--wallet.name default --wallet.hotkey default --subtensor.network finney --netuid 17 --generation.endpoint http://127.0.0.1:8093 --logging.debug'
   }]
 };
 EOF
