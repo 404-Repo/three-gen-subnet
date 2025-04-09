@@ -34,6 +34,7 @@ class ValidationResult(BaseModel):
     alignment_score: float  # clip similarity scores
     ssim_score: float  # structure similarity index score
     lpips_score: float  # perceptive similarity score
+    validation_time: float | None = None  # time that validation took
 
 
 class RequestData(BaseModel):
@@ -54,3 +55,15 @@ class ResponseData(BaseModel):
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+
+
+class TimeStat(BaseModel):
+    loading_data_time: float = Field(default=0.0, description="Loading data time")
+    image_rendering_time: float = Field(default=0.0, description="Image rendering time")
+    validation_time: float = Field(default=0.0, description="Validation time")
+    total_time: float = Field(default=0.0, description="Total time of server processing")
+
+
+class ValidationResultData(BaseModel):
+    response_data: ResponseData
+    time_stat: TimeStat | None = None
