@@ -18,7 +18,8 @@ from engine.data_structures import ValidationResult, GaussianSplattingData
 
 @pytest.fixture
 def ply_data() -> GaussianSplattingData:
-    test_data_folder = Path.cwd() / "resources"
+    current_file_path = Path(__file__).resolve()
+    test_data_folder = current_file_path.parent / "resources"
     loader = PlyLoader()
     gs_data = loader.from_file("hamburger", test_data_folder.as_posix())
     return gs_data

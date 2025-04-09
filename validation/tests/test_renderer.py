@@ -16,7 +16,8 @@ from PIL import Image
 from engine.io.ply import PlyLoader
 from engine.rendering.renderer import Renderer
 
-test_data_folder = Path().cwd().resolve() / "resources"
+current_file_path = Path(__file__).resolve()
+test_data_folder = current_file_path.parent / "resources"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

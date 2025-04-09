@@ -63,7 +63,7 @@ app.router.lifespan_context = lifespan
 
 
 def _prepare_input_data(
-    assets: bytes, renderer: Renderer, ply_data_loader: PlyLoader
+    assets: bytes, renderer: Renderer, ply_data_loader: PlyLoader, validator: ValidationEngine
 ) -> tuple[GaussianSplattingData | None, list[torch.Tensor], TimeStat]:
     """Function for preparing input data for further processing"""
 
@@ -81,7 +81,7 @@ def _prepare_input_data(
         return None, [], time_stat
 
     # Render images for validation
-    gs_data_gpu = gs_data.send_to_device(app.state.validator.device)
+    gs_data_gpu = gs_data.send_to_device(validator.device)
     images = renderer.render_gs(gs_data_gpu, 16, 224, 224)
     t3 = time()
     time_stat.image_rendering_time = t3 - t2
@@ -192,7 +192,7 @@ def decode_assets(request: RequestData, zstd_decomp: zstandard.ZstdDecompressor)
     return assets
 
 
-def _decode_and_validate_txt(
+def decode_and_validate_txt(
     request: RequestData,
     ply_data_loader: PlyLoader,
     renderer: Renderer,
@@ -202,7 +202,7 @@ def _decode_and_validate_txt(
 ) -> ValidationResultData:
     t1 = time()
     assets = decode_assets(request, zstd_decomp=zstd_decompressor)
-    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader)
+    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator)
     if gs_data and request.prompt is not None:
         validation_result = _validate_text_vs_image(request.prompt, gs_rendered_images, validator)
         time_stat.validation_time = cast(float, validation_result.validation_time)
@@ -231,7 +231,7 @@ async def version() -> str:
 
 
 @app.post("/validate_txt_to_3d_ply/", response_model=ResponseData)
-async def validate_txt_to_3d_ply(request: RequestData) -> ValidationResultData:
+async def validate_txt_to_3d_ply(request: RequestData) -> ResponseData:
     """
     Validates the input prompt and PLY data to produce scores.
 
@@ -243,16 +243,17 @@ async def validate_txt_to_3d_ply(request: RequestData) -> ValidationResultData:
 
     """
     try:
-        response = _decode_and_validate_txt(
+        validation_result = decode_and_validate_txt(
             request=request,
             ply_data_loader=app.state.ply_data_loader,
             renderer=app.state.renderer,
             zstd_decompressor=app.state.zstd_decompressor,
             validator=app.state.validator,
         )
+        response = validation_result.response_data
     except Exception as e:
         logger.exception(e)
-        response = ValidationResultData(response_data=ResponseData(score=0.0))
+        response = ResponseData(score=0.0)
     finally:
         _cleanup()
 
@@ -260,7 +261,7 @@ async def validate_txt_to_3d_ply(request: RequestData) -> ValidationResultData:
 
 
 @app.post("/validate_img_to_3d_ply/", response_model=ResponseData)
-async def validate_img_to_3d_ply(request: RequestData) -> ValidationResultData:
+async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
     """
     Validates the input prompt and PLY data to produce scores.
 
@@ -273,8 +274,8 @@ async def validate_img_to_3d_ply(request: RequestData) -> ValidationResultData:
     """
     try:
         assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
-        gs_data, gs_rendered_images, time_stat = _prepare_input_data(
-            assets, app.state.renderer, app.state.ply_data_loader
+        gs_data, gs_rendered_images, _ = _prepare_input_data(
+            assets, app.state.renderer, app.state.ply_data_loader, app.state.validator
         )
         if gs_data and request.prompt_image:
             image_data = pybase64.b64decode(request.prompt_image)
@@ -295,10 +296,7 @@ async def validate_img_to_3d_ply(request: RequestData) -> ValidationResultData:
         response = ResponseData(score=0.0)
     finally:
         _cleanup()
-
-    return ValidationResultData(
-        response_data=response,
-    )
+    return response
 
 
 if __name__ == "__main__":

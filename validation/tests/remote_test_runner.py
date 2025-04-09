@@ -16,9 +16,11 @@ from engine.data_structures import RequestData
 
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-DEFAULT_FILEPATH = Path(CURRENT_DIR).resolve() / "resources/hamburger.ply"
+current_file_path = Path(__file__).resolve()
+test_data_folder = current_file_path.parent / "resources"
+DEFAULT_FILEPATH = test_data_folder / "resources/hamburger.ply"
 DEFAULT_PROMPT = "A hamburger"
-DEFAULT_PROMPT_IMAGE = Path(CURRENT_DIR).resolve() / "resources/test_render_ply.png"
+DEFAULT_PROMPT_IMAGE = test_data_folder / "resources/test_render_ply.png"
 DEFAULT_URL_TXT_TO_3D = "http://localhost:10006/validate_txt_to_3d_ply/"
 DEFAULT_URL_IMG_TO_3D = "http://localhost:10006/validate_img_to_3d_ply/"
 DEFAULT_VERSION = 0

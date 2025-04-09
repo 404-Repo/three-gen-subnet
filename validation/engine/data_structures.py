@@ -65,5 +65,5 @@ class TimeStat(BaseModel):
 
 
 class ValidationResultData(BaseModel):
-    response_data: ResponseData
-    time_stat: TimeStat | None = None
+    response_data: ResponseData  # Response data with validation result
+    time_stat: TimeStat | None = None  # Performance statistics of the validation
