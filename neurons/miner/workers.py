@@ -94,7 +94,12 @@ async def _pull_task(dendrite: bt.dendrite, metagraph: bt.metagraph, validator_u
 
 
 async def _submit_results(
-    wallet: bt.wallet, dendrite: bt.dendrite, metagraph: bt.metagraph, validator_uid: int, pull: PullTask, results: str
+    wallet: bt.wallet,
+    dendrite: bt.dendrite,
+    metagraph: bt.metagraph,
+    validator_uid: int,
+    pull: PullTask,
+    results: bytes,
 ) -> SubmitResults:
     submit_time = time.time_ns()
     prompt = pull.task.prompt if pull.task is not None else None
@@ -103,7 +108,7 @@ async def _submit_results(
         f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
-    compressed_results = pyspz.compress(results, workers=-1)
+    compressed_results = base64.b64encode(pyspz.compress(results, workers=-1)).decode(encoding="utf-8")
     synapse = SubmitResults(
         task=pull.task, results=compressed_results, compression=2, submit_time=submit_time, signature=signature
     )
