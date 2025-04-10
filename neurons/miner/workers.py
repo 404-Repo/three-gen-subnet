@@ -68,14 +68,15 @@ async def _complete_one_task(
     if results is None:
         return
 
-    submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
-    if submit.feedback is None:
-        bt.logging.warning(
-            f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
-            f"Reason: {submit.dendrite.status_message}."
-        )
-        validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
-        return
+    async with bt.dendrite(wallet=wallet) as dendrite:
+        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
+        if submit.feedback is None:
+            bt.logging.warning(
+                f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
+                f"Reason: {submit.dendrite.status_message}."
+            )
+            validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
+            return
 
     _log_feedback(validator_uid, submit)
 
