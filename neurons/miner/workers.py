@@ -132,7 +132,7 @@ def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
     )
 
 
-async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> str | None:  # noqa: ASYNC109
+async def _generate(generate_url: str, prompt: str, timeout: float | None = None) -> bytes | None:  # noqa: ASYNC109
     bt.logging.debug(f"Generating for prompt: {prompt} with timeout {timeout} seconds")
 
     client_timeout = ClientTimeout(total=timeout) if timeout is not None else sentinel
@@ -140,7 +140,7 @@ async def _generate(generate_url: str, prompt: str, timeout: float | None = None
         try:
             async with session.post(generate_url, data={"prompt": prompt}) as response:
                 if response.status == 200:
-                    results = await response.text()
+                    results = await response.read()
                     bt.logging.debug(f"Generation completed. Size: {len(results)}")
                     return results
                 else:
