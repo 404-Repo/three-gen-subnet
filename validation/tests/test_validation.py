@@ -29,11 +29,11 @@ def test_validator(ply_data):
     gs_data = ply_data
 
     render = Renderer()
-    images = render.render_gs(gs_data, 16, 224, 224)
+    images = render.render_gs(gs_data, 16, 224, 224, cam_rad=3.0, ref_bbox_size=1.0)
 
     validator = ValidationEngine()
     validator.load_pipelines()
 
     score: ValidationResult = validator.validate_text_to_gs(prompt, images)
 
-    assert score.final_score  # import inspect
+    assert score.final_score > 0.8

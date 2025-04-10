@@ -28,13 +28,14 @@ def test_validation_engine():
     prompt_image_torch = torch.tensor(np.asarray(prompt_image))
 
     renderer = Renderer()
-    images = renderer.render_gs(gs_data, 16, 224, 224, cam_rad=3.0)
+    images = renderer.render_gs(gs_data, 16, 224, 224, cam_rad=3.0, ref_bbox_size=1.0)
 
     validator = ValidationEngine()
     validator.load_pipelines()
 
     validation_results = validator.validate_image_to_gs(prompt_image_torch, images)
-    assert validation_results.final_score > 0.5
-    assert validation_results.lpips_score > 0.8
-    assert validation_results.ssim_score > 0.8
-    assert validation_results.combined_quality_score > 0.47
+    assert validation_results.final_score > 0.85
+    assert validation_results.lpips_score > 0.95
+    assert validation_results.ssim_score > 0.92
+    assert validation_results.combined_quality_score > 0.8
+    assert validation_results.alignment_score > 0.96
