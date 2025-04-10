@@ -6,6 +6,7 @@ import urllib.parse
 
 import aiohttp
 import bittensor as bt
+import pyspz
 from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
@@ -102,7 +103,10 @@ async def _submit_results(
         f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
-    synapse = SubmitResults(task=pull.task, results=results, submit_time=submit_time, signature=signature)
+    compressed_results = pyspz.compress(results, workers=-1)
+    synapse = SubmitResults(
+        task=pull.task, results=compressed_results, compression=2, submit_time=submit_time, signature=signature
+    )
     response = typing.cast(
         SubmitResults,
         await dendrite.call(
