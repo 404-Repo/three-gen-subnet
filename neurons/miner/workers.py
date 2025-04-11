@@ -64,9 +64,7 @@ async def _complete_one_task(
 
     bt.logging.debug(f"Task received. Prompt: {pull.task.prompt}.")
 
-    results = await _generate(generate_url, pull.task.prompt)
-    if results is None:
-        return
+    results = await _generate(generate_url, pull.task.prompt) or ""
 
     async with bt.dendrite(wallet=wallet) as dendrite:
         submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
@@ -109,7 +107,10 @@ async def _submit_results(
         f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
-    compressed_results = base64.b64encode(pyspz.compress(results, workers=-1)).decode(encoding="utf-8")
+    if results:
+        compressed_results = base64.b64encode(pyspz.compress(results, workers=-1)).decode(encoding="utf-8")
+    else:
+        compressed_results = ""  # Skipping task not to be penalized (same could be done for low quality results)
     synapse = SubmitResults(
         task=pull.task, results=compressed_results, compression=2, submit_time=submit_time, signature=signature
     )
