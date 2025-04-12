@@ -87,7 +87,7 @@ restart_with_retry() {
 }
 
 # Restart validation process up to 5 times
-#restart_with_retry "$VALIDATION_CONFIG" 5
+restart_with_retry "$VALIDATION_CONFIG" 5
 
 # Restart validator process
 pm2 restart "$VALIDATOR_CONFIG"
