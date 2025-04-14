@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "validation"
-version = "0.1.0"
+version = "0.1.1"
 description = "This endpoint functions as an independent local web server, which operates concurrently with the neuron process."
 authors = ["s7500 <stezurrodion69@gmail.com>"]
-readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"

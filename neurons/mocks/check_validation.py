@@ -26,7 +26,7 @@ async def main() -> None:
 
 
 async def validate(endpoint: str, prompt: str, data: str) -> float | None:
-    validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
+    validate_url = urllib.parse.urljoin(endpoint, "/validate_txt_to_3d_ply/")
 
     bt.logging.info(f"Url: {validate_url}, prompt: {prompt}, results size: {len(data)}")
 

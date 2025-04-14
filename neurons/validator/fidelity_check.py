@@ -21,7 +21,7 @@ async def validate(
 ) -> ValidationResponse | None:
     prompt = synapse.task.prompt  # type: ignore[union-attr]
     data = synapse.results
-    validate_url = urllib.parse.urljoin(endpoint, "/validate_ply/")
+    validate_url = urllib.parse.urljoin(endpoint, "/validate_txt_to_3d_ply/")
 
     async with aiohttp.ClientSession() as session:
         try:
