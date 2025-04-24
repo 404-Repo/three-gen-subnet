@@ -174,14 +174,14 @@ def decode_assets(request: RequestData, zstd_decomp: zstandard.ZstdDecompressor)
         f"Time taken: {t2 - t1:.2f} sec. Prompt: {request.prompt}."
     )
 
-    if request.compression == 1:  # Experimental. Zstd compression.
+    if request.compression == 1:  # Legacy. Zstd compression.
         compressed_size = len(assets)
         assets = zstd_decomp.decompress(assets)
         logger.info(
             f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
             f"Time taken: {time() - t2:.2f} sec. Prompt: {request.prompt}."
         )
-    elif request.compression == 2:  # Experimental. SPZ compression.
+    elif request.compression == 2:  # SPZ compression.
         compressed_size = len(assets)
         assets = pyspz.decompress(assets, include_normals=False)
         logger.info(

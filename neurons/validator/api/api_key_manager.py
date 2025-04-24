@@ -29,6 +29,9 @@ class ApiKeyManager:
         self._sync()
 
     def _setup_database(self) -> None:
+        """Api-keys are stored in a sqlite database.
+        If it doesn't exist, it is created.
+        """
         if self._db_file.exists():
             return
 
@@ -50,7 +53,7 @@ class ApiKeyManager:
             bt.logging.exception(f"Failed to initialize sqlite database for api-key management: {e}")
 
     def _sync(self) -> None:
-        """Synchronously (blocking) updates the api-keys."""
+        """Synchronously (blocking) updates the api-keys from sqlite database."""
 
         try:
             bt.logging.info("Synchronizing api-keys.")
@@ -69,9 +72,14 @@ class ApiKeyManager:
             bt.logging.exception(f"Failed to update sqlite database for api-key management: {e}")
 
     def is_registered(self, api_key: str) -> bool:
+        """Check if the api-key is registered."""
         return api_key in self._api_keys
 
     def is_allowed(self, api_key: str) -> bool:
+        """Check if the api-key is allowed to make requests to validator.
+        It checks if the api-key is registered and if the number of requests for period is not exceeded.
+        If enough time has passed since the last request, the request count is reset.
+        """
         if api_key not in self._api_keys:
             return False
 
@@ -91,9 +99,12 @@ class ApiKeyManager:
         return True
 
     def get_name(self, api_key: str) -> str:
+        """Get the name of the api-key."""
         return self._api_keys[api_key].name
 
     def start_periodic_sync(self, interval: int) -> None:
+        """Start a periodic sync of api-keys from sqlite database."""
+
         def sync_job() -> None:
             while True:
                 threading.Event().wait(interval)

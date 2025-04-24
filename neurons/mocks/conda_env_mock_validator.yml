@@ -1,0 +1,24 @@
+name: mock-validator
+channels:
+  - defaults
+  - nvidia
+  - conda-forge
+  - pytorch
+
+dependencies:
+  - python=3.11
+  - pip
+  - gcc=13.2
+  - gxx=13.2
+  - lld=19.1.7
+  - cmake=3.31.4
+  - ninja=1.12.1
+  - zstd=1.5.6
+  - pybind11=2.13.6
+  - pip:
+      - -r ../requirements.txt
+
+variables:
+  CUDA_HOME: "$CONDA_PREFIX"
+  CPATH: "$CONDA_PREFIX/targets/x86_64-linux/include:$CONDA_PREFIX/include"
+  LD_LIBRARY_PATH: "$CONDA_PREFIX/targets/x86_64-linux/lib:$CONDA_PREFIX/lib"

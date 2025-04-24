@@ -1,6 +1,7 @@
 import asyncio
 import time
 import weakref
+from typing import Any
 
 import aiohttp
 import bittensor as bt
@@ -21,14 +22,19 @@ class Telemetry:
         using the validator's hotkey for signature verification.
         """
         self.disabled = config.telemetry.disabled
+        """Flag that indicates if telemetry is disabled."""
         self.push_gateway = config.telemetry.push_gateway
-
+        """Push gateway server address."""
         self.miners = miners
+        """List of the miners."""
         self.wallet = wallet
+        """Wallet of the validator."""
         self.validator_hotkey = wallet.hotkey.ss58_address
+        """Hotkey of the validator."""
         self.metagraph_ref = weakref.ref(metagraph)
-
-        self.accumulated_metrics: list[dict] = []
+        """Weak reference to the metagraph."""
+        self.accumulated_metrics: list[dict[str, Any]] = []
+        """List of the accumulated metrics."""
 
     async def start(self) -> None:
         if self.disabled:
@@ -43,7 +49,6 @@ class Telemetry:
         score: float,
         delivery_time: float,
         size: int,
-        compression: int,
     ) -> None:
         if self.disabled:
             return
@@ -53,7 +58,7 @@ class Telemetry:
                 "score": score,
                 "delivery_time": delivery_time,
                 "size": size,
-                "compression": compression,
+                "compression": 2,
                 "timestamp": int(time.time()),
                 "labels": {
                     "miner_hotkey": miner_hotkey,
@@ -100,7 +105,7 @@ class Telemetry:
         self.accumulated_metrics = []
         await self._send_metrics(metrics)
 
-    async def _send_metrics(self, metrics: list[dict]) -> None:
+    async def _send_metrics(self, metrics: list[dict[str, Any]]) -> None:
         nonce, signature = await self._sign()
         payload = {
             "hotkey": self.validator_hotkey,

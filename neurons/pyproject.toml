@@ -12,13 +12,14 @@ bittensor-wallet = { version = "3.0.3" }
 zstandard = { version = "0.23.0" }
 pybase64 = { version = "1.4.0" }
 pyspz = { git = "https://github.com/404-Repo/spz.git", tag = "0.1" }
+mnemonic = "^0.21"
 
 [tool.poetry.group.dev.dependencies]
 poetry = { version = "1.8.3" }
 poethepoet = { version = "0.31.1", extras = ["poetry_plugin"] }
 bandit = { version = "1.8.0" }
 black = { version = "24.10.0" }
-mypy = { version = "1.13.0" }
+mypy = { version = "1.15.0" }
 ruff = { version = "0.8.1" }
 time-machine = { version = "2.16.0" }
 types-requests = { version = "2.32.*" }
@@ -71,6 +72,7 @@ select = [
 ]
 fixable = ["ALL"]
 unfixable = []
+per-file-ignores = { "tests/**/*.py" = ["S101"] }
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = []
@@ -101,8 +103,7 @@ warn_unreachable = true
 strict_equality = true
 warn_redundant_casts = true
 exclude = [
-    '.venv/.*',
-    'tests'
+    '.venv/.*'
 ]
 
 [[tool.mypy.overrides]]
