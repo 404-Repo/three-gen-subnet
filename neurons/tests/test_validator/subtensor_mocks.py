@@ -2,16 +2,17 @@ import base58
 import bittensor as bt
 from bittensor_wallet.mock import get_mock_wallet
 
+
 WALLETS = [get_mock_wallet() for _ in range(200)]
 NEURONS = [bt.NeuronInfoLite.get_null_neuron() for _ in range(len(WALLETS))]
-for uid, (w, n) in enumerate(zip(WALLETS, NEURONS)):
+for uid, (w, n) in enumerate(zip(WALLETS, NEURONS, strict=False)):
     n.uid = uid
     n.hotkey = w.hotkey.ss58_address
     n.coldkey = w.coldkey.ss58_address
     n.axon_info = bt.AxonInfo.from_dict(
         {
             "version": 0,
-            "ip": "0.0.0.0",
+            "ip": "0.0.0.0",  # noqa: S104
             "port": 8092,
             "ip_type": 4,
             "hotkey": n.hotkey,
