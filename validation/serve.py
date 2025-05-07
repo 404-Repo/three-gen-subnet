@@ -259,6 +259,16 @@ async def validate_txt_to_3d_ply(request: RequestData) -> ResponseData:
 
     return response
 
+def add_white_background(image: Image.Image) -> Image.Image:
+    # Create white background with same size
+    white_bg = Image.new('RGBA', image.size, (255, 255, 255, 255))
+
+    # Composite the image onto white background
+    result = Image.alpha_composite(white_bg, image.convert('RGBA'))
+
+    # Convert to RGB to remove alpha channel
+    return result.convert('RGB')
+
 
 @app.post("/validate_img_to_3d_ply/", response_model=ResponseData)
 async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
@@ -280,6 +290,10 @@ async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
         if gs_data and request.prompt_image:
             image_data = pybase64.b64decode(request.prompt_image)
             prompt_image = Image.open(io.BytesIO(image_data))
+
+            if len(prompt_image.getbands()) == 4:
+                prompt_image = add_white_background(prompt_image)
+
             torch_prompt_image = torch.tensor(np.asarray(prompt_image))
             validation_results = _validate_image_vs_image(torch_prompt_image, gs_rendered_images)
             response = _finalize_results(

@@ -26,7 +26,7 @@ class ValidationEngine:
 
         self._image_quality_metric.load_models()
         self._text_vs_image_metric.load_model("convnext_large_d", "laion2b_s26b_b102k_augreg")
-        self._image_vs_image_metric.load_model("convnext_large_d", "laion2b_s26b_b102k_augreg")
+        self._image_vs_image_metric.load_model("microsoft/LLM2CLIP-Openai-L-14-336")
         self._similarity_metric.load_models()
 
     def unload_pipelines(self) -> None:
