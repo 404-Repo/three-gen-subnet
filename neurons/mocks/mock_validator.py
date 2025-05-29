@@ -1,13 +1,13 @@
-import argparse
 import asyncio
 import copy
 import random as rd
 from uuid import uuid4
 
+import anyio
 import bittensor as bt
 from common.protocol import SubmitResults
 from mocks.mock_metagraph import MockMetagraph
-from validator.config import config
+from validator.config import _build_parser
 from validator.miner_data import MinerData
 from validator.task_manager.task_manager import task_manager
 from validator.validation_service import ValidationResponse, ValidationService
@@ -77,22 +77,43 @@ class MockValidator(Validator):
         self.metagraph.hotkeys.append(hotkey)
         self.metagraph.S.append(20000)
         self.metagraph.coldkeys.append(str(uuid4()))
-        self.miners.append(MinerData(uid=len(self.metagraph.hotkeys)))
-        return len(self.metagraph.hotkeys)
+        self.miners.append(MinerData(uid=len(self.metagraph.hotkeys) - 1))
+        return len(self.metagraph.hotkeys) - 1
 
     def _set_weights(self) -> None:
         return
 
+    def _check_miner_signature(self, *, synapse: SubmitResults, miner: MinerData) -> bool:
+        return True
+
+    async def run(self) -> None:
+        self.axon.serve(netuid=self.config.netuid, subtensor=self.subtensor)
+        self.axon.start()
+
+        bt.logging.info(
+            f"Serving validator axon {self.axon} on network: {self.config.subtensor.chain_endpoint} "
+            f"with netuid: {self.config.netuid}"
+        )
+
+        if self.public_server is not None:
+            self.public_server.start()
+
+        bt.logging.debug("Starting the validator.")
+
+        event = anyio.Event()
+        await event.wait()
+
 
 async def main() -> None:
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Run MockValidator with gateway wallet configuration")
+    parser = _build_parser()
     parser.add_argument(
-        "--gateway-wallet-name", type=str, required=True, help="Name of the wallet to use for gateway authentication"
+        "--gateway_wallet_name", type=str, required=True, help="Name of the wallet to use for gateway authentication"
     )
-    parser.add_argument("--gateway-wallet-hotkey", type=str, required=True, help="Hotkey name for the gateway wallet")
+    parser.add_argument("--gateway_wallet_hotkey", type=str, required=True, help="Hotkey name for the gateway wallet")
 
     args = parser.parse_args()
+    config = bt.config(parser)
 
     # Create gateway wallet using the parsed arguments
     config_copy = copy.deepcopy(config)
@@ -106,6 +127,10 @@ async def main() -> None:
         validation_service=MockValidation(),
         gateway_wallet=gateway_wallet,
     )
+    task_manager._organic_task_storage._wallet = gateway_wallet
+    task_manager._synthetic_task_storage._wallet = gateway_wallet
+    asyncio.create_task(neuron.task_manager._synthetic_task_storage.fetch_synthetic_tasks_cron())
+    asyncio.create_task(neuron.task_manager._organic_task_storage.fetch_gateway_tasks_cron())
     await neuron.run()
 
 

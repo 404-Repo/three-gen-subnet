@@ -5,6 +5,7 @@ from collections import deque
 from typing import Any
 
 import aioquic
+import bittensor as bt
 from aioquic.asyncio import QuicConnectionProtocol
 from aioquic.h3.connection import H3Connection
 from aioquic.h3.events import (
@@ -64,6 +65,7 @@ class ConnectionProtocol(QuicConnectionProtocol):
                 # TODO: remove hack when server will be fixed (stream_end issue). Check by stream_end.
                 is_data_received = isinstance(event, DataReceived)
                 if is_data_received:
+                    bt.logging.trace(f"Data received: {event.data}")
                     data = event.data.decode()
                     self._data += data
                 if self._status_code != 200 or self._data == "Ok":
@@ -105,7 +107,7 @@ class ConnectionProtocol(QuicConnectionProtocol):
         self.transmit()
 
         try:
-            return await asyncio.wait_for(asyncio.shield(waiter), timeout=5)
+            return await asyncio.wait_for(asyncio.shield(waiter), timeout=30)
         except TimeoutError:
             logger.warning(f"Timeout waiting for response on stream {stream_id}")
             self._request_waiter.pop(stream_id, None)

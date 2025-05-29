@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from validator.gateway.gateway import Gateway
 from validator.gateway.http3_client.http3_client import Http3Client
-from validator.task_manager.task import AssignedMiner
 
 
 class GatewayRoute(Enum):
@@ -73,7 +72,9 @@ class GatewayApi:
         *,
         validator_hotkey: Keypair,
         task: GatewayTask,
-        assigned_miner: AssignedMiner | None,
+        score: float | None = None,
+        miner_hotkey: str | None = None,
+        asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
         """Adds a result to the task."""
@@ -88,11 +89,11 @@ class GatewayApi:
             "timestamp": msg,
             "validator_hotkey": validator_hotkey.ss58_address,
         }
-        if assigned_miner is not None:
+        if miner_hotkey is not None:
             payload["status"] = "success"
-            payload["miner_hotkey"] = assigned_miner.hotkey
-            payload["asset"] = assigned_miner.compressed_result
-            payload["score"] = assigned_miner.score
+            payload["miner_hotkey"] = miner_hotkey
+            payload["asset"] = asset
+            payload["score"] = score
         else:
             payload["status"] = "failure"
             payload["reason"] = error

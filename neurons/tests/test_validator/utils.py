@@ -31,7 +31,7 @@ def create_submit_result(uid: int | None, task: Task, full: bool = False) -> Sub
     if not full:
         synapse = SubmitResults(task=task, results=MINER_RESULT, submit_time=0, signature=signature, compression=2)
     else:
-        synapse = SubmitResults(task=task, results=MINER_RESULT_FULL, submit_time=0, signature=signature, compression=2)
+        synapse = SubmitResults(task=task, results=MINER_RESULT_FULL, submit_time=0, signature=signature, compression=0)
 
     synapse.dendrite.hotkey = miner_hotkey.ss58_address
     synapse.axon.hotkey = WALLETS[0].hotkey.ss58_address

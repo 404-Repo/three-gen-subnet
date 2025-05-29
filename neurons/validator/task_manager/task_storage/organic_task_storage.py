@@ -1,10 +1,10 @@
 import asyncio
-import base64
 import time
 import traceback
 from collections import deque
 
 import bittensor as bt
+import pybase64
 import pyspz
 from common.protocol import SubmitResults
 
@@ -54,20 +54,23 @@ class OrganicTaskStorage(BaseTaskStorage):
             if not running_task.should_be_assigned(is_strong_miner, self._config.task.organic.assigned_miners_count):
                 continue
             task = running_task
-            bt.logging.info(f"[{miner_uid}] received active organic task {running_task.id}")
+            bt.logging.info(f"[{miner_uid}] received active organic task ({running_task.prompt[:100]})")
             break
 
         if task is None and len(self._gateway_task_queue) > 0:
             task = self._gateway_task_queue.popleft()
             if task is not None:
-                bt.logging.info(f"[{miner_uid}] received new gateway organic task {task.id}")
+                bt.logging.info(
+                    f"[{miner_uid}] received new gateway organic task "
+                    f"({task.prompt[:100]}){' (strong miner)' if is_strong_miner else ''}"
+                )
                 self._running_tasks[task.id] = task
                 self._running_task_queue.append(task)
 
         if task is None and len(self._legacy_task_queue) > 0:
             task = self._legacy_task_queue.popleft()
             if task is not None:
-                bt.logging.info(f"[{miner_uid}] received new legacy organic task {task.id}")
+                bt.logging.info(f"[{miner_uid}] received new legacy organic task ({task.prompt[:100]})")
                 self._running_tasks[task.id] = task
                 self._running_task_queue.append(task)
 
@@ -77,7 +80,7 @@ class OrganicTaskStorage(BaseTaskStorage):
             task.assigned_miners[hotkey] = miner
             if task.assign_time == 0:
                 bt.logging.debug(
-                    f"({task.id}) {current_time - task.create_time} seconds " f"between created and assigned"
+                    f"{current_time - task.create_time} seconds between created and assigned ({task.prompt[:100]})"
                 )
                 task.assign_time = current_time
                 if isinstance(task, LegacyOrganicTask):
@@ -103,10 +106,10 @@ class OrganicTaskStorage(BaseTaskStorage):
 
     # TODO: deprecated
     async def get_best_results(self, *, task_id: str) -> AssignedMiner | None:
+        task = self._running_tasks.get(task_id, None)
+        if task is None or not isinstance(task, LegacyOrganicTask):
+            return None
         try:
-            task = self._running_tasks.get(task_id, None)
-            if task is None or not isinstance(task, LegacyOrganicTask):
-                return None
             result = await asyncio.wait_for(task.best_result_future, self._config.task.organic.send_result_timeout)
         except TimeoutError:
             task = self._running_tasks.get(task_id, None)
@@ -119,6 +122,7 @@ class OrganicTaskStorage(BaseTaskStorage):
 
     # TODO: deprecated
     def add_legacy_task(self, *, task: LegacyOrganicTask) -> LegacyOrganicTask:
+        bt.logging.info(f"Task added to the legacy task queue ({task.prompt[:100]})")
         self._legacy_task_queue.append(task)
         return task
 
@@ -132,71 +136,70 @@ class OrganicTaskStorage(BaseTaskStorage):
         """Submits the result."""
         current_time = int(time.time())
         task_id = synapse.task.id
+        task_prompt = synapse.task.prompt
         hotkey = synapse.dendrite.hotkey
         task = self._running_tasks.get(task_id, None)
+        if task is None:
+            bt.logging.error(f"[{miner_uid}] failed to submit result ({task_prompt[:100]}): task not found")
+            return
         assigned_miner = task.assigned_miners.get(hotkey, None)
         if assigned_miner is None:
-            bt.logging.error(f"[{miner_uid}] failed to submit result for task ({task_id}): result not found")
+            bt.logging.error(f"[{miner_uid}] failed to submit result ({task_prompt[:100]}): assigned miner not found")
             return
         assigned_miner.compressed_result = synapse.results
         assigned_miner.compression = synapse.compression
         assigned_miner.score = validation_res.score
         assigned_miner.submit_time = current_time
         assigned_miner.finished = True
+
+        bt.logging.info(
+            f"[{miner_uid}] completed organic task ({task_prompt[:100]}). Score: {validation_res.score:.2f}"
+        )
         if task.first_result_time == 0:
             self._process_first_result(task=task, assigned_miner=assigned_miner)
         if task.all_miners_finished(self._config.task.organic.assigned_miners_count):
             self._submit_task_result(task=task)
-        bt.logging.info(f"[{miner_uid}] completed organic task ({task_id}). Score: {validation_res.score:.2f}")
 
-    def fail_task(self, *, task_id: str, hotkey: str, miner_uid: int) -> None:
+    def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:
         task = self._running_tasks.get(task_id, None)
         if task is None:
-            bt.logging.error(f"[{miner_uid}] failed to fail task ({task_id}): task not found")
+            bt.logging.error(f"[{miner_uid}] failed to fail task ({task_prompt[:100]}): task not found")
             return
         assigned_miner = task.assigned_miners.get(hotkey, None)
         if assigned_miner is None:
-            bt.logging.error(f"[{miner_uid}] assigned miner not found for task ({task_id})")
+            bt.logging.error(f"[{miner_uid}] assigned miner not found for task ({task_prompt[:100]})")
             return
         assigned_miner.finished = True
         assigned_miner.submit_time = int(time.time())
+        bt.logging.error(f"[{miner_uid}] failed organic task ({task_prompt[:100]})")
 
         if task.all_miners_finished(self._config.task.organic.assigned_miners_count):
             self._submit_task_result(task=task)
-
-        bt.logging.error(f"[{miner_uid}] failed organic task ({task_id}): {task.prompt}.")
 
     async def _fetch_tasks_from_gateway(self) -> None:
         self._remove_expired_tasks()
         task_count = self._config.task.gateway.task_queue_size - len(self._gateway_task_queue)
         if task_count == 0:
-            bt.logging.info("No need to fetch tasks from the gateway")
             return
         url = self._get_best_gateway_url()
         result = await self._gateway_manager.get_tasks(
             gateway_host=url, validator_hotkey=self._wallet.hotkey, task_count=task_count
         )
+        bt.logging.trace(f"Fetched {len(result.tasks)} tasks from the gateway: {url}")
         self._add_tasks(gateway_url=url, gateway_task_result=result)
-        bt.logging.info(f"Fetched {len(result.tasks)} tasks from the gateway: {url}")
         self._update_gateway_scores(result=result, url=url)
 
     def _remove_expired_tasks(self) -> None:
         """Removes tasks from queue that are expired or were already removed."""
         current_time = time.time()
-
         # Remove running expired tasks
         while self._running_task_queue:
             task = self._running_task_queue[0]
             if task.create_time + self._organic_task_expire_timeout >= current_time:
                 break
-            self._cleanup_task(task=task)
-            # TODO: deprecated
-            if isinstance(task, LegacyOrganicTask):
-                set_future(task.first_result_future, None)
-                set_future(task.best_result_future, None)
-            elif isinstance(task, GatewayOrganicTask) and task.result_future is not None:
-                asyncio.get_event_loop().create_task(self._submit_task_result(task=task))
-            bt.logging.trace(f"({task.id}): removed from running task queue.")
+            self._running_task_queue.popleft()
+            self._submit_task_result(task=task)
+            bt.logging.trace(f"({task.id} | {task.prompt[:100]}): removed from running task queue.")
 
         # Remove gateway expired tasks that didn't start yet
         while self._gateway_task_queue:
@@ -204,7 +207,8 @@ class OrganicTaskStorage(BaseTaskStorage):
             if task.create_time + self._organic_task_expire_timeout >= current_time:
                 break
             self._gateway_task_queue.popleft()
-            bt.logging.info(f"({task.id}): removed from gateway task queue.")
+            self._submit_task_result(task=task)
+            bt.logging.info(f"({task.prompt[:100]}): removed from gateway task queue.")
 
         # Remove legacy expired tasks that didn't start yet
         while self._legacy_task_queue:
@@ -212,7 +216,8 @@ class OrganicTaskStorage(BaseTaskStorage):
             if task.create_time + self._organic_task_expire_timeout >= current_time:
                 break
             self._legacy_task_queue.popleft()
-            bt.logging.info(f"({task.id}): removed from legacy task queue.")
+            self._submit_task_result(task=task)
+            bt.logging.info(f"({task.prompt[:100]}): removed from legacy task queue.")
 
     def _get_best_gateway_url(self) -> str:
         best_gateway = self._gateway_manager.get_best_gateway()
@@ -232,11 +237,11 @@ class OrganicTaskStorage(BaseTaskStorage):
                     gateway_url=gateway_url,
                 )
             )
-            bt.logging.info(f"({data['id']}): added to the task queue")
+            bt.logging.info(f"({data['prompt'][:100]}): added to the gateway task queue from {gateway_url}")
 
     def _update_gateway_scores(self, *, result: GetGatewayTasksResult, url: str) -> None:
         if not result.tasks:
-            bt.logging.warning(f"Gateway {url} is disabled for the next iteration: no tasks returned.")
+            bt.logging.trace(f"Gateway {url} is disabled for the next iteration: no tasks returned.")
             for gateway in result.gateways:
                 if gateway.url == url:
                     gateway.disabled = True
@@ -246,7 +251,7 @@ class OrganicTaskStorage(BaseTaskStorage):
     def _process_first_result(self, *, task: OrganicTask, assigned_miner: AssignedMiner) -> None:
         task.first_result_time = time.time()
         bt.logging.debug(
-            f"({task.id}) {task.first_result_time - task.create_time} seconds "
+            f"({task.prompt[:100]}) {task.first_result_time - task.create_time} seconds "
             f"between created and first acceptable results received"
         )
         if isinstance(task, LegacyOrganicTask):
@@ -260,18 +265,20 @@ class OrganicTaskStorage(BaseTaskStorage):
     async def _best_result_timeout_handler(self, *, task: GatewayOrganicTask) -> None:
         """Sends a result of the task to the gateway."""
         try:
-            _ = await asyncio.wait_for(task.result_future, self._config.task.organic.send_result_timeout)
+            if task.result_future is not None:
+                _ = await asyncio.wait_for(task.result_future, self._config.task.organic.send_result_timeout)
         except asyncio.CancelledError:
             pass  # Do nothing because result was submitted to the gateway in other place
         except TimeoutError:
-            bt.logging.warning(f"({task.id}): timeout to receive best result from miners")
+            bt.logging.warning(f"({task.prompt[:100]}): timeout to receive best result from miners")
             await self._send_best_result(task=task)
 
     def _submit_task_result(self, *, task: OrganicTask) -> None:
-        bt.logging.debug(f"({task.id}): all miners submitted results")
+        bt.logging.debug(f"({task.prompt[:100]}): all miners submitted results")
         best_result = task.get_best_result()
         if isinstance(task, LegacyOrganicTask):
             # TODO: deprecated
+            set_future(task.start_future, None)
             set_future(task.first_result_future, best_result)
             set_future(task.best_result_future, best_result)
             self._cleanup_task(task=task)
@@ -286,25 +293,29 @@ class OrganicTaskStorage(BaseTaskStorage):
             best_result = task.get_best_result()
             if best_result is None:
                 error = f"{len(task.assigned_miners)} miners submitted results but no one is good"
-                await self._gateway_manager.add_result(
-                    validator_hotkey=self._wallet.hotkey, task=task, assigned_miner=None, error=error
+                await self._gateway_manager.add_result(validator_hotkey=self._wallet.hotkey, task=task, error=error)
+                bt.logging.warning(
+                    f"({task.id} | {task.prompt[:100]}): sent error to the gateway {task.gateway_url}: {error}"
                 )
-                bt.logging.warning(f"({task.id}): sent error to the gateway {task.gateway_url}: {error}")
             else:
-                self._convert_to_spz(result=best_result, task_id=task.id)
+                asset = self._get_asset(result=best_result, task_id=task.id)
                 await self._gateway_manager.add_result(
-                    validator_hotkey=self._wallet.hotkey, task=task, assigned_miner=best_result
+                    validator_hotkey=self._wallet.hotkey,
+                    task=task,
+                    miner_hotkey=best_result.hotkey,
+                    score=best_result.score,
+                    asset=asset,
                 )
-                bt.logging.warning(f"({task.id}): sent best result to the gateway {task.gateway_url}")
+                bt.logging.debug(f"({task.prompt[:100]}): sent best result to the gateway {task.gateway_url}")
         except Exception as ex:
             bt.logging.error(
-                f"({task.id}): failed to send error to the gateway {task.gateway_url}: "
+                f"({task.prompt[:100]}): failed to send result to the gateway {task.gateway_url}: "
                 f"{ex}  {traceback.format_exc()}"
             )
         finally:
             self._cleanup_task(task=task)
 
-    def _convert_to_spz(self, *, result: AssignedMiner, task_id: str) -> None:
+    def _get_asset(self, *, result: AssignedMiner, task_id: str) -> bytes | None:
         # TODO: deprecated
         # Gateway works only with spz compressed results
         try:
@@ -312,18 +323,22 @@ class OrganicTaskStorage(BaseTaskStorage):
                 if result.compression != 2:
                     decompressed_result = result.decompress_results()
                     if decompressed_result is not None:
-                        input = base64.b64decode(decompressed_result)
-                        result.compressed_result = str(
-                            base64.b64encode(pyspz.compress(input, workers=-1)).decode(encoding="utf-8")
-                        )
+                        input = pybase64.b64decode(decompressed_result)
+                        return pyspz.compress(input, workers=-1)
+                else:
+                    return pybase64.b64decode(result.compressed_result)
         except Exception:
             bt.logging.error(f"({task_id}): error compressing result: {traceback.format_exc()}")
 
     def _cleanup_task(self, *, task: OrganicTask | None) -> None:
         if task is None:
             return
-        self._running_tasks.pop(task.id, None)
-        self._running_task_queue.remove(task)
+        try:
+            self._running_tasks.pop(task.id, None)
+            self._running_task_queue.remove(task)
+            bt.logging.trace(f"({task.id}): removed.")
+        except Exception:
+            bt.logging.trace(f"({task.id}): error cleaning up task")
 
 
 organic_task_storage = OrganicTaskStorage(

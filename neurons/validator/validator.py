@@ -160,7 +160,7 @@ class Validator:
         )
         bt.logging.info(f"Axon created: {self.axon}")
 
-    def pull_task(self, synapse: PullTask) -> PullTask:
+    async def pull_task(self, synapse: PullTask) -> PullTask:
         """Returns new task to the miner if it is allowed."""
 
         miner_uid = self._check_miner_registered(synapse=synapse)
@@ -173,6 +173,7 @@ class Validator:
             return synapse
 
         is_strong_miner = self.metagraph_sync.is_strong_miner(miner_uid)
+
         task = self.task_manager.get_next_task(
             hotkey=synapse.dendrite.hotkey, is_strong_miner=is_strong_miner, miner_uid=miner_uid
         )
@@ -194,26 +195,25 @@ class Validator:
             )
         miner.cooldown_violations = max(0, miner.cooldown_violations - 1)
         if miner.assigned_task != synapse.task:
-            bt.logging.warning(f"[{miner.uid}] submitted results for the wrong task")
+            bt.logging.warning(f"[{miner_uid}] submitted results for the wrong task")
             return self._add_feedback_and_strip(synapse, miner)
         if synapse.results == "":
-            bt.logging.debug(f"[{miner.uid}] submitted empty results ({synapse.task.prompt[:100]} | {synapse.task.id})")
+            bt.logging.debug(f"[{miner_uid}] submitted empty results ({synapse.task.id} | {synapse.task.prompt[:100]})")
             return self._process_task_failure(synapse=synapse, miner=miner, cooldown_penalty=0)
 
-        return await self._validate_results(synapse=synapse, miner=miner)
+        return await self._validate_results(synapse=synapse, miner=miner, miner_uid=miner_uid)
 
-    async def _validate_results(self, *, synapse: SubmitResults, miner: MinerData) -> SubmitResults:
+    async def _validate_results(self, *, synapse: SubmitResults, miner: MinerData, miner_uid: int) -> SubmitResults:
         validation_res = await self.validation_service.validate(synapse=synapse, neuron_uid=miner.uid)
         if validation_res is None:
-            bt.logging.error(f"[{miner.uid}]: validation failed for task ({synapse.task.id})")
+            bt.logging.error(f"[{miner_uid}]: validation failed ({synapse.task.prompt[:100]})")
             return await self._process_task_failure(  # type: ignore
                 synapse=synapse, miner=miner, cooldown_penalty=0, validation_failed=True
             )
+        bt.logging.debug(
+            f"[{miner_uid}] submitted results with the score: {validation_res.score} ({synapse.task.prompt[:100]})"
+        )
         if validation_res.score < self.config.generation.quality_threshold:
-            bt.logging.debug(
-                f"[{miner.uid}] submitted results for ({synapse.task.id}) "
-                f"with low fidelity score ({validation_res.score})"
-            )
             return self._process_task_failure(
                 synapse=synapse,
                 miner=miner,
@@ -222,10 +222,12 @@ class Validator:
                 validation_failed=False,
             )
 
-        return await self._process_valid_result(synapse=synapse, miner=miner, validation_res=validation_res)
+        return await self._process_valid_result(
+            synapse=synapse, miner=miner, validation_res=validation_res, miner_uid=miner_uid
+        )
 
     async def _process_valid_result(
-        self, *, synapse: SubmitResults, miner: MinerData, validation_res: ValidationResponse
+        self, *, synapse: SubmitResults, miner: MinerData, validation_res: ValidationResponse, miner_uid: int
     ) -> SubmitResults:
         # Add miner observation.
         current_time = int(time.time())
@@ -251,17 +253,9 @@ class Validator:
         )
 
         # Submit task results.
-        synapse_copy = SubmitResults(
-            task=synapse.task,
-            results=synapse.results,
-            signature=synapse.signature,
-            cooldown_until=synapse.cooldown_until,
-            submit_time=synapse.submit_time,
-            compression=synapse.compression,
-            dendrite=synapse.dendrite,
-        )
+        synapse_copy = synapse.model_copy()
         asyncio.create_task(
-            self.task_manager.submit_result(synapse=synapse_copy, validation_res=validation_res, miner_uid=miner.uid)
+            self.task_manager.submit_result(synapse=synapse_copy, validation_res=validation_res, miner_uid=miner_uid)
         )
         return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
@@ -280,7 +274,12 @@ class Validator:
             cooldown=self.config.generation.task_cooldown + cooldown_penalty,
         )
 
-        self.task_manager.fail_task(task_id=synapse.task.id, hotkey=synapse.dendrite.hotkey, miner_uid=miner.uid)
+        self.task_manager.fail_task(
+            task_id=synapse.task.id,
+            task_prompt=synapse.task.prompt,
+            hotkey=synapse.dendrite.hotkey,
+            miner_uid=miner.uid,
+        )
 
         self.telemetry.add_task_metrics(
             miner_hotkey=synapse.dendrite.hotkey,
@@ -493,7 +492,9 @@ class Validator:
             synapse.task = miner.assigned_task
             synapse.validation_threshold = self.config.generation.quality_threshold
             synapse.throttle_period = self.config.generation.throttle_period
-            bt.logging.debug(f"[{miner.uid}] asked for a new task while having assigned task.")
+            bt.logging.debug(
+                f"[{miner.uid}] asked for a new task while having assigned task ({synapse.task.prompt[:100]}). )"
+            )
             return True
         return False
 

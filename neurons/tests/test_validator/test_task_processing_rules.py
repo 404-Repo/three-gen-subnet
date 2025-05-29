@@ -50,7 +50,7 @@ class TestTaskProcessingRules:
                     time += 1
                     with time_machine.travel(time, tick=False):
                         pull_task = create_pull_task(idx)
-                        pull_task = validator.pull_task(pull_task)
+                        pull_task = await validator.pull_task(pull_task)
                         assert pull_task.task is not None
                         is_synthetic = validator.task_manager._synthetic_task_storage.has_task(
                             task_id=pull_task.task.id
@@ -106,7 +106,7 @@ class TestTaskProcessingRules:
 
                 # Pull legacy task
                 pull_task = create_pull_task(1)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
                 assert pull_task.task is not None
                 task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
@@ -120,7 +120,7 @@ class TestTaskProcessingRules:
 
                 # Pull task and check that is legacy.
                 pull_task_2 = create_pull_task(2)
-                pull_task_2 = validator.pull_task(pull_task_2)
+                pull_task_2 = await validator.pull_task(pull_task_2)
                 assert pull_task_2.task is not None
                 assert pull_task_2.task.id == pull_task.task.id
                 assert pull_task_2.task.prompt == pull_task.task.prompt
@@ -139,7 +139,7 @@ class TestTaskProcessingRules:
         """
         with time_machine.travel(FROZEN_TIME, tick=False):
             pull_task = create_pull_task(1)
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task is not None
             assert pull_task.task is not None
             assert validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
@@ -151,7 +151,7 @@ class TestTaskProcessingRules:
 
             # Pull task and check that is organic.
             pull_task_2 = create_pull_task(2)
-            pull_task_2 = validator.pull_task(pull_task_2)
+            pull_task_2 = await validator.pull_task(pull_task_2)
             assert pull_task_2.task is not None
             assert pull_task_2.task.id != pull_task.task.id
             task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_2.task.id, None)
@@ -170,38 +170,40 @@ class TestTaskProcessingRules:
         """
         async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
             now = time.time()
-            with time_machine.travel(now, tick=False):
+            with time_machine.travel(now, tick=True) as travel:
                 pull_task = create_pull_task(1)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
                 assert pull_task.task is not None
                 assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
                 task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
                 assert task is not None
 
-            # Task can be assigned to the miner before task timeout.
-            with time_machine.travel(now + TASK_TIMEOUT - 1, tick=False):
+                # Task can be assigned to the miner before task timeout.
+                travel.move_to(now + TASK_TIMEOUT - 1)
                 pull_task_2 = create_pull_task(2)
-                pull_task_2 = validator.pull_task(pull_task_2)
+                pull_task_2 = await validator.pull_task(pull_task_2)
                 assert pull_task_2 is not None
                 assert pull_task_2.task is not None
                 assert pull_task_2.task.id == pull_task.task.id
 
-            # Task can't be assigned to the miner after task timeout.
-            with time_machine.travel(now + TASK_TIMEOUT + 1, tick=False):
+                # Task can't be assigned to the miner after task timeout.
+                travel.move_to(now + TASK_TIMEOUT + 1)
                 pull_task_3 = create_pull_task(3)
-                pull_task_3 = validator.pull_task(pull_task_3)
+                pull_task_3 = await validator.pull_task(pull_task_3)
                 assert pull_task_3 is not None
                 assert pull_task_3.task is not None
                 assert pull_task_3.task.id != pull_task.task.id
 
-            # Task is deleted after double task timeout.
-            with time_machine.travel(now + TASK_TIMEOUT * 2 + 1, tick=False):
+                # Task is deleted after double task timeout.
+                travel.move_to(now + TASK_TIMEOUT * 2 + 1)
                 pull_task_4 = create_pull_task(4)
-                pull_task_4 = validator.pull_task(pull_task_4)
+                pull_task_4 = await validator.pull_task(pull_task_4)
                 assert pull_task_4 is not None
                 assert pull_task_4.task is not None
                 assert pull_task_4.task.id != pull_task.task.id
+                # Wait for the task to be removed from the running tasks.
+                await asyncio.sleep(0.2)
                 task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
                 assert task is None
 
@@ -219,7 +221,7 @@ class TestTaskProcessingRules:
             with time_machine.travel(now, tick=True):
                 # First miner gets the task
                 pull_task_1 = create_pull_task(1)
-                pull_task_1 = validator.pull_task(pull_task_1)
+                pull_task_1 = await validator.pull_task(pull_task_1)
                 assert pull_task_1 is not None
                 assert pull_task_1.task is not None
                 assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task_1.task.id)
@@ -232,7 +234,7 @@ class TestTaskProcessingRules:
 
                 # Other miner can get the task before send_result_timeout expires
                 pull_task_2 = create_pull_task(2)
-                pull_task_2 = validator.pull_task(pull_task_2)
+                pull_task_2 = await validator.pull_task(pull_task_2)
                 assert pull_task_2 is not None
                 assert pull_task_2.task is not None
                 assert pull_task_2.task.id == pull_task_1.task.id
@@ -240,7 +242,7 @@ class TestTaskProcessingRules:
 
                 # Other miner can't get the task after send_result_timeout expires
                 pull_task_3 = create_pull_task(10)
-                pull_task_3 = validator.pull_task(pull_task_3)
+                pull_task_3 = await validator.pull_task(pull_task_3)
                 assert pull_task_3 is not None
                 assert pull_task_3.task is not None
                 assert pull_task_3.task.id != pull_task_1.task.id
@@ -262,7 +264,7 @@ class TestTaskProcessingRules:
         Test that task can be assigned to second miner during send_result_timeout.
         Then task is not accessible and the result is sent to the gateway.
         """
-        config.task.organic.send_result_timeout = 1
+        config.task.organic.send_result_timeout = 0.5
         async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
             # Remove all gateway tasks.
             validator.task_manager._organic_task_storage._gateway_task_queue.clear()
@@ -271,7 +273,7 @@ class TestTaskProcessingRules:
             with time_machine.travel(now, tick=True):
                 # First miner gets the task
                 pull_task_1 = create_pull_task(1)
-                pull_task_1 = validator.pull_task(pull_task_1)
+                pull_task_1 = await validator.pull_task(pull_task_1)
                 assert pull_task_1 is not None
                 assert pull_task_1.task is not None
                 assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task_1.task.id)
@@ -284,7 +286,7 @@ class TestTaskProcessingRules:
 
                 # Other miner can get the task before send_result_timeout expires
                 pull_task_2 = create_pull_task(2)
-                pull_task_2 = validator.pull_task(pull_task_2)
+                pull_task_2 = await validator.pull_task(pull_task_2)
                 assert pull_task_2 is not None
                 assert pull_task_2.task is not None
                 assert pull_task_2.task.id == pull_task_1.task.id
@@ -296,7 +298,7 @@ class TestTaskProcessingRules:
 
                 # Other miner can't get the task after send_result_timeout expires
                 pull_task_3 = create_pull_task(10)
-                pull_task_3 = validator.pull_task(pull_task_3)
+                pull_task_3 = await validator.pull_task(pull_task_3)
                 assert pull_task_3 is not None
                 assert pull_task_3.task is not None
                 assert pull_task_3.task.id != pull_task_1.task.id
@@ -318,7 +320,7 @@ class TestTaskProcessingRules:
             # The same task should be assigned to the miners below.
             for idx in range(config.task.organic.assigned_miners_count):
                 pull_task = create_pull_task(idx)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
                 assert pull_task.task is not None
                 if task_id is None:
@@ -327,7 +329,7 @@ class TestTaskProcessingRules:
 
             # Then this task can't be assigned to the miner.
             pull_task = create_pull_task(config.task.organic.assigned_miners_count)
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task.task is not None
             assert pull_task.task.id != task_id
 
@@ -343,7 +345,7 @@ class TestTaskProcessingRules:
             # The same task should be assigned to the weak miners below.
             for idx in range(1, config.task.organic.assigned_miners_count + 1):
                 pull_task = create_pull_task(idx)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
                 assert pull_task.task is not None
                 if task_id is None:
@@ -352,7 +354,7 @@ class TestTaskProcessingRules:
 
             # Then this task can't be assigned to the weak miner again.
             pull_task = create_pull_task(config.task.organic.assigned_miners_count + 2)
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task.task is not None
             assert pull_task.task.id != task_id
 
@@ -360,7 +362,7 @@ class TestTaskProcessingRules:
             pull_task = create_pull_task(
                 config.public_api.strong_miners_count + config.task.organic.assigned_miners_count + 1
             )
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task.task is not None
             assert pull_task.task.id == task_id
 
@@ -368,7 +370,7 @@ class TestTaskProcessingRules:
             pull_task = create_pull_task(
                 config.public_api.strong_miners_count + config.task.organic.assigned_miners_count + 2
             )
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task.task is not None
             assert pull_task.task.id != task_id
 
@@ -393,7 +395,7 @@ class TestTaskProcessingRules:
 
                 # Pull task
                 pull_task = create_pull_task(idx)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
                 assert pull_task.task is not None
                 # Submit result
@@ -455,7 +457,7 @@ class TestTaskProcessingRules:
 
                 # Pull task
                 pull_task = create_pull_task(idx)
-                pull_task = validator.pull_task(pull_task)
+                pull_task = await validator.pull_task(pull_task)
                 assert pull_task is not None
 
                 # Submit result
@@ -504,7 +506,7 @@ class TestTaskProcessingRules:
 
         # Pull task. It should work ok and be synthetic.
         pull_task = create_pull_task(1)
-        pull_task = validator.pull_task(pull_task)
+        pull_task = await validator.pull_task(pull_task)
         assert pull_task.task is not None
         assert validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
 
@@ -529,7 +531,7 @@ class TestTaskProcessingRules:
 
             # Pull task
             pull_task = create_pull_task(1)
-            pull_task = validator.pull_task(pull_task)
+            pull_task = await validator.pull_task(pull_task)
             assert pull_task is not None
 
             # Submit result
@@ -544,3 +546,26 @@ class TestTaskProcessingRules:
             assert pull_task.task.id in gateway_result
             assert gateway_result[pull_task.task.id].hotkey == WALLETS[1].hotkey.ss58_address
             assert gateway_result[pull_task.task.id].score == 0.9
+
+    @pytest.mark.asyncio
+    async def test_send_result_timeout_for_not_assigned_tasks(
+        self, reset_validation_server: ValidationService, config: bt.config, subtensor: bt.MockSubtensor
+    ) -> None:
+        """
+        Test that task is removed when timeout occurs
+        """
+        config.task.organic.task_timeout = 0.2
+        async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
+
+            await asyncio.sleep(config.task.organic.task_timeout * 2 + 0.2)
+            _ = await validator.pull_task(create_pull_task(1))
+            # Wait for all old tasks are removed
+            await asyncio.sleep(0.1)
+            assert len(validator.task_manager._organic_task_storage._running_tasks) == 0
+            assert len(validator.task_manager._organic_task_storage._gateway_task_queue) == 0
+            assert len(validator.task_manager._organic_task_storage._legacy_task_queue) == 0
+
+            assert len(validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results) > 0
+            for error in validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results.values():
+                assert type(error) is str
+                assert "miners submitted results but no one is good" in error

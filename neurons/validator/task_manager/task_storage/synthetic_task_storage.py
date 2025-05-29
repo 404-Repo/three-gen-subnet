@@ -44,10 +44,10 @@ class SyntheticTaskStorage(BaseTaskStorage):
             prompt = rd.choice(self._prompts)  # noqa: S311 # nosec: B311
         else:
             prompt = rd.choice(self._default_prompts)  # noqa: S311 # nosec: B311
-        task = SyntheticTask(id=str(uuid.uuid4()), prompt=prompt)
-        self._tasks[task.id] = task
-        bt.logging.info(f"[{miner_uid}] received synthetic task ({task.id}) | {prompt})")
-        return task
+        task_id = str(uuid.uuid4())
+        self._tasks[task_id] = prompt
+        bt.logging.info(f"[{miner_uid}] received synthetic task ({prompt[:100]})")
+        return SyntheticTask(id=task_id, prompt=prompt)
 
     async def fetch_synthetic_tasks_cron(self) -> None:
         """Fetches new prompts from the prompter service."""
@@ -73,14 +73,18 @@ class SyntheticTaskStorage(BaseTaskStorage):
         return True
 
     def submit_result(self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int) -> None:
-        bt.logging.info(f"[{miner_uid}] submitting synthetic task results {synapse.task.id}")
+        bt.logging.info(
+            f"[{miner_uid}] submit synthetic task results with score {validation_res.score} "
+            f"({synapse.task.prompt[:100]})"
+        )
         self._tasks.pop(synapse.task.id)
         if self._synthetic_asset_storage.enabled:
             asyncio.create_task(
                 self._synthetic_asset_storage.save_assets(synapse, synapse.results, synapse.signature, validation_res)
             )
 
-    def fail_task(self, *, task_id: str) -> None:  # noqa: B027
+    def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:  # noqa: B027
+        bt.logging.info(f"[{miner_uid}] failed synthetic task ({task_prompt[:50]}).")
         self._tasks.pop(task_id)
 
     def _load_default_prompts(self, path: str) -> None:

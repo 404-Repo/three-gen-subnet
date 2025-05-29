@@ -98,13 +98,17 @@ class Http3Client:
         ) as client:
             boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
             headers = {"content-type": f"multipart/form-data; boundary={boundary}"}
-            payload = ""
+            payload_parts = []
             for key, value in data.items():
-                payload += f"--{boundary}\r\n"
-                payload += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'
-                payload += f"{value}\r\n"
-            payload += f"--{boundary}--\r\n"
-            payload_data = payload.encode()
+                payload_parts.append(f"--{boundary}\r\n".encode())
+                payload_parts.append(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode())
+                if isinstance(value, bytes):
+                    payload_parts.append(value)
+                else:
+                    payload_parts.append(str(value).encode())
+                payload_parts.append(b"\r\n")
+            payload_parts.append(f"--{boundary}--\r\n".encode())
+            payload_data = b"".join(payload_parts)
             headers["content-length"] = str(len(payload_data))
             http_events = await client.post(
                 url,

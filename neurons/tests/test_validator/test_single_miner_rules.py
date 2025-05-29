@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import time
 from collections import deque
@@ -20,9 +21,12 @@ from tests.test_validator.conftest import (
     TASK_THROTTLE_PERIOD,
     TASK_TIMEOUT,
     VALIDATION_SCORE,
+    get_validator_with_available_organic_tasks,
 )
 from tests.test_validator.subtensor_mocks import WALLETS
 from tests.test_validator.utils import create_pull_task, create_submit_result
+from validator.task_manager.task import AssignedMiner
+from validator.validation_service import ValidationService
 from validator.validator import Validator
 
 
@@ -33,7 +37,7 @@ class TestSingleMinerRules:
         """
         Task for valid miner can't be None.
         """
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
 
     @pytest.mark.asyncio
@@ -41,7 +45,7 @@ class TestSingleMinerRules:
         self, validator: Validator, reset_validation_server: HTTPServer
     ) -> None:
         """Unknown miner can't pull task."""
-        result = validator.pull_task(create_pull_task(None))
+        result = await validator.pull_task(create_pull_task(None))
         assert result.task is None
 
     @pytest.mark.asyncio
@@ -50,7 +54,7 @@ class TestSingleMinerRules:
 
         now = time.time()
         with time_machine.travel(now, tick=False) as travel:
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is not None
             task_id = pull.task.id
 
@@ -59,7 +63,7 @@ class TestSingleMinerRules:
                 validator.task_manager._organic_task_storage._remove_expired_tasks()
                 now += 1
                 travel.move_to(now)
-                pull_next = validator.pull_task(create_pull_task(1))
+                pull_next = await validator.pull_task(create_pull_task(1))
                 assert pull_next.task is not None
                 assert pull_next.task.id == task_id
                 assert validator.miners[1].assigned_task.id == task_id
@@ -67,7 +71,7 @@ class TestSingleMinerRules:
             synapse = create_submit_result(1, pull.task)
             await validator.submit_results(synapse)
             travel.move_to(synapse.cooldown_until + 1)
-            pull_next = validator.pull_task(create_pull_task(1))
+            pull_next = await validator.pull_task(create_pull_task(1))
             assert pull_next.task is not None
             assert pull_next.task.id != task_id
             assert validator.miners[1].assigned_task is not None
@@ -82,7 +86,7 @@ class TestSingleMinerRules:
         """
         existing_cooldown = int(time_machine.time()) + TASK_COOLDOWN
         validator.miners[1].cooldown_until = existing_cooldown
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
 
         assert pull.task is None
         assert validator.miners[1].cooldown_violations == 1
@@ -99,7 +103,7 @@ class TestSingleMinerRules:
         validator.miners[1].cooldown_violations = COOLDOWN_VIOLATIONS_THRESHOLD - 1
 
         # Cooldown penalty is not applied but miner is on cooldown
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is None
         assert pull.cooldown_until == existing_cooldown
         assert validator.miners[1].cooldown_until == existing_cooldown
@@ -108,7 +112,7 @@ class TestSingleMinerRules:
         # Cooldown penalty is applied several times
         # It should lead to the increase of cooldown violations
         for idx in range(1, 4):
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is None
             assert pull.cooldown_until == existing_cooldown + COOLDOWN_VIOLATION_PENALTY * idx
             assert validator.miners[1].cooldown_until == pull.cooldown_until
@@ -117,7 +121,7 @@ class TestSingleMinerRules:
         # After cooldown penalty period miner can pull task again
         next_pull_time = existing_cooldown + COOLDOWN_VIOLATION_PENALTY * 3
         with time_machine.travel(next_pull_time, tick=False):
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is not None
             assert pull.cooldown_until == 0
             assert validator.miners[1].cooldown_until == existing_cooldown + COOLDOWN_VIOLATION_PENALTY * 3
@@ -172,7 +176,7 @@ class TestSingleMinerRules:
         task submit time - throttle period  + cooldown 60 seconds = 30 - 20 + 60 = 70 seconds.
         Remaining cooldown is 70 - 30 = 40 seconds.
         """
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         with time_machine.travel(FROZEN_TIME + timedelta(seconds=completion_time), tick=False):
             submit = await validator.submit_results(create_submit_result(1, pull.task))
@@ -182,7 +186,7 @@ class TestSingleMinerRules:
     @pytest.mark.asyncio
     async def test_submit_task_unknown_neuron(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
         """When miner is unknown it can't submit successfully task."""
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         submit = await validator.submit_results(create_submit_result(None, pull.task))
 
@@ -192,7 +196,7 @@ class TestSingleMinerRules:
     @pytest.mark.asyncio
     async def test_submit_task_wrong_task(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
         """Miner can't submit unknown task."""
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         submit = await validator.submit_results(create_submit_result(1, Task(prompt="invalid task")))
 
         assert submit.results == ""
@@ -205,7 +209,7 @@ class TestSingleMinerRules:
         self, validator: Validator, time_travel: time_machine.travel, reset_validation_server: HTTPServer
     ) -> None:
         """Miner can skip the task."""
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         synapse = create_submit_result(1, pull.task)
         synapse.results = ""  # Task skip
@@ -223,7 +227,7 @@ class TestSingleMinerRules:
         Miner can't submit task with invalid signature.
         In this case additionally TASK_COOLDOWN_PENALTY is applied.
         """
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         synapse = create_submit_result(1, pull.task)
         synapse.signature = pybase64.b64encode(WALLETS[1].hotkey.sign(""))
@@ -244,7 +248,7 @@ class TestSingleMinerRules:
         validation_server.clear()
         validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json({"score": 0.23})
 
-        pull = validator.pull_task(create_pull_task(1))
+        pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         submit = await validator.submit_results(create_submit_result(1, pull.task))
 
@@ -264,21 +268,21 @@ class TestSingleMinerRules:
         """
         with time_machine.travel(FROZEN_TIME, tick=False):
             first_time = int(time_machine.time())
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is not None
             await validator.submit_results(create_submit_result(1, pull.task))
             assert validator.miners[1].observations == deque([first_time])
 
         with time_machine.travel(FROZEN_TIME + timedelta(hours=3, minutes=59), tick=False):
             second_time = int(time_machine.time())
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is not None
             await validator.submit_results(create_submit_result(1, pull.task))
             assert validator.miners[1].observations == deque([first_time, second_time])
 
         with time_machine.travel(FROZEN_TIME + timedelta(hours=4, minutes=1), tick=False):
             third_time = int(time_machine.time())
-            pull = validator.pull_task(create_pull_task(1))
+            pull = await validator.pull_task(create_pull_task(1))
             assert pull.task is not None
             await validator.submit_results(create_submit_result(1, pull.task))
             assert validator.miners[1].observations == deque([second_time, third_time])
@@ -316,7 +320,7 @@ class TestSingleMinerRules:
         for i in range(10):
             # Move time forward by one hour for each submission
             with time_machine.travel(base_time + timedelta(hours=i), tick=False):
-                pull = validator.pull_task(create_pull_task(1))
+                pull = await validator.pull_task(create_pull_task(1))
                 assert pull.task is not None
                 submit = await validator.submit_results(create_submit_result(1, pull.task))
 
@@ -352,7 +356,7 @@ class TestSingleMinerRules:
         In this case miner should receive reward as usual.
         """
         # Get task assignment time
-        _ = validator.pull_task(create_pull_task(1))
+        _ = await validator.pull_task(create_pull_task(1))
         assert validator.miners[1].assigned_task is not None
         task = validator.miners[1].assigned_task
         assert validator.miners[1].observations == deque([])
@@ -361,7 +365,7 @@ class TestSingleMinerRules:
         # Move time forward beyond task timeout
         with time_machine.travel(FROZEN_TIME + timedelta(minutes=TASK_TIMEOUT + 1), tick=False):
             # Pull another task in order to cleanup outdated tasks.
-            _ = validator.pull_task(create_pull_task(2))
+            _ = await validator.pull_task(create_pull_task(2))
 
             # Submit task after timeout and check that it was not submitted.
             submit = await validator.submit_results(create_submit_result(1, task))
@@ -372,67 +376,100 @@ class TestSingleMinerRules:
             assert len(validator.miners[1].observations) == 1
 
     @pytest.mark.asyncio
-    async def test_submit_task_uncompressed(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
+    async def test_submit_task_uncompressed(
+        self, reset_validation_server: ValidationService, config: bt.config, subtensor: bt.MockSubtensor
+    ) -> None:
         """
         Tests behavior when a miner submits a task with a uncompressed result.
         """
-        with time_machine.travel(FROZEN_TIME, tick=False):
-            _ = validator.pull_task(create_pull_task(1))
-            assert validator.miners[1].assigned_task is not None
-            task = validator.miners[1].assigned_task
-            assert validator.miners[1].observations == deque([])
-            assert len(validator.miners[1].observations) == 0
-            submit = await validator.submit_results(create_submit_result(1, task, full=True))
-            assert submit.feedback is not None
-            assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
-            assert validator.miners[1].assigned_task is None
-            assert validator.miners[1].cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
-            assert len(validator.miners[1].observations) == 1
+        config.task.organic.send_result_timeout = 0.1
+        config.task.organic.assigned_miners_count = 1
+        with time_machine.travel(FROZEN_TIME, tick=True):
+            async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
+                _ = await validator.pull_task(create_pull_task(1))
+                assert validator.miners[1].assigned_task is not None
+                task = validator.miners[1].assigned_task
+                assert validator.miners[1].observations == deque([])
+                assert len(validator.miners[1].observations) == 0
+                res = create_submit_result(1, task, full=True)
+                res.compression = 0
+                submit = await validator.submit_results(res)
+                for _ in range(5):
+                    await asyncio.sleep(0.1)
+                assert submit.feedback is not None
+                assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
+                assert validator.miners[1].assigned_task is None
+                assert len(validator.miners[1].observations) == 1
+                assert task.id in validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results
+                assert isinstance(
+                    validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results[task.id],
+                    AssignedMiner,
+                )
 
     @pytest.mark.asyncio
     async def test_submit_task_pyspz_compressed(
-        self, validator: Validator, reset_validation_server: HTTPServer
+        self, reset_validation_server: ValidationService, config: bt.config, subtensor: bt.MockSubtensor
     ) -> None:
         """
         Tests behavior when a miner submits a task with a pyspz compressed result.
         """
-        with time_machine.travel(FROZEN_TIME, tick=False):
-            _ = validator.pull_task(create_pull_task(1))
-            assert validator.miners[1].assigned_task is not None
-            task = validator.miners[1].assigned_task
-            assert validator.miners[1].observations == deque([])
-            assert len(validator.miners[1].observations) == 0
-            result = create_submit_result(1, task, full=True)
-            input = base64.b64decode(result.results)
-            compressed_input = pyspz.compress(input, workers=-1)
-            result.results = str(base64.b64encode(compressed_input).decode(encoding="utf-8"))
-            result.compression = 2
-            submit = await validator.submit_results(result)
-            assert submit.feedback is not None
-            assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
-            assert validator.miners[1].assigned_task is None
-            assert validator.miners[1].cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
-            assert len(validator.miners[1].observations) == 1
+        config.task.organic.send_result_timeout = 0.1
+        config.task.organic.assigned_miners_count = 1
+        with time_machine.travel(FROZEN_TIME, tick=True):
+            async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
+                _ = await validator.pull_task(create_pull_task(1))
+                assert validator.miners[1].assigned_task is not None
+                task = validator.miners[1].assigned_task
+                assert validator.miners[1].observations == deque([])
+                assert len(validator.miners[1].observations) == 0
+                result = create_submit_result(1, task, full=True)
+                input = base64.b64decode(result.results)
+                compressed_input = pyspz.compress(input, workers=-1)
+                result.results = str(base64.b64encode(compressed_input).decode(encoding="utf-8"))
+                result.compression = 2
+                submit = await validator.submit_results(result)
+                for _ in range(5):
+                    await asyncio.sleep(0.1)
+                assert submit.feedback is not None
+                assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
+                assert validator.miners[1].assigned_task is None
+                assert len(validator.miners[1].observations) == 1
+                assert task.id in validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results
+                assert isinstance(
+                    validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results[task.id],
+                    AssignedMiner,
+                )
 
     @pytest.mark.asyncio
-    async def test_submit_task_zstd_compressed(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
+    async def test_submit_task_zstd_compressed(
+        self, reset_validation_server: ValidationService, config: bt.config, subtensor: bt.MockSubtensor
+    ) -> None:
         """
         Tests behavior when a miner submits a task with a zstd compressed result.
         """
-        with time_machine.travel(FROZEN_TIME, tick=False):
-            _ = validator.pull_task(create_pull_task(1))
-            assert validator.miners[1].assigned_task is not None
-            task = validator.miners[1].assigned_task
-            assert validator.miners[1].observations == deque([])
-            assert len(validator.miners[1].observations) == 0
-            result = create_submit_result(1, task, full=True)
-            input = base64.b64decode(result.results)
-            compressed_input = zstandard.ZstdCompressor().compress(input)
-            result.results = str(base64.b64encode(compressed_input).decode(encoding="utf-8"))
-            result.compression = 1
-            submit = await validator.submit_results(result)
-            assert submit.feedback is not None
-            assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
-            assert validator.miners[1].assigned_task is None
-            assert validator.miners[1].cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
-            assert len(validator.miners[1].observations) == 1
+        config.task.organic.send_result_timeout = 0.1
+        config.task.organic.assigned_miners_count = 1
+        with time_machine.travel(FROZEN_TIME, tick=True):
+            async with get_validator_with_available_organic_tasks(config=config, subtensor=subtensor) as validator:
+                _ = await validator.pull_task(create_pull_task(1))
+                assert validator.miners[1].assigned_task is not None
+                task = validator.miners[1].assigned_task
+                assert validator.miners[1].observations == deque([])
+                assert len(validator.miners[1].observations) == 0
+                result = create_submit_result(1, task, full=True)
+                input = base64.b64decode(result.results)
+                compressed_input = zstandard.ZstdCompressor().compress(input)
+                result.results = str(base64.b64encode(compressed_input).decode(encoding="utf-8"))
+                result.compression = 1
+                submit = await validator.submit_results(result)
+                for _ in range(5):
+                    await asyncio.sleep(0.1)
+                assert submit.feedback is not None
+                assert submit.feedback.task_fidelity_score == VALIDATION_SCORE
+                assert validator.miners[1].assigned_task is None
+                assert len(validator.miners[1].observations) == 1
+                assert task.id in validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results
+                assert isinstance(
+                    validator.task_manager._organic_task_storage._gateway_manager._gateway_api.results[task.id],
+                    AssignedMiner,
+                )

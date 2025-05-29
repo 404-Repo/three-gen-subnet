@@ -1,12 +1,13 @@
 import random as rd
 
+import bittensor as bt
 from bittensor_wallet import Keypair
 
 from validator.config import config
 from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult, gateway_api
 from validator.gateway.gateway_scorer import GatewayScorer, gateway_scorer
-from validator.task_manager.task import AssignedMiner, GatewayOrganicTask
+from validator.task_manager.task import GatewayOrganicTask
 
 
 class GatewayManager:
@@ -38,6 +39,8 @@ class GatewayManager:
     def update_gateways(self, *, gateways: list[Gateway]) -> None:
         """Updates the list of gateways."""
         self._gateways = self._gateway_scorer.score(gateways=gateways)
+        for gateway in self._gateways:
+            bt.logging.trace(f"Gateway updated: {gateway.get_info()}")
 
     async def get_tasks(
         self, *, gateway_host: str, validator_hotkey: Keypair, task_count: int
@@ -53,7 +56,9 @@ class GatewayManager:
         *,
         validator_hotkey: Keypair,
         task: GatewayOrganicTask,
-        assigned_miner: AssignedMiner | None,
+        score: float | None = None,
+        miner_hotkey: str | None = None,
+        asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
         """Adds a result to the task."""
@@ -64,7 +69,9 @@ class GatewayManager:
                 prompt=task.prompt,
                 gateway_host=task.gateway_url,
             ),
-            assigned_miner=assigned_miner,
+            score=score,
+            miner_hotkey=miner_hotkey,
+            asset=asset,
             error=error,
         )
 

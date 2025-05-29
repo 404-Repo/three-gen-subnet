@@ -30,3 +30,10 @@ class Gateway(BaseModel):
     def url(self) -> str:
         """Returns the URL of the gateway."""
         return f"https://{self.domain}:{self.http_port}"
+
+    def get_info(self) -> str:
+        return (
+            f"{self.url}: Score {self.score} | Disabled {self.disabled} "
+            f"| Latency {self.latency} | Available tasks {self.available_tasks} "
+            f"| Last task acquisition {self.last_task_acquisition}"
+        )

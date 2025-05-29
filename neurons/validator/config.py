@@ -265,7 +265,7 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
         "--task.synthetic.prompter.batch_size",
         type=int,
         help="Defines the batch size of the synthetic prompts",
-        default=1000000,
+        default=100000,
     )
     parser.add_argument(
         "--task.synthetic.prompter.delay",

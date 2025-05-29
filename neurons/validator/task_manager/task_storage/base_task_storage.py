@@ -33,6 +33,6 @@ class BaseTaskStorage(ABC):
         """Returns True if there are any tasks in the queue."""
         return False
 
-    def fail_task(self, *, task_id: str, hotkey: str, miner_uid: int) -> None:  # noqa: B027
+    def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:  # noqa: B027
         """Fails the task."""
         pass

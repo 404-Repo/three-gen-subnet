@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import copy
 import hashlib
@@ -17,6 +16,7 @@ import bittensor as bt
 from common.owner import HOTKEY
 from common.protocol import Feedback, PullTask, SubmitResults, Task
 from mnemonic import Mnemonic
+from validator.config import _build_parser
 
 
 MINER_NAME = "miner.mock"
@@ -77,11 +77,13 @@ def cleanup_mock_wallets() -> None:
         bt.logging.info("Mock wallet directory does not exist, nothing to clean up.")
 
 
-async def run_miner(hotkey: str, metagraph: bt.metagraph, validator_uid: int) -> None:
+async def run_miner(
+    hotkey: str, metagraph: bt.metagraph, validator_uid: int, initial_timeout: float, config: bt.config
+) -> None:
     """Run a single miner indefinitely."""
 
     # Generate fake miner hotkey
-    config = copy.deepcopy(await get_config())
+    config = copy.deepcopy(config)
     hotkey_data = generate_fake_hotkey_full()
     hotkey_name = str(uuid4())
     save_to_json_file(hotkey_data, hotkey_name)
@@ -103,6 +105,7 @@ async def run_miner(hotkey: str, metagraph: bt.metagraph, validator_uid: int) ->
     # Run the miner indefinitely
     while True:
         bt.logging.info(f"Miner {hotkey}: Pulling a task")
+        asyncio.sleep(initial_timeout)  # Cooldown to wait for other miners to start
 
         task, cooldown_until = await pull_task(dendrite, metagraph, validator_uid)
         if task is None:
@@ -172,11 +175,13 @@ async def submit_results(
 
 async def main() -> None:
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Run mock miners")
+    parser = _build_parser()
     parser.add_argument("--miners", type=int, default=1, help="Number of miners to run")
+    parser.add_argument("--initial_timeout", type=float, default=60.0, help="Initial timeout for cooldown")
     args = parser.parse_args()
 
-    config = get_config()
+    config = bt.config(parser)
+    config.wallet.name = MINER_NAME
 
     # Create and sync the metagraph once
     bt.logging.info("Creating and syncing metagraph...")
@@ -206,7 +211,9 @@ async def main() -> None:
         for miner_id in range(args.miners):
             # Generate a unique identifier for each miner task
             miner_identifier = f"miner_{miner_id}"
-            tasks.append(asyncio.create_task(run_miner(miner_identifier, metagraph, validator_uid)))
+            tasks.append(
+                asyncio.create_task(run_miner(miner_identifier, metagraph, validator_uid, args.initial_timeout, config))
+            )
 
         # Wait for all tasks (they won't complete as they're infinite loops)
         await asyncio.gather(*tasks)
@@ -219,15 +226,6 @@ async def main() -> None:
         bt.logging.info("Cleaning up mock wallet directories...")
         cleanup_mock_wallets()
         bt.logging.info("Cleanup completed. Exiting.")
-
-
-def get_config() -> bt.config:
-    parser = argparse.ArgumentParser()
-    bt.logging.add_args(parser)
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
-    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=89)
-    return bt.config(parser)
 
 
 if __name__ == "__main__":

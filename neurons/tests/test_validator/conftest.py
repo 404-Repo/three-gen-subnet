@@ -154,7 +154,7 @@ class GatewayApiMock(GatewayApi):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._tasks = {str(uuid4()): f"gateway_0_prompt_{idx}" for idx in range(GATEWAY_TASK_COUNT)}
-        self.results: dict[str, AssignedMiner | None] = {}
+        self.results: dict[str, AssignedMiner | None | str] = {}
 
     async def get_tasks(self, host: str, validator_hotkey: Keypair, task_count: int) -> GetGatewayTasksResult:
         result: list[GatewayTask] = []
@@ -181,10 +181,22 @@ class GatewayApiMock(GatewayApi):
         *,
         validator_hotkey: Keypair,
         task: GatewayTask,
-        assigned_miner: AssignedMiner | None,
+        score: float | None = None,
+        miner_hotkey: str | None = None,
+        asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
-        self.results[task.id] = assigned_miner
+        if miner_hotkey is not None:
+            self.results[task.id] = AssignedMiner(
+                hotkey=miner_hotkey,
+                score=score,
+                asset=asset,
+                assign_time=FROZEN_TIME.timestamp(),
+                submit_time=FROZEN_TIME.timestamp(),
+                finished=True,
+            )
+        else:
+            self.results[task.id] = error
 
 
 @pytest.fixture(scope="session")

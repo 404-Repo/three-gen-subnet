@@ -28,7 +28,7 @@ module.exports = {
     name: 'mock.validator',
     script: 'mock_validator.py',
     interpreter: '${CONDA_INTERPRETER_PATH}',
-    args: '--gateway-wallet-name default --gateway-wallet-hotkey default --subtensor.network test --netuid 89 --logging.debug'
+    args: '--wallet.name validator --wallet.hotkey defalut --gateway_wallet_name default --gateway_wallet_hotkey default --subtensor.network test --netuid 89 --logging.trace'
   }]
 };
 EOF

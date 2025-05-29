@@ -46,22 +46,26 @@ class ValidationService:
                     if response.status == 200:
                         data_dict = await response.json()
                         results = ValidationResponse(**data_dict)
-                        bt.logging.debug(f"Validation score: {results.score:.2f} | Prompt: {prompt}")
+                        bt.logging.debug(f"Validation score: {results.score:.2f}. Prompt: {prompt[:100]}")
                         return results
                     else:
-                        bt.logging.error(f"Validation failed: [{response.status}] {response.reason}")
+                        bt.logging.error(
+                            f"Validation failed: [{response.status}] {response.reason}. " f"Prompt: {prompt[:100]}"
+                        )
             except aiohttp.ClientConnectorError:
                 bt.logging.error(
                     f"Failed to connect to the endpoint. The endpoint might be inaccessible: {validate_url}."
                 )
             except TimeoutError:
-                bt.logging.error(f"The request to the endpoint timed out: {validate_url}")
+                bt.logging.error(f"The request to the endpoint timed out: {validate_url}. Prompt: {prompt[:100]}")
             except aiohttp.ClientError as e:
-                bt.logging.error(f"An unexpected client error occurred: {e} ({validate_url})")
+                bt.logging.error(f"An unexpected client error occurred: {e} ({validate_url}). Prompt: {prompt[:100]}")
             except pydantic.ValidationError as e:
-                bt.logging.error(f"Incompatible validation response format: {e} ({validate_url})")
+                bt.logging.error(
+                    f"Incompatible validation response format: {e} ({validate_url}). Prompt: {prompt[:100]}"
+                )
             except Exception as e:
-                bt.logging.error(f"An unexpected error occurred: {e} ({validate_url})")
+                bt.logging.error(f"An unexpected error occurred: {e} ({validate_url}). Prompt: {prompt[:100]}")
 
         return None
 

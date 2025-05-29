@@ -34,7 +34,6 @@ class TaskManager:
         )
         if task is not None:
             return task
-
         return self._synthetic_task_storage.get_next_task(miner_uid=miner_uid)
 
     async def submit_result(
@@ -51,15 +50,18 @@ class TaskManager:
                 synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
             )
         else:
-            bt.logging.warning(f"[{miner_uid}]: Unexpected behavior. Undefined task {task_id}.")
+            bt.logging.warning(f"[{miner_uid}]: Unexpected behavior. Undefined task {synapse.task.prompt[:50]}.")
 
-    def fail_task(self, *, task_id: str, hotkey: str, miner_uid: int) -> None:
+    def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:
         if self._organic_task_storage.has_task(task_id=task_id):
-            self._organic_task_storage.fail_task(task_id=task_id, hotkey=hotkey, miner_uid=miner_uid)
+            self._organic_task_storage.fail_task(
+                task_id=task_id, task_prompt=task_prompt, hotkey=hotkey, miner_uid=miner_uid
+            )
             return
 
-        self._synthetic_task_storage.fail_task(task_id=task_id)
-        bt.logging.warning(f"[{miner_uid}] failed synthetic task ({task_id}).")
+        self._synthetic_task_storage.fail_task(
+            task_id=task_id, task_prompt=task_prompt, hotkey=hotkey, miner_uid=miner_uid
+        )
 
 
 task_manager = TaskManager(
