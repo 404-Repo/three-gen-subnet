@@ -171,7 +171,7 @@ class OrganicTaskStorage(BaseTaskStorage):
             return
         assigned_miner.finished = True
         assigned_miner.submit_time = int(time.time())
-        bt.logging.error(f"[{miner_uid}] failed organic task ({task_prompt[:100]})")
+        bt.logging.debug(f"[{miner_uid}] failed organic task ({task_prompt[:100]})")
 
         if task.all_miners_finished(self._config.task.organic.assigned_miners_count):
             self._submit_task_result(task=task)

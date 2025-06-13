@@ -116,7 +116,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
 
     first_result = await legacy_task.first_result_future
     if first_result is None:
-        bt.logging.error(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
+        bt.logging.warning(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
         await websocket.close(code=4404, reason="Generation failed")
         return
 
@@ -128,7 +128,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
 
     best_result = await task_manager._organic_task_storage.get_best_results(task_id=legacy_task.id)
     if best_result is None:
-        bt.logging.error(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
+        bt.logging.warning(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
         await websocket.close(code=4404, reason="Generation failed")
         return
 

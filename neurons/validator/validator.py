@@ -506,6 +506,6 @@ class Validator:
         )
         encoded_signature = pybase64.b64decode(synapse.signature.encode(encoding="utf-8"), validate=True)
         if not keypair.verify(message, encoded_signature):
-            bt.logging.error(f"[{miner.uid}] submitted results with invalid signature")
+            bt.logging.warning(f"[{miner.uid}] submitted results with invalid signature")
             return False
         return True
