@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "validation"
-version = "0.1.1"
+version = "0.1.2"
 description = "This endpoint functions as an independent local web server, which operates concurrently with the neuron process."
 authors = ["s7500 <stezurrodion69@gmail.com>"]
 package-mode = false
@@ -8,8 +8,8 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.11"
 numpy = "==1.26.4"
-torch = "==2.5.0"
-transformers = "==4.44.2"
+torch = "==2.7.0"
+transformers = "==4.48.3"
 pytest = "==8.3.2"
 scikit-video = "==1.1.11"
 scikit-learn = "==1.6.1"
@@ -21,16 +21,16 @@ uvicorn = "==0.30.1"
 pillow = "==10.0.0"
 pandas = "==2.2.2"
 pyyaml = "==6.0.2"
-open_clip_torch = "==2.29.0"
+open_clip_torch = "==2.32.0"
 pytod = "==0.0.3"
 imageio = "==2.35.1"
 open3d = "==0.18.0"
-plotly = "==6.0.0rc0"
 kaleido = "==0.2.1"
 pybase64 = "==1.4.0"
 zstandard = "==0.23.0"
 openai-clip = "==1.0.1"
-pytorch_lightning = "==2.5.0.post0"
+pytorch_lightning = "==2.5.1.post0"
+torchmetrics = "1.7.1"
 
 
 [tool.poetry.group.dev.dependencies]

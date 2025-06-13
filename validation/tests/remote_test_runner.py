@@ -18,9 +18,10 @@ from engine.data_structures import RequestData
 CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 current_file_path = Path(__file__).resolve()
 test_data_folder = current_file_path.parent / "resources"
-DEFAULT_FILEPATH = test_data_folder / "resources/hamburger.ply"
+DEFAULT_FILEPATH = test_data_folder / "hamburger.ply"
 DEFAULT_PROMPT = "A hamburger"
-DEFAULT_PROMPT_IMAGE = test_data_folder / "resources/test_render_ply.png"
+DEFAULT_PROMPT_IMAGE = test_data_folder / "test_render_ply.png"
+DEFAULT_PROMPT_IMAGE_TR = test_data_folder / "test_render_tr_ply.png"
 DEFAULT_URL_TXT_TO_3D = "http://localhost:10006/validate_txt_to_3d_ply/"
 DEFAULT_URL_IMG_TO_3D = "http://localhost:10006/validate_img_to_3d_ply/"
 DEFAULT_VERSION = 0
@@ -75,9 +76,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prompt_image", type=str, default=DEFAULT_PROMPT_IMAGE, help="The prompt image to send via POST request."
     )
+    parser.add_argument(
+        "--prompt_image_tr", type=str, default=DEFAULT_PROMPT_IMAGE_TR, help="The prompt image to send via POST request on a tr bg."
+    )
     parser.add_argument("--file_path", type=str, default=DEFAULT_FILEPATH, help="The path to the file to be read.")
     parser.add_argument("--preview", type=bool, default=GENERATE_PREVIEW, help="enable/disable preview generation.")
     args = parser.parse_args()
 
     send_post_request(args.prompt, None, args.file_path, DEFAULT_URL_TXT_TO_3D, args.preview)
     send_post_request(None, args.prompt_image, args.file_path, DEFAULT_URL_IMG_TO_3D, args.preview)
+    send_post_request(None, args.prompt_image_tr, args.file_path, DEFAULT_URL_IMG_TO_3D, args.preview)
