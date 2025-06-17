@@ -7,6 +7,10 @@ from validator.miner_data import MinerData
 
 
 class MetagraphSynchronizer:
+    """
+    Synchronizes state of the bittensor network.
+    """
+
     def __init__(
         self,
         metagraph: bt.metagraph,
@@ -19,11 +23,11 @@ class MetagraphSynchronizer:
         self._subtensor_ref = weakref.ref(subtensor)
         self._sync_interval = sync_interval
         self._log_info_interval = log_info_iterval
-        self._strong_miners_count = strong_miners_count
 
+        self._strong_miners_count = strong_miners_count
+        """Number of top miners that are considered strong."""
         self._strong_miners: set[int] = set()
         """Top `strong_miners_count` miners by incentive."""
-
         self._last_sync_time = 0.0
         """Last metagraph sync time."""
         self._last_info_time = 0.0
@@ -33,6 +37,12 @@ class MetagraphSynchronizer:
         return self._last_sync_time + self._sync_interval <= time.time()
 
     def sync(self, miners: list[MinerData]) -> None:
+        """
+        The method:
+        - synchronizes bittensor network state using metagraph;
+        - detects strong miners;
+        - tracks changes of miner's axon.
+        """
         self._last_sync_time = time.time()
 
         bt.logging.info("Synchronizing metagraph")
@@ -48,6 +58,7 @@ class MetagraphSynchronizer:
         neurons.sort(reverse=True)
         self._strong_miners = {uid for i, uid in neurons[: self._strong_miners_count]}
 
+        # Detect that the miner changed its axon and update miner's data.
         for uid in range(int(metagraph.n)):
             axon = metagraph.axons[uid]
             miner = miners[uid]

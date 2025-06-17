@@ -1,24 +1,29 @@
+"""
+This module is a legacy way of interacting with the validator.
+Gateway API is a new way of interacting with the validator.
+TODO: remove this module after the transition to the new API is complete.
+"""
+
 import time
 import typing
+from uuid import uuid4
 
 import bittensor as bt
 from fastapi import APIRouter
 from fastapi.security import APIKeyHeader
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from validator.api import ApiKeyManager
+from validator.api.api_key_manager import ApiKeyManager
 from validator.api.protocol import Auth, PromptData, TaskResults, TaskStatus, TaskUpdate
-from validator.api.task_registry import TaskRegistry
+from validator.task_manager.task import LegacyOrganicTask
+from validator.task_manager.task_manager import task_manager
 
 
+# This router is used by clients that want to generate 3D assets from prompts.
 router = APIRouter()
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-
-
-def get_task_registry(request: WebSocket) -> TaskRegistry:
-    return typing.cast(TaskRegistry, request.app.state.task_registry)
 
 
 def get_api_key_manager(request: WebSocket) -> ApiKeyManager:
@@ -32,6 +37,16 @@ async def websocket_generate(websocket: WebSocket) -> None:
 
     This endpoint requires an initial authentication message with a valid API key.
     Once authenticated, the client can send a prompt and receive task statuses.
+
+    WebSocket pipeline is following:
+    - Initial message with API key.
+    - Message with prompt to generate 3D asset.
+    - Wait for task to be assigned to some miner.
+    - Send Started status to client.
+    - Wait for first results from miner.
+    - Wait for best results from miner.
+    - Send best results to client.
+    - Close connection.
 
     ```
     Initial message format:
@@ -60,7 +75,7 @@ async def websocket_generate(websocket: WebSocket) -> None:
     await websocket.accept()
 
     message = await websocket.receive_json()
-    auth = Auth.model_validate_json(message)
+    auth = Auth.model_validate(message)
 
     api_key_manager = get_api_key_manager(websocket)
     if not api_key_manager.is_registered(auth.api_key):
@@ -84,52 +99,51 @@ async def websocket_generate(websocket: WebSocket) -> None:
 
 
 async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
-    task_registry = get_task_registry(websocket)
-
     message = await websocket.receive_json()
-    prompt_data = PromptData.model_validate_json(message)
+    prompt_data = PromptData.model_validate(message)
 
     bt.logging.info(f"New organic prompt received from [{client_name}]: {prompt_data.prompt}")
 
     start_time = time.time()
-    task_id = task_registry.add_task(prompt_data.prompt)
+    legacy_task = task_manager._organic_task_storage.add_legacy_task(
+        task=LegacyOrganicTask.create_task(id=str(uuid4()), prompt=prompt_data.prompt)
+    )
 
-    await task_registry.get_started(task_id)
+    await legacy_task.start_future
 
     update = TaskUpdate(status=TaskStatus.STARTED)
-    await websocket.send_json(update.model_dump_json())
+    await websocket.send_json(update.model_dump())
 
-    first_results = await task_registry.get_first_results(task_id)
-    if first_results is None:
-        bt.logging.error(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
+    first_result = await legacy_task.first_result_future
+    if first_result is None:
+        bt.logging.warning(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
         await websocket.close(code=4404, reason="Generation failed")
         return
 
     bt.logging.debug(
-        f"First results received in {time.time() - start_time:.2f} seconds. "
-        f"Prompt: {prompt_data.prompt}. Miner: {first_results.hotkey}. "
-        f"Size: {len(first_results.compressed_results or '')}"
+        f"First result received in {time.time() - start_time:.2f} seconds. "
+        f"Prompt: {prompt_data.prompt}. Miner: {first_result.hotkey}. "
+        f"Size: {len(first_result.compressed_result or '')}"
     )
 
-    best_results = await task_registry.get_best_results(task_id)
-    if best_results is None:
-        bt.logging.error(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
+    best_result = await task_manager._organic_task_storage.get_best_results(task_id=legacy_task.id)
+    if best_result is None:
+        bt.logging.warning(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
         await websocket.close(code=4404, reason="Generation failed")
         return
 
     bt.logging.debug(
-        f"Best results received in {time.time() - start_time:.2f} seconds. "
-        f"Prompt: {prompt_data.prompt}. Miner: {best_results.hotkey}. "
-        f"Size: {len(best_results.compressed_results or '')}"
+        f"Best result received in {time.time() - start_time:.2f} seconds. "
+        f"Prompt: {prompt_data.prompt}. Miner: {best_result.hotkey}. "
+        f"Size: {len(best_result.compressed_result or '')}"
     )
 
-    stats = task_registry.get_stats(task_id)
-    task_registry.clean_task(task_id)
+    stats = legacy_task.get_stats()
 
     update = TaskUpdate(
         status=TaskStatus.BEST_RESULTS,
         results=TaskResults(
-            hotkey=best_results.hotkey, assets=task_registry.decompress_results(best_results), score=best_results.score
+            hotkey=best_result.hotkey, assets=best_result.decompress_results(), score=best_result.score
         ),
         statistics=stats,
     )

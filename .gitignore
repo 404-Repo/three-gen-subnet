@@ -26,6 +26,7 @@ generation.config.js
 validation.config.js
 miner.config.js
 validator.config.js
+mock.validator.config.js
 
 # build artifacts
 generation/extras/ImageDream/build
@@ -49,3 +50,7 @@ validation/validation_lib/validation/trained_models/aesthetic_predictor.ckpt
 validation/validation_lib/validation/trained_models/best_model_20250128_134411.pth
 validation/validation_lib/validation/trained_models/polynomial_pipeline_model_4_deg_32_fea.joblib
 validation/benchmark/results/
+
+.ipynb_checkpoints
+quic/
+.pre-commit-config.yaml

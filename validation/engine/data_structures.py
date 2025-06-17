@@ -41,7 +41,7 @@ class RequestData(BaseModel):
     prompt: str | None = Field(default=None, max_length=1024, description="Prompt used to generate assets")
     prompt_image: str | None = Field(default=None, description="Prompt-image used to generate assets")
     data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
-    compression: int = Field(default=0, description="Experimental feature")
+    compression: int = Field(default=0, description="0 for uncompressed results, 2 for spz compression")
     generate_preview: bool = Field(default=False, description="Optional. Pass to render and return a preview")
     preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
 

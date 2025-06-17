@@ -5,17 +5,23 @@ import aiohttp
 import bittensor as bt
 from common.protocol import SubmitResults
 
-from validator.fidelity_check import ValidationResponse
+from validator.config import config
+from validator.validation_service import ValidationResponse
 
 
-class StorageWrapper:
+class SyntheticAssetStorage:
     def __init__(
         self, enabled: bool, service_api_key: str, endpoint_url: str, validation_score_threshold: float
     ) -> None:
         self.enabled = enabled
+        """Whether the storage is enabled."""
         self.service_api_key = service_api_key
+        """External storage API key."""
         self.url = urllib.parse.urljoin(endpoint_url, "/store")
+        """External storage endpoint URL."""
         self.validation_score_threshold = validation_score_threshold
+        """Validation score threshold.
+        Assets are saved only if validation score is greater than the threshold."""
 
         self._headers = {
             "X-Api-Key": self.service_api_key,
@@ -24,6 +30,10 @@ class StorageWrapper:
     async def save_assets(
         self, synapse: SubmitResults, results: str, signature: str, validation: ValidationResponse
     ) -> None:
+        """Saves the assets to the external storage.
+        When miner submits results and validator validates them through validation service,
+        the result is saved to the storage.
+        """
         if validation.score < self.validation_score_threshold:
             return None
 
@@ -31,7 +41,7 @@ class StorageWrapper:
             data = {
                 "prompt": synapse.task.prompt,
                 "assets": results,
-                "compression": synapse.compression,
+                "compression": 2,
                 "preview": validation.preview,
                 "meta": {
                     "validator": synapse.axon.hotkey,
@@ -60,3 +70,11 @@ class StorageWrapper:
             bt.logging.error(f"An unexpected client error occurred: {e} ({self.url})")
         except Exception as e:
             bt.logging.error(f"An unexpected error occurred: {e} ({self.url})")
+
+
+synthetic_asset_storage = SyntheticAssetStorage(
+    enabled=config.storage.enabled,
+    service_api_key=config.storage.service_api_key,
+    endpoint_url=config.storage.endpoint_url,
+    validation_score_threshold=config.storage.validation_score_threshold,
+)

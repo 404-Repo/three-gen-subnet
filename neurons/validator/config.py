@@ -20,10 +20,10 @@ def _build_parser() -> argparse.ArgumentParser:
     add_neuron_args(parser)
     add_generation_args(parser)
     add_validation_args(parser)
-    add_dataset_args(parser)
     add_public_api_args(parser)
     add_storage_args(parser)
     add_telemetry_args(parser)
+    add_task_args(parser)
 
     return parser
 
@@ -131,28 +131,6 @@ def add_validation_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_dataset_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--dataset.default_prompts_path",
-        type=str,
-        help="Path to the file with the default prompts (relative or absolute)",
-        default="resources/prompts.txt",
-    )
-    parser.add_argument(
-        "--dataset.prompter.endpoint",
-        type=str,
-        help="Specifies the URL of the endpoint responsible for providing fresh batches of prompts. "
-        "This endpoint should handle the /get/ GET route.",
-        default="http://44.219.222.104:9100",
-    )
-    parser.add_argument(
-        "--dataset.prompter.fetch_interval",
-        type=int,
-        help="Defines the fetch interval. The prompt batch is quite big (100k+) prompts. No need to fetch frequently",
-        default=60 * 60,  # one hour
-    )
-
-
 def add_public_api_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--public_api.enabled",
@@ -165,24 +143,6 @@ def add_public_api_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="The local port public api endpoint is bound to. i.e. 8888",
         default=8888,
-    )
-    parser.add_argument(
-        "--public_api.copies",
-        type=int,
-        help="Number of copies to generate to chose the best from. Only one copy is sent back to the client.",
-        default=4,
-    )
-    parser.add_argument(
-        "--public_api.wait_after_first_copy",
-        type=int,
-        help="Maximum wait time for the second copy after the first acceptable copy was generated.",
-        default=30,
-    )
-    parser.add_argument(
-        "--public_api.task_timeout",
-        type=int,
-        help="Time limit for submitting tasks (in seconds).",
-        default=10 * 60,  # 10 minutes
     )
     parser.add_argument(
         "--public_api.strong_miners_count",
@@ -238,3 +198,87 @@ def add_telemetry_args(parser: argparse.ArgumentParser) -> None:
         help="Push gateway for validator metrics",
         default="https://dashboard.404.xyz/metrics",
     )
+
+
+def add_task_args(parser: argparse.ArgumentParser) -> None:
+    # Organic task parameters
+    parser.add_argument(
+        "--task.organic.assigned_miners_count",
+        type=int,
+        help="Defines the number of miners that can be assigned to a task",
+        default=4,
+    )
+    parser.add_argument(
+        "--task.organic.send_result_timeout",
+        type=int,
+        help="Maximum wait time in seconds for the next results after the first submission occured.",
+        default=30,
+    )
+    parser.add_argument(
+        "--task.organic.task_timeout",
+        type=int,
+        help="Time limit for submitting task solutions (in seconds).",
+        default=5 * 60,  # 5 minutes
+    )
+
+    # Gateway task parameters
+    parser.add_argument(
+        "--task.gateway.enabled",
+        action="store_true",
+        help="Enables fetching tasks from the gateway",
+        default=False,
+    )
+    parser.add_argument(
+        "--task.gateway.bootstrap_gateway",
+        type=str,
+        help="Host that is used to collect information about available gateways",
+        default="https://gateway-eu.404.xyz:4443",
+    )
+    parser.add_argument(
+        "--task.gateway.task_queue_size",
+        type=int,
+        help="Maximum number of organic tasks that can be stored in the queue",
+        default=50,
+    )
+    parser.add_argument(
+        "--task.gateway.task_fetch_interval",
+        type=int,
+        help="Interval for periodically fetching tasks from the gateway",
+        default=1,
+    )
+
+    # Synthetic task parameters
+    parser.add_argument(
+        "--task.synthetic.default_prompts_path",
+        type=str,
+        help="Path to the file with the default synthetic prompts (relative or absolute)",
+        default="resources/prompts.txt",
+    )
+    parser.add_argument(
+        "--task.synthetic.prompter.endpoint",
+        type=str,
+        help="Specifies the URL of the endpoint responsible for providing fresh batches of synthetic prompts. "
+        "This endpoint should handle the /get/ GET route.",
+        default="http://44.219.222.104:9100",
+    )
+    parser.add_argument(
+        "--task.synthetic.prompter.fetch_interval",
+        type=int,
+        help="Defines the fetch interval. The prompt batch is quite big (100k+) prompts. No need to fetch frequently",
+        default=60 * 60,  # 1 hour
+    )
+    parser.add_argument(
+        "--task.synthetic.prompter.batch_size",
+        type=int,
+        help="Defines the batch size of the synthetic prompts",
+        default=100000,
+    )
+    parser.add_argument(
+        "--task.synthetic.prompter.delay",
+        type=int,
+        help="Defines the delay in seconds before the first fetch of the synthetic prompts",
+        default=30,  # 30 seconds
+    )
+
+
+config = read_config()
