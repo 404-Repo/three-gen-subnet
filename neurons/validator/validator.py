@@ -204,15 +204,35 @@ class Validator:
         return await self._validate_results(synapse=synapse, miner=miner, miner_uid=miner_uid)
 
     async def _validate_results(self, *, synapse: SubmitResults, miner: MinerData, miner_uid: int) -> SubmitResults:
+        if miner.validation_locked_until > time.time():
+            # Prevents validation spam when miners resubmit due to slow processing
+            bt.logging.warning(
+                f"[{miner_uid}] submitted results while validation lock. Prompt: ({synapse.task.prompt[:100]})"
+            )
+            return self._add_feedback_and_strip(synapse, miner)
+        else:
+            miner.validation_locked_until = int(time.time()) + self.config.validation.validation_lock_duration
+
         validation_res = await self.validation_service.validate(synapse=synapse, neuron_uid=miner.uid)
         if validation_res is None:
             bt.logging.error(f"[{miner_uid}]: validation failed ({synapse.task.prompt[:100]})")
-            return await self._process_task_failure(  # type: ignore
+            return self._process_task_failure(  # type: ignore
                 synapse=synapse, miner=miner, cooldown_penalty=0, validation_failed=True
             )
         bt.logging.debug(
             f"[{miner_uid}] submitted results with the score: {validation_res.score} ({synapse.task.prompt[:100]})"
         )
+        if (
+            miner.last_submit_time + self.config.generation.task_cooldown - self.config.generation.throttle_period
+            > time.time()
+        ):
+            # Prevent double rewards when miners resubmit results due to slow validation
+            bt.logging.warning(
+                f"[{miner_uid}] resubmitted too quickly: {time.time() - miner.last_submit_time:.1f}s "
+                f"after last submit. Prompt: {synapse.task.prompt[:100]}"
+            )
+            return self._add_feedback_and_strip(synapse, miner)
+
         if validation_res.score < self.config.generation.quality_threshold:
             return self._process_task_failure(
                 synapse=synapse,
@@ -241,6 +261,7 @@ class Validator:
             fidelity_score=fidelity_score,
             moving_average_alpha=self.config.validation.moving_average_alpha,
         )
+        miner.last_submit_time = int(time.time())
 
         # Add task metrics.
         self.telemetry.add_task_metrics(

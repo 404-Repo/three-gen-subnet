@@ -36,6 +36,12 @@ class MinerData(BaseModel):
     cooldown_violations: int = 0
     """Number of times a miner has failed to respect the mandatory cooling period."""
 
+    validation_locked_until: int = 0
+    """Miner is locked for validation until this timestamp."""
+
+    last_submit_time: int = 0
+    """Timestamp of the last successful miner submit."""
+
     def reset_task(self, throttle_period: int, cooldown: int) -> None:
         """
         Reset the task and cooldown.

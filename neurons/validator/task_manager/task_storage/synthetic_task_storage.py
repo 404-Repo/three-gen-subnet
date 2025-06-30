@@ -85,7 +85,8 @@ class SyntheticTaskStorage(BaseTaskStorage):
 
     def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:  # noqa: B027
         bt.logging.info(f"[{miner_uid}] failed synthetic task ({task_prompt[:50]}).")
-        self._tasks.pop(task_id)
+        if task_id in self._tasks:
+            self._tasks.pop(task_id)
 
     def _load_default_prompts(self, path: str) -> None:
         """Loads default synthetic prompts from the file if it exists."""

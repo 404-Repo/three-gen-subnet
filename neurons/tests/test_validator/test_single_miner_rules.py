@@ -477,3 +477,24 @@ class TestSingleMinerRules:
                     ).results[task.id],
                     AssignedMiner,
                 )
+
+    @pytest.mark.asyncio
+    async def test_submit_task_too_fast(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
+        """
+        Tests behavior when a miner submits a task too fast.
+        In this case validation timeout should be applied and only one submission should be accepted.
+        """
+        validation_lock_duration = 0.1
+        submit_count = 10
+        validator.config.validation.validation_lock_duration = validation_lock_duration
+        pull = await validator.pull_task(create_pull_task(1))
+        assert pull.task is not None
+        with time_machine.travel(FROZEN_TIME, tick=True):
+            init_time = int(time_machine.time())
+            # Create 10 parallel submit tasks
+            submit_tasks = [validator.submit_results(create_submit_result(1, pull.task)) for _ in range(submit_count)]
+            await asyncio.gather(*submit_tasks)
+            assert validator.miners[1].cooldown_until >= init_time + TASK_COOLDOWN
+            assert validator.miners[1].last_submit_time < init_time + TASK_COOLDOWN + TASK_COOLDOWN_PENALTY
+            assert len(validator.miners[1].observations) == 1
+            assert validator.miners[1].validation_locked_until >= init_time + validation_lock_duration
