@@ -129,6 +129,12 @@ def add_validation_args(parser: argparse.ArgumentParser) -> None:
         help="Alpha parameter for fidelity factor update.",
         default=0.05,
     )
+    parser.add_argument(
+        "--validation.validation_lock_duration",
+        type=int,
+        help="Duration of the validation lock (in seconds).",
+        default=30,
+    )
 
 
 def add_public_api_args(parser: argparse.ArgumentParser) -> None:
