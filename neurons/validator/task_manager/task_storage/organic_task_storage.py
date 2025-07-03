@@ -131,9 +131,6 @@ class OrganicTaskStorage(BaseTaskStorage):
     def has_task(self, *, task_id: str) -> bool:
         return task_id in self._running_tasks
 
-    def has_tasks(self) -> bool:
-        return len(self._running_tasks) > 0 or len(self._gateway_task_queue) > 0 or len(self._legacy_task_queue) > 0
-
     def submit_result(self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int) -> None:
         """Submits the result."""
         current_time = int(time.time())
