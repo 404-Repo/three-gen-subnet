@@ -5,26 +5,25 @@ import sys
 import os
 from pathlib import Path
 
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir)
-sys.path.insert(0, parentdir + "/validation")
+CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+sys.path.insert(0, PARENT_DIR)
+sys.path.insert(0, PARENT_DIR + "/validation")
 
 import requests
 from loguru import logger
-from engine.data_structures import RequestData
+from engine.data_structures import ValidationRequest
 
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 current_file_path = Path(__file__).resolve()
 test_data_folder = current_file_path.parent / "resources"
-DEFAULT_FILEPATH = test_data_folder / "resources/hamburger.ply"
+DEFAULT_FILEPATH = test_data_folder / "hamburger.ply"
 DEFAULT_PROMPT = "A hamburger"
-DEFAULT_PROMPT_IMAGE = test_data_folder / "resources/test_render_ply.png"
+DEFAULT_PROMPT_IMAGE = test_data_folder / "test_render_ply.png"
 DEFAULT_URL_TXT_TO_3D = "http://localhost:10006/validate_txt_to_3d_ply/"
 DEFAULT_URL_IMG_TO_3D = "http://localhost:10006/validate_img_to_3d_ply/"
 DEFAULT_VERSION = 0
-GENERATE_PREVIEW = True
+GENERATE_PREVIEW = False
 
 
 def send_post_request(
@@ -40,7 +39,7 @@ def send_post_request(
 
         # Create the payload
         if prompt is not None:
-            request_data = RequestData(
+            request_data = ValidationRequest(
                 prompt=prompt,
                 data=encoded_data,
                 generate_preview=generate_preview,
@@ -49,7 +48,7 @@ def send_post_request(
             with open(prompt_image, "rb") as img_file:
                 encoded_prompt_image = pybase64.b64encode(img_file.read()).decode("utf-8")
 
-            request_data = RequestData(
+            request_data = ValidationRequest(
                 prompt_image=encoded_prompt_image,
                 data=encoded_data,
                 generate_preview=generate_preview,

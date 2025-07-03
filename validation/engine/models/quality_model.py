@@ -1,157 +1,190 @@
 import gc
 from typing import Any
 
-import clip
 import numpy as np
 import torch
 import torch.nn as nn
-from clip.model import CLIP
 from huggingface_hub import hf_hub_download
 from loguru import logger
+from PIL import Image
 from torchvision import transforms
 
 
 class QualityClassifierModel:
     """
-    A binary classifier model that uses CLIP embeddings for image classification.
-    This model loads a pre-trained CLIP model and adds a binary classification head
-    on top of it for specific image classification tasks.
+    A quality classifier model that uses DinoNet for image quality assessment.
+    This model loads a pre-trained DinoNet model and uses it to predict image quality scores.
     """
 
     def __init__(self) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.clip_model: CLIP | None = None
-        self._model: CLIPBinaryClassifier | None = None
+        self._model: nn.Module | None = None
         self._model_path = ""
-        self._checkpoint: list | tuple | dict | None = None
-        self._state_dict: dict = {}
+        self._emb_dim = 256
+        self._model_name = "dinov2_vits14"
+        self._image_size = 518
+        self._transform = self._get_image_transform()
+        self._norm_mean: torch.Tensor | None = None
+        self._norm_std: torch.Tensor | None = None
 
-    def load_model(self, repo_id: str, filename: str, clip_model: str = "ViT-B/32") -> None:
-        """Function for loading model"""
+    def load_model(self, repo_id: str, quality_scorer_model: str) -> None:
+        """Function for loading DinoNet model
 
-        self.clip_model, _ = clip.load(clip_model, device=self._device)
-        self._model = CLIPBinaryClassifier()
-        self._model_path = hf_hub_download(repo_id=repo_id, filename=filename)
-        self._checkpoint = torch.load(self._model_path, map_location=self._device)
+        Args:
+            repo_id: Hugging Face repository ID
+            quality_scorer_model: Name of the quality scorer model
+        """
+        # Use default DinoNet parameters
+        if repo_id is None:
+            raise ValueError("Repo ID is required")
+        if quality_scorer_model is None:
+            raise ValueError("Quality scorer model is required")
 
-        try:
-            # Handle different checkpoint formats
-            if isinstance(self._checkpoint, (list | tuple)):
-                if len(self._checkpoint) > 0:
-                    self._state_dict = self._checkpoint[0]
-                    self._model.load_state_dict(self._state_dict)
-                    logger.info("Loaded model state from first element of sequence")
-                else:
-                    raise ValueError("Loaded checkpoint is an empty sequence")
-            elif isinstance(self._checkpoint, dict):
-                self._model.load_state_dict(self._checkpoint)
-                logger.info("Loaded model state directly from checkpoint")
-            else:
-                raise TypeError(f"Unexpected checkpoint type: {type(self._checkpoint)}")
+        # Load model weights
+        backbone = torch.hub.load("facebookresearch/dinov2", self._model_name, pretrained=True)  # nosec B614
+        model = DINOv2Net(backbone, emb_dim=self._emb_dim)
+        self._model_path = hf_hub_download(
+            repo_id=repo_id, revision="4438c19183d7b13f56cd9ce2ce08964bc072533b", filename=quality_scorer_model
+        )
+        self._model_state = torch.load(self._model_path, map_location=self._device, weights_only=True)  # nosec B614
 
-        except Exception as e:
-            logger.info(f"Error loading checkpoint: {e}")
-            raise
-        logger.info(f"Classifier loaded to device {self._device}")
+        # Load full model weights
+        model.load_state_dict(self._model_state)
+        model.eval().to(self._device)
+        self._model = model
+
+        # Update transform with correct image size
+        self._transform = self._get_image_transform(self._image_size)
+
+        logger.info(f"DinoNet quality scorer loaded to device {self._device}")
         self._model.eval()
+
+        # Pre-compute normalization tensors on device
+        self._norm_mean = torch.tensor([0.485, 0.456, 0.406], device=self._device).view(3, 1, 1)
+        self._norm_std = torch.tensor([0.229, 0.224, 0.225], device=self._device).view(3, 1, 1)
 
     def unload_model(self) -> None:
         """Function for unloading model"""
 
-        del self._model
-        del self.clip_model
-        del self._checkpoint
-
-        self._model = None
-        self.clip_model = None
-        self._checkpoint = None
+        if self._model is not None:
+            del self._model
+            self._model = None
 
         torch.cuda.empty_cache()
         gc.collect()
 
     def score(self, images: list[torch.Tensor]) -> np.ndarray:
-        """Function for Generation of classification scores for a batch of images"""
+        """Function for generation of quality scores for a batch of images
+
+        Args:
+            images: List of torch tensors representing images
+
+        Returns:
+            np.ndarray: Quality scores for each image (raw sigmoid outputs)
+        """
 
         if self._model is None:
             raise RuntimeError("The model has not been loaded!")
 
-        image_features = self.preprocess_inputs(images)
+        processed_images = self.preprocess_inputs(images)
+        scores = []
 
         with torch.no_grad():
-            scores = self._model(image_features)
-        return np.array(scores.cpu().detach().numpy())
+            for img_tensor in processed_images:
+                # Add batch dimension and move to device
+                x = img_tensor.unsqueeze(0).to(self._device)
 
-    def preprocess_inputs(self, images: list[torch.Tensor]) -> Any:
-        """Preprocess images for input to the model"""
-        if self.clip_model is None:
-            raise RuntimeError("The quality model was not initialized!")
+                # Get embedding and score from DinoNet
+                _, score_logit = self._model(x)
 
-        normalized_images: torch.Tensor
+                # Return raw sigmoid output
+                score = torch.sigmoid(score_logit).item()
+                scores.append(score)
 
-        stacked_images = torch.stack(images, dim=0).to(self._device) / 255.0
-        stacked_images = stacked_images.permute(0, 3, 1, 2).to(torch.float16)
+        return np.array(scores)
 
-        # Define normalization parameters
-        mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(1, 3, 1, 1) * 3
-        std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(1, 3, 1, 1) * 3
-
-        normalize = transforms.Normalize(mean, std)
-        normalized_images = normalize(stacked_images)
-
-        with torch.no_grad():
-            image_features = self.clip_model.encode_image(normalized_images.to(normalized_images.device))
-
-        # Normalize features and apply classification head
-        image_features = image_features / image_features.norm(dim=1, keepdim=True)
-        image_features = image_features.to(torch.float32)
-        return image_features
-
-
-class CLIPBinaryClassifier(nn.Module):
-    """
-    Binary classifier that uses CLIP embeddings as input features.
-
-    Args:
-        clip_model (nn.Module): Pre-trained CLIP model to use as feature extractor.
-            The model should have an encode_image method that outputs 512-dimensional features.
-
-    Attributes:
-        clip_model (nn.Module): Frozen CLIP model for feature extraction
-        classifier (nn.Sequential): Classification head for binary prediction
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        # Define classification head architecture
-        self.classifier = nn.Sequential(
-            nn.Linear(512, 256),  # First linear layer reduces dimensionality
-            nn.ReLU(),  # Non-linear activation
-            nn.Dropout(0.5),  # Dropout for regularization
-            nn.Linear(256, 1),  # Output layer for binary classification
-            nn.Sigmoid(),  # Sigmoid activation for [0,1] output
-        )
-
-        # Initialize linear layers using Kaiming initialization
-        for m in self.classifier:
-            if isinstance(m, nn.Linear):
-                # Initialize weights using Kaiming normalization
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-                # Initialize biases to zero
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-    def forward(self, image_features_normed: torch.Tensor) -> Any:
-        """
-        Forward pass of the model.
+    def preprocess_inputs(self, images: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Preprocess images for input to the DinoNet model
 
         Args:
-            image_features_normed (torch.Tensor): Batch of input image normalized features.
-                Expected shape: (batch_size, channels, height, width)
+            images: List of torch tensors in format (H, W, C) with values 0-255
 
         Returns:
-            torch.Tensor: Binary predictions in range [0,1].
-                Shape: (batch_size, 1)
+            List of preprocessed torch tensors ready for DinoNet
         """
+        processed_images = []
 
-        # Pass through classification head
-        return self.classifier(image_features_normed)
+        for img_tensor in images:
+            # Apply tensor transforms directly (avoid PIL conversion)
+            if self._norm_mean is not None:
+                processed_tensor = self._tensor_transform(img_tensor)
+                processed_images.append(processed_tensor)
+            else:
+                # Fallback to PIL transforms if model not loaded
+                img_array = img_tensor.cpu().numpy().astype(np.uint8)
+                pil_image = Image.fromarray(img_array)
+                processed_tensor = self._transform(pil_image)
+                processed_images.append(processed_tensor)
+
+        return processed_images
+
+    def _tensor_transform(self, img_tensor: torch.Tensor) -> torch.Tensor:
+        """Efficient tensor-based transforms without PIL conversion"""
+        # Convert (H,W,C) to (C,H,W) and normalize to [0,1]
+        x = img_tensor.to(self._device).permute(2, 0, 1).float() / 255.0
+
+        # Resize
+        x = torch.nn.functional.interpolate(
+            x.unsqueeze(0),
+            size=(self._image_size, self._image_size),
+            mode="bilinear",
+            align_corners=False,
+            antialias=True,
+        ).squeeze(0)
+
+        # Production-safe type narrowing
+        if self._norm_mean is None or self._norm_std is None:
+            raise RuntimeError("Normalization tensors not initialized. Model must be loaded first.")
+        return (x - self._norm_mean) / self._norm_std
+
+    def _get_image_transform(self, image_size: int = 518) -> transforms.Compose:
+        """Get standard image transforms for DINOv2 (matching training configuration)"""
+        return transforms.Compose(
+            [
+                transforms.Resize(image_size, antialias=True),
+                transforms.CenterCrop(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],  # ImageNet
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
+
+
+class DINOv2Net(nn.Module):
+    """
+    Wraps a frozen / finetuned DINOv2 backbone with:
+      • an embedding head  (for metric learning / triplet loss)
+      • a scoring head     (single logit for BCEWithLogitsLoss)
+    """
+
+    def __init__(self, backbone: Any, emb_dim: int = 256) -> None:
+        super().__init__()
+        self.backbone = backbone  # Vision transformer from DINOv2
+        feat_dim = backbone.embed_dim  # 384, 768, 1024 … depending on variant
+
+        # Two small heads
+        self.emb_head = nn.Linear(feat_dim, emb_dim)
+        self.score_head = nn.Linear(feat_dim, 1)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+          • normalized embedding   (B, emb_dim)
+          • raw score logits       (B, 1)
+        """
+        feats = self.backbone(x)  # (B, feat_dim)
+        emb = nn.functional.normalize(self.emb_head(feats), p=2, dim=-1)  # L2-normalize
+        score = self.score_head(feats).squeeze(1)  # (B,)
+        return emb, score

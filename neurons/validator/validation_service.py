@@ -1,3 +1,4 @@
+import time
 import urllib.parse
 
 import aiohttp
@@ -9,10 +10,15 @@ from pydantic import BaseModel, Field
 from validator.config import config
 
 
+VALIDATION_TIME_DECAY_FACTOR = 0.95
+
+
 class ValidationResponse(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
     iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
-    clip: float = Field(default=0.0, description="Clip similarity score")
+    alignment_score: float = Field(
+        default=0.0, description="prompt vs rendered images or prompt-image vs rendered images score."
+    )
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
@@ -23,6 +29,7 @@ class ValidationService:
         self._endpoints = endpoints
         self._storage_enabled = storage_enabled
         self._validation_score_threshold = validation_score_threshold
+        self._peak_validation_time = 1.0
 
     async def validate(self, *, synapse: SubmitResults, neuron_uid: int) -> ValidationResponse | None:
         """Validates miner's result using validation service."""
@@ -30,9 +37,11 @@ class ValidationService:
         data = synapse.results
         endpoint = self._endpoints[neuron_uid % len(self._endpoints)]
         validate_url = urllib.parse.urljoin(endpoint, "/validate_txt_to_3d_ply/")
+        results = None
 
         async with aiohttp.ClientSession() as session:
             try:
+                start_time = time.time()
                 async with session.post(
                     validate_url,
                     json={
@@ -46,12 +55,17 @@ class ValidationService:
                     if response.status == 200:
                         data_dict = await response.json()
                         results = ValidationResponse(**data_dict)
-                        bt.logging.debug(f"Validation score: {results.score:.2f}. Prompt: {prompt[:100]}")
-                        return results
-                    else:
-                        bt.logging.error(
-                            f"Validation failed: [{response.status}] {response.reason}. " f"Prompt: {prompt[:100]}"
+                        validation_time = time.time() - start_time
+                        self._peak_validation_time = max(
+                            validation_time, self._peak_validation_time * VALIDATION_TIME_DECAY_FACTOR
                         )
+                        bt.logging.debug(
+                            f"Validation score: {results.score:.2f}, "
+                            f"time: {validation_time:.2f} sec ({self._peak_validation_time:.2f} sec). "
+                            f"Prompt: {prompt[:100]}."
+                        )
+                    else:
+                        bt.logging.error(f"Validation failed: [{response.status}] {response.reason}. ({prompt[:100]}).")
             except aiohttp.ClientConnectorError:
                 bt.logging.error(
                     f"Failed to connect to the endpoint. The endpoint might be inaccessible: {validate_url}."
@@ -66,6 +80,46 @@ class ValidationService:
                 )
             except Exception as e:
                 bt.logging.error(f"An unexpected error occurred: {e} ({validate_url}). Prompt: {prompt[:100]}")
+
+        return results
+
+    def peak_validation_time(self) -> float:
+        """Returns "the high watermark" of the validation time with decay."""
+        return self._peak_validation_time
+
+    async def render_duel_view(self, *, synapse: SubmitResults, neuron_uid: int) -> bytes | None:
+        """Renders 2x2 render for the duel using validation service."""
+        prompt = synapse.task.prompt
+        data = synapse.results
+        endpoint = self._endpoints[neuron_uid % len(self._endpoints)]
+        render_url = urllib.parse.urljoin(endpoint, "/render_duel_view/")
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    render_url,
+                    json={
+                        "prompt": prompt,
+                        "data": data,
+                        "compression": 2,
+                    },
+                ) as response:
+                    if response.status == 200:
+                        return await response.read()
+                    else:
+                        bt.logging.error(
+                            f"Rendering failed: [{response.status}] {response.reason}. Prompt: {prompt[:100]}"
+                        )
+            except aiohttp.ClientConnectorError:
+                bt.logging.error(
+                    f"Failed to connect to the endpoint. The endpoint might be inaccessible: {render_url}."
+                )
+            except TimeoutError:
+                bt.logging.error(f"The request to the endpoint timed out: {render_url}. Prompt: {prompt[:100]}")
+            except aiohttp.ClientError as e:
+                bt.logging.error(f"An unexpected client error occurred: {e} ({render_url}). Prompt: {prompt[:100]}")
+            except Exception as e:
+                bt.logging.error(f"An unexpected error occurred: {e} ({render_url}). Prompt: {prompt[:100]}")
 
         return None
 
@@ -101,7 +155,6 @@ class ValidationService:
         return "unexpected error"
 
 
-endpoints = config.validation.endpoints
 validation_service = ValidationService(
     endpoints=config.validation.endpoints,
     storage_enabled=config.storage.enabled,

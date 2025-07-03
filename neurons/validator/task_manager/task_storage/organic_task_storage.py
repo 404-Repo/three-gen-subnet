@@ -8,6 +8,7 @@ import pybase64
 from common.protocol import SubmitResults
 
 from validator.config import config
+from validator.duels.ratings import DuelRatings, duel_ratings
 from validator.gateway.gateway_api import GetGatewayTasksResult
 from validator.gateway.gateway_manager import GatewayManager, gateway_manager
 from validator.task_manager.task import AssignedMiner, GatewayOrganicTask, LegacyOrganicTask, OrganicTask, set_future
@@ -18,7 +19,14 @@ from validator.validation_service import ValidationResponse
 class OrganicTaskStorage(BaseTaskStorage):
     """Class responsible for storing organic tasks."""
 
-    def __init__(self, *, config: bt.config, gateway_manager: GatewayManager, wallet: bt.wallet | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        config: bt.config,
+        gateway_manager: GatewayManager,
+        ratings: DuelRatings,
+        wallet: bt.wallet | None = None,
+    ) -> None:
         super().__init__(config=config, wallet=wallet)
 
         self._gateway_task_queue: deque[GatewayOrganicTask] = deque(maxlen=self._config.task.gateway.task_queue_size)
@@ -32,6 +40,9 @@ class OrganicTaskStorage(BaseTaskStorage):
         """Manager responsible for communication with gateways."""
         self._organic_task_expire_timeout: float = 2 * self._config.task.organic.task_timeout
         """Timeout for the task to be removed from the task manager."""
+
+        self._ratings = ratings
+        """Reference to the ratings structure that manages all miner ratings."""
 
         # TODO: deprecated
         self._legacy_task_queue: deque[LegacyOrganicTask] = deque()
@@ -131,9 +142,6 @@ class OrganicTaskStorage(BaseTaskStorage):
     def has_task(self, *, task_id: str) -> bool:
         return task_id in self._running_tasks
 
-    def has_tasks(self) -> bool:
-        return len(self._running_tasks) > 0 or len(self._gateway_task_queue) > 0 or len(self._legacy_task_queue) > 0
-
     def submit_result(self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int) -> None:
         """Submits the result."""
         current_time = int(time.time())
@@ -150,11 +158,13 @@ class OrganicTaskStorage(BaseTaskStorage):
             return
         assigned_miner.compressed_result = synapse.results
         assigned_miner.score = validation_res.score
+        assigned_miner.rating = self._ratings.get_miner_reward_rating(miner_uid)
         assigned_miner.submit_time = current_time
         assigned_miner.finished = True
 
         bt.logging.info(
-            f"[{miner_uid}] completed organic task ({task_prompt[:100]}). Score: {validation_res.score:.2f}"
+            f"[{miner_uid}] completed organic task ({task_prompt[:100]}). "
+            f"Rating: {assigned_miner.rating}. Score: {validation_res.score:.2f}"
         )
         if task.first_result_time == 0:
             self._process_first_result(task=task, assigned_miner=assigned_miner)
@@ -339,4 +349,5 @@ class OrganicTaskStorage(BaseTaskStorage):
 organic_task_storage = OrganicTaskStorage(
     gateway_manager=gateway_manager,
     config=config,
+    ratings=duel_ratings,
 )

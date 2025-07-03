@@ -50,7 +50,7 @@ class TextVSImageMetric:
     def preprocess_images(self, images: list[torch.Tensor], image_res: int) -> torch.Tensor:
         """Function for preprocessing input images"""
 
-        stacked_images = torch.stack(images, dim=0).to(self._device) / 255.0
+        stacked_images: torch.Tensor = torch.stack(images, dim=0).to(self._device) / 255.0
         stacked_images = stacked_images.permute(0, 3, 1, 2).to(torch.float16)
         stacked_images = F.interpolate(stacked_images, size=(image_res, image_res), mode="bicubic", align_corners=False)
         stacked_images = self._normalize_transform(stacked_images)
@@ -134,7 +134,7 @@ class ImageVSImageMetric:
     def preprocess_images(self, images: list[torch.Tensor], image_res: int) -> torch.Tensor:
         """Function for preprocessing input images"""
 
-        stacked_images = torch.stack(images, dim=0).to(self._device) / 255.0
+        stacked_images: torch.Tensor = torch.stack(images, dim=0).to(self._device) / 255.0
         stacked_images = stacked_images.permute(0, 3, 1, 2).to(torch.float16)
         stacked_images = F.interpolate(stacked_images, size=(image_res, image_res), mode="bicubic", align_corners=False)
         stacked_images = self._normalize_transform(stacked_images)

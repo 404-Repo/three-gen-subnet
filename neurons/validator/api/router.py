@@ -143,7 +143,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     update = TaskUpdate(
         status=TaskStatus.BEST_RESULTS,
         results=TaskResults(
-            hotkey=best_result.hotkey, assets=best_result.decompress_results(), score=best_result.score
+            hotkey=best_result.hotkey, assets=best_result.decompress_results(), score=best_result.rating
         ),
         statistics=stats,
     )
