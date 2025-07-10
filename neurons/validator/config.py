@@ -24,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_storage_args(parser)
     add_telemetry_args(parser)
     add_task_args(parser)
+    add_duels_args(parser)
 
     return parser
 
@@ -284,6 +285,53 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Defines the delay in seconds before the first fetch of the synthetic prompts",
         default=30,  # 30 seconds
+    )
+
+
+def add_duels_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--duels.enabled",
+        action="store_true",
+        help="Enables ranking tasks",
+        default=False,
+    )
+    parser.add_argument(
+        "--duels.start_delay",
+        type=int,
+        help="Delay to start duels to collect information of the active miners",
+        default=1800,  # 30 minutes
+    )
+    parser.add_argument(
+        "--duels.inactivity_time",
+        type=int,
+        help="Inactive miners don't get duels",
+        default=1200,  # 20 minutes
+    )
+    parser.add_argument(
+        "--duels.judge_workers",
+        type=int,
+        help="Concurrent tasks to judge duels",
+        default=3,
+    )
+    parser.add_argument(
+        "--duels.duels_per_minute",
+        type=int,
+        help="Maximum requests per minute (enforced when using pay-per-request billing)",
+        default=60,
+    )
+    parser.add_argument(
+        "--duels.judge_endpoint",
+        type=str,
+        help="Specifies the URL of the endpoint responsible for judging the duel. "
+        "This endpoint should handle the / POST route.",
+        default="http://127.0.0.1:8095/api/duel/",
+    )
+    parser.add_argument(
+        "--duels.duel_saver_endpoint",
+        type=str,
+        help="Specifies the URL of the endpoint responsible for saving the duel's results. "
+        "This endpoint should handle the / POST route.",
+        default="http://127.0.0.1:8096/api/save_duel/",
     )
 
 

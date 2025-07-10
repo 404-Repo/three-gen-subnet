@@ -8,6 +8,8 @@ import bittensor as bt
 import pytest
 import time_machine
 from pytest_httpserver import HTTPServer
+
+from validator.duels.ranks import DuelRanks
 from validator.gateway.gateway_api import GatewayApi
 from validator.gateway.http3_client.http3_client import Http3Client, Http3Response
 from validator.task_manager.task import (
@@ -35,7 +37,7 @@ from tests.test_validator.conftest import (
 from tests.test_validator.subtensor_mocks import WALLETS
 
 
-class TestTaskProcessingRules:
+class TestGatewayTasks:
 
     @pytest.mark.asyncio
     async def test_task_order(
@@ -45,6 +47,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that the task order is correct.
@@ -61,6 +64,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             with time_machine.travel(FROZEN_TIME, tick=False):
                 tasks: list[ValidatorTask] = []
@@ -115,15 +119,17 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
-        If legacy task was selected by miner and gateway task was added then
+        If a legacy task was selected by miner and gateway task was added, then
         active legacy task is prioritized.
         """
         async with get_validator_with_available_organic_tasks(
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             with time_machine.travel(FROZEN_TIME, tick=False):
                 # Remove all gateway tasks.
@@ -138,7 +144,7 @@ class TestTaskProcessingRules:
                 assert task is not None
                 assert isinstance(task, LegacyOrganicTask)
 
-                # Add gateway task to the queue manually
+                # Add a gateway task to the queue manually
                 validator.task_manager._organic_task_storage._gateway_task_queue.append(
                     GatewayOrganicTask.create_task(id=str(uuid4()), prompt="prompt", gateway_url="host")
                 )
@@ -158,7 +164,7 @@ class TestTaskProcessingRules:
         validator: Validator,
     ) -> None:
         """
-        If synthetic task was selected by miner and organic task was added then
+        If a synthetic task was selected by miner and organic task was added, then
         active synthetic task is not prioritized.
         """
         with time_machine.travel(FROZEN_TIME, tick=False):
@@ -168,7 +174,7 @@ class TestTaskProcessingRules:
             assert pull_task.task is not None
             assert validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
 
-            # Add gateway task to the queue manually
+            # Add the gateway task to the queue manually
             validator.task_manager._organic_task_storage._gateway_task_queue.append(
                 GatewayOrganicTask.create_task(id=str(uuid4()), prompt="prompt", gateway_url="host")
             )
@@ -190,6 +196,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that task lifecycle is correct.
@@ -201,6 +208,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             now = time.time()
             with time_machine.travel(now, tick=True) as travel:
@@ -248,16 +256,18 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that task can be assigned to second miner during send_result_timeout.
-        Then task is not accessible and the result is sent to the gateway.
+        Then a task is not accessible, and the result is sent to the gateway.
         """
         config.task.organic.send_result_timeout = 1
         async with get_validator_with_available_organic_tasks(
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             now = time.time()
             with time_machine.travel(now, tick=True):
@@ -282,7 +292,7 @@ class TestTaskProcessingRules:
                 assert pull_task_2.task.id == pull_task_1.task.id
                 await asyncio.sleep(config.task.organic.send_result_timeout + 1)
 
-                # Other miner can't get the task after send_result_timeout expires
+                # Another miner can't get the task after send_result_timeout expires
                 pull_task_3 = create_pull_task(10)
                 pull_task_3 = await validator.pull_task(pull_task_3)
                 assert pull_task_3 is not None
@@ -308,16 +318,18 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that task can be assigned to second miner during send_result_timeout.
-        Then task is not accessible and the result is sent to the gateway.
+        Then a task is not accessible, and the result is sent to the gateway.
         """
         config.task.organic.send_result_timeout = 0.5
         async with get_validator_with_available_organic_tasks(
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             # Remove all gateway tasks.
             validator.task_manager._organic_task_storage._gateway_task_queue.clear()
@@ -368,6 +380,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that task count is limited by miner count.
@@ -377,6 +390,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             task_id: str | None = None
             # The same task should be assigned to the miners below.
@@ -403,14 +417,16 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
-        Test that task can be assigned to strong miner if it was not assigned to any miner before.
+        Test that task can be assigned to a strong miner if it was not assigned to any miner before.
         """
         async with get_validator_with_available_organic_tasks(
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             task_id: str | None = None
             # The same task should be assigned to the weak miners below.
@@ -453,6 +469,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that best result is selected from the results.
@@ -462,6 +479,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             scores: dict[str, float] = {}
             task: ValidatorTask | None = None
@@ -526,6 +544,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that best result is selected from the results.
@@ -535,6 +554,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             # Remove all gateway tasks.
             validator.task_manager._organic_task_storage._gateway_task_queue.clear()
@@ -634,6 +654,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that result is submitted if timeout occurs after first result.
@@ -643,8 +664,9 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
-            # Pull and submit first task.
+            # Pull and submit the first task.
             reset_validation_server.clear()
             reset_validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
                 {"score": 0.9}
@@ -682,6 +704,7 @@ class TestTaskProcessingRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ranks: DuelRanks,
     ) -> None:
         """
         Test that task is removed when timeout occurs
@@ -691,6 +714,7 @@ class TestTaskProcessingRules:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
+            ranks=ranks,
         ) as validator:
             await asyncio.sleep(task_manager._organic_task_storage._organic_task_expire_timeout + 0.2)
             _ = await validator.pull_task(create_pull_task(1))

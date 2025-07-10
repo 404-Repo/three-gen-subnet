@@ -89,7 +89,7 @@ class Telemetry:
                 "results_amount": len(miner.observations),
                 "labels": {
                     "miner_hotkey": miner.hotkey,
-                    "miner_coldkey": metagraph.coldkeys[miner.uid],
+                    "miner_coldkey": metagraph.axons[miner.uid].coldkey,
                     "task_type": "text-to-3d",
                 },
             }

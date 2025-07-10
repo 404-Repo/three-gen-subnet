@@ -38,12 +38,15 @@ class SyntheticTaskStorage(BaseTaskStorage):
         self._synthetic_prompt_service = synthetic_prompt_service
         self._synthetic_asset_storage = synthetic_asset_storage
 
-    def get_next_task(self, *, miner_uid: int) -> SyntheticTask:  # type: ignore
-        """Returns random prompt. First returns from fresh_prompts and then from default_prompts."""
+    def get_random_prompt(self) -> str:
         if self._prompts:
-            prompt = rd.choice(self._prompts)  # noqa: S311 # nosec: B311
+            return rd.choice(self._prompts)  # noqa: S311 # nosec: B311
         else:
-            prompt = rd.choice(self._default_prompts)  # noqa: S311 # nosec: B311
+            return rd.choice(self._default_prompts)  # noqa: S311 # nosec: B311
+
+    def get_next_task(self, *, miner_uid: int) -> SyntheticTask:
+        """Returns random prompt. First returns from fresh_prompts and then from default_prompts."""
+        prompt = self.get_random_prompt()
         task_id = str(uuid.uuid4())
         self._tasks[task_id] = prompt
         bt.logging.info(f"[{miner_uid}] received synthetic task ({prompt[:100]})")
@@ -69,10 +72,9 @@ class SyntheticTaskStorage(BaseTaskStorage):
     def has_task(self, *, task_id: str) -> bool:
         return task_id in self._tasks
 
-    def has_tasks(self) -> bool:
-        return True
-
-    def submit_result(self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int) -> None:
+    async def submit_result(
+        self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int
+    ) -> None:
         bt.logging.info(
             f"[{miner_uid}] submit synthetic task results with score {validation_res.score} "
             f"({synapse.task.prompt[:100]})"
@@ -83,7 +85,7 @@ class SyntheticTaskStorage(BaseTaskStorage):
                 self._synthetic_asset_storage.save_assets(synapse, synapse.results, synapse.signature, validation_res)
             )
 
-    def fail_task(self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int) -> None:  # noqa: B027
+    def fail_task(self, *, task_id: str, task_prompt: str, miner_uid: int) -> None:
         bt.logging.info(f"[{miner_uid}] failed synthetic task ({task_prompt[:50]}).")
         if task_id in self._tasks:
             self._tasks.pop(task_id)

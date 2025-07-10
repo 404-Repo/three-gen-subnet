@@ -69,6 +69,42 @@ class ValidationService:
 
         return None
 
+    async def render_duel_view(self, *, synapse: SubmitResults, neuron_uid: int) -> bytes | None:
+        """Renders 2x2 render for the duel using validation service."""
+        prompt = synapse.task.prompt
+        data = synapse.results
+        endpoint = self._endpoints[neuron_uid % len(self._endpoints)]
+        render_url = urllib.parse.urljoin(endpoint, "/render_duel_view/")
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    render_url,
+                    json={
+                        "prompt": prompt,
+                        "data": data,
+                        "compression": 2,
+                    },
+                ) as response:
+                    if response.status == 200:
+                        return await response.read()
+                    else:
+                        bt.logging.error(
+                            f"Rendering failed: [{response.status}] {response.reason}. Prompt: {prompt[:100]}"
+                        )
+            except aiohttp.ClientConnectorError:
+                bt.logging.error(
+                    f"Failed to connect to the endpoint. The endpoint might be inaccessible: {render_url}."
+                )
+            except TimeoutError:
+                bt.logging.error(f"The request to the endpoint timed out: {render_url}. Prompt: {prompt[:100]}")
+            except aiohttp.ClientError as e:
+                bt.logging.error(f"An unexpected client error occurred: {e} ({render_url}). Prompt: {prompt[:100]}")
+            except Exception as e:
+                bt.logging.error(f"An unexpected error occurred: {e} ({render_url}). Prompt: {prompt[:100]}")
+
+        return None
+
     async def version(self) -> str:
         async with aiohttp.ClientSession() as session:
             try:

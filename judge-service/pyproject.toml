@@ -1,0 +1,131 @@
+[tool.poetry]
+name = "duels"
+version = "0.0.1"
+description = "This endpoint functions as an independent local web server, which operates concurrently with the neuron process."
+authors = ["Maxim Bladyko <max@404.xyz>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+poetry = { version = "1.8.3" }
+poethepoet = { version = "0.31.1", extras = ["poetry_plugin"] }
+bandit = { version = "1.8.0" }
+black = { version = "24.10.0" }
+mypy = { version = "1.13.0" }
+ruff = { version = "0.8.1" }
+types-requests = { version = "2.32.*" }
+
+types-PyYAML = "==6.0.12.20240808"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+target-version = ['py311']
+line-length = 120
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.pytest_cache
+  | \.idea
+  | \.venv
+  | \.vscode
+)/
+'''
+
+[tool.ruff]
+target-version = "py311"
+cache-dir = ".reports/ruff_cache"
+line-length = 120
+src = ["sources"]
+namespace-packages = ["sources"]
+fix = true
+output-format = "full"
+include = ["*.py"]
+exclude = [
+    '.venv/.*',
+    'tests',
+    './validation_lib/eval_sh.py'
+]
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle
+    "F", # pyflakes
+    "UP", # pyupgrade
+    "I", # isort
+    "S", # flake8-bandit
+    "B", # flake8-bugbear
+    "Q", # flake8-quotes
+    "ASYNC", # flake8-async
+    "PTH", # flake8-use-pathlib
+]
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Exclude directories
+exclude = [
+    ".*",
+    "tests",
+    "./validation_lib/eval_sh.py"
+]
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = []
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
+
+[tool.bandit]
+skips = ["B104"]
+exclude_dirs = [
+    "./.*/**",
+    "./tests/**",
+    "./validation_lib/eval_sh.py"
+]
+
+
+[tool.mypy]
+cache_dir = ".reports/mypy_cache/"
+ignore_missing_imports = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+warn_unused_ignores = false
+warn_return_any = true
+warn_no_return = false
+warn_unreachable = true
+strict_equality = true
+warn_redundant_casts = true
+exclude = [
+    '.venv/.*',
+    'tests',
+    'validation_lib/eval_sh.py'
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "types-pyyaml",
+    "validation_lib.eval_sh"
+]
+ignore_errors = true
+
+[tool.poe]
+poetry_command = ""
+
+[tool.poe.tasks.run-check]
+help = "Run tests and try fix format"
+ignore_fail = "return_non_zero"
+sequence = [
+    { cmd = "ruff check ." },
+    { cmd = "black ." },
+    { cmd = "bandit . -rq -c pyproject.toml" },
+    { cmd = "mypy --junit-xml .reports/mypy-junit-report.xml ." },
+]

@@ -107,3 +107,11 @@ class MinerData(BaseModel):
         """
         self._expire_observations(current_time, observation_window)
         return len(self.observations) * self.fidelity_score
+
+    def reset_data(self, new_hotkey: str) -> None:
+        # Resets miners when new hotkey kicks out the previous one.
+        self.observations.clear()
+        self.fidelity_score = 1.0
+        self.cooldown_until = 0
+        self.cooldown_violations = 0
+        self.hotkey = new_hotkey

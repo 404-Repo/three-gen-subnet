@@ -4,7 +4,7 @@ import uuid
 
 import pybase64
 import pyspz
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from validator.api.protocol import MinerStatistics, TaskStatistics
 
@@ -43,13 +43,17 @@ class AssignedMiner(BaseModel):
 
 
 class ValidatorTask(BaseModel):
-    id: str = str(uuid.uuid4())
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     """Unique id."""
     prompt: str
     """Prompt to use for generation."""
 
 
 class SyntheticTask(ValidatorTask):
+    pass
+
+
+class DuelTask(ValidatorTask):
     pass
 
 
@@ -102,7 +106,9 @@ class OrganicTask(ValidatorTask):
 
 
 class GatewayOrganicTask(OrganicTask):
-    """Class that represents a task to generate 3D assets from a gateway.."""
+    """Class that represents a task to generate 3D assets from a gateway."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     gateway_url: str
     result_future: asyncio.Future[AssignedMiner | None] | None = None
@@ -117,13 +123,12 @@ class GatewayOrganicTask(OrganicTask):
         )
         return task
 
-    class Config:
-        arbitrary_types_allowed = True
-
 
 class LegacyOrganicTask(OrganicTask):
     """Class that represents a task to generate 3D assets from a prompt that came from the
     legacy public API."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     start_future: asyncio.Future[AssignedMiner | None] = Field(default_factory=asyncio.get_event_loop().create_future)
     """Future is set when the task gets assigned the first time."""
@@ -135,9 +140,6 @@ class LegacyOrganicTask(OrganicTask):
         default_factory=asyncio.get_event_loop().create_future
     )
     """Future is set when all assigned miners submit their results."""
-
-    class Config:
-        arbitrary_types_allowed = True
 
     @classmethod
     def create_task(cls, *, id: str, prompt: str) -> "LegacyOrganicTask":
