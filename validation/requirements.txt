@@ -1,5 +1,6 @@
 numpy==1.26.4
 torch==2.5.0
+xformers==0.0.28.post2
 torchmetrics[multimodal]==1.5.1
 transformers==4.44.2
 open_clip_torch==2.29.0

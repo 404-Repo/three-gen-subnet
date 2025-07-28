@@ -86,8 +86,8 @@ def _prepare_input_data(
     ply_data_loader: PlyLoader,
     validator: ValidationEngine,
     render_views_number: int = 16,
-    render_img_width: int = 224,
-    render_img_height: int = 224,
+    render_img_width: int = 518,
+    render_img_height: int = 518,
     render_theta_angles: list[float] | None = None,
 ) -> tuple[GaussianSplattingData | None, list[torch.Tensor], TimeStat]:
     """Function for preparing input data for further processing"""
@@ -205,12 +205,12 @@ def decode_and_validate_txt(
 ) -> tuple[ValidationResponse, TimeStat]:
     t1 = time()
     assets = _decode_assets(request)
-    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator)
+    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator, render_views_number=16, render_img_width=518, render_img_height=518)
 
     if gs_data is not None and request.prompt is not None:
         t2 = time()
         validation_result = _validate_text_vs_image(request.prompt, gs_rendered_images, validator)
-        time_stat.validation_time = t2 - time()
+        time_stat.validation_time = time() - t2
 
         response = _finalize_results(
             validation_result,

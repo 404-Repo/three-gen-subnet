@@ -14,9 +14,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def test_quality_metric():
     ply_loader = PlyLoader()
     gs_data = ply_loader.from_file("hamburger", test_data_folder.as_posix())
+    gs_data = gs_data.send_to_device(device)
 
     renderer = Renderer()
-    images = renderer.render_gs(gs_data, 16, 224, 224, cam_rad=3.0, ref_bbox_size=1.0)
+    images = renderer.render_gs(gs_data, 16, 224, 224) #, cam_rad=3.0, ref_bbox_size=1.0)
 
     quality_metric = ImageQualityMetric()
     quality_metric.load_models()
@@ -26,3 +27,5 @@ def test_quality_metric():
     assert quality_score > 0.8
 
     quality_metric.unload_models()
+
+    print(f"Quality score: {quality_score}")
