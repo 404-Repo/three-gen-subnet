@@ -9,9 +9,10 @@ from typing import Any
 import aiohttp
 import bittensor as bt
 from common.protocol import SubmitResults
-from pydantic import BaseModel
 
 from validator.config import config
+from validator.duels.data_structures import Duel, MinerInDuel, MinerResults
+from validator.duels.judge_service import JudgeResponse, JudgeService
 from validator.duels.ranks import DuelRanks, Rank, duel_ranks, update_ranks
 from validator.task_manager.task import DuelTask
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
@@ -22,62 +23,6 @@ from validator.validation_service import ValidationResponse, ValidationService, 
 NEURONS_LIMIT = 256
 PENDING_DUELS_SIZE = NEURONS_LIMIT * 4
 GARBAGE_COLLECTION_CYCLE = 60 * 60  # 1 hour
-
-
-class MinerResults(BaseModel):
-    """Results and metadata for a miner participating in a duel."""
-
-    view: bytes | None
-    """Rendered duel view or None if miner failed the task."""
-    score: float
-    """Validation score."""
-    hotkey: str
-    """Miner hotkey (filled when results are received, to handle the case of the ownership change)."""
-    coldkey: str
-    """Miner coldkey (filled when results are received, to handle the case of the ownership change)."""
-    rank: Rank
-    """Miner rank. Reference, so will have up-to-date information, even if miner ownership changes."""
-
-
-class MinerInDuel(BaseModel):
-    """Represents a miner's participation state and results in a duel."""
-
-    uid: int
-    """Miner uid."""
-    started: bool = False
-    """Whether miner pulled the task or not."""
-    results: MinerResults | None = None
-    """Miner's results after completing the duel task."""
-
-
-class Duel(BaseModel):
-    """Represents a duel between two miners with a specific task."""
-
-    timestamp_nonce: int
-    """Multipurpose field:
-    - reflects the creation time, although it might be some seconds bigger,
-    - unique among duels and used to identify the duel in grafana,
-    - nonce for the hash used to select miners.
-    """
-    task: DuelTask
-    """Task to give to miners."""
-    left: MinerInDuel
-    """First participant in the duel."""
-    right: MinerInDuel
-    """Second participant in the duel."""
-    last_miner_pull_time: float = 0.0
-    """Time the duel was pulled by the last miner."""
-    failed_by_validator: bool = False
-    """True, if duel failed and it's not a miner's fault."""
-
-
-class JudgeResponse(BaseModel):
-    """Response from a judge evaluating a duel between two miners."""
-
-    winner: int
-    """Judge's decision: 1, 2 or 0 (draw)"""
-    explanation: str
-    """Explanation of the scoring decision."""
 
 
 class DuelsTaskStorage(BaseTaskStorage):
@@ -95,8 +40,13 @@ class DuelsTaskStorage(BaseTaskStorage):
         super().__init__(config=config, wallet=wallet)
 
         self._synthetic_task_storage = synthetic_task_storage
+        """Reference to the synthetic task storage. Used to get random prompts for the duels."""
+
         self._validation_service = validation_service
+        """Reference to the validation service. Used to request rendering results view for the judge."""
+
         self._ranks = ranks
+        """Reference to the ranks that manages all miner ranks."""
 
         self._duels_start: float = time.time() + self._config.duels.start_delay
         """Time to start duels, necessary delay to fill `_last_pull_time`."""
@@ -113,28 +63,37 @@ class DuelsTaskStorage(BaseTaskStorage):
         The idea behind the `_pending_duels` is we want to have a transparent and verifiable miner selection
         for the duel.
         Duel results are shared with the prompt given and nonce used. Miner selection could be verified.
+        
+        Duel is removed when both miners pull a task.
         """
 
         self._pending_duels_by_miner: dict[int, deque[Duel]] = {}
-        """Same pending duels but grouped by miner uid."""
+        """Same pending duels but grouped by miner uid.
+        
+        Duel is removed when miner pulls a task.
+        """
 
         self._active_duels: dict[str, Duel] = {}
         """Duels started by at least one miner (task id -> duel)."""
 
-        self._pending_judgement: asyncio.Queue[Duel] = asyncio.Queue()
+        self._pending_judgement_queue: asyncio.Queue[Duel] = asyncio.Queue()
         """Duels with the results from both miners, awaiting to be judged."""
 
-        self._duels_judged: int = 0
-        """Total number of duels judged during a validator runtime."""
+        self._process_results_queue: asyncio.Queue[tuple[Duel, JudgeResponse]] = asyncio.Queue()
+        """Duels evaluated by the judge, awaiting to be processed."""
 
-        self._duels_per_second_limit: float = min(1.0, self._config.duels.duels_per_minute / 60.0)
-        """Rate limit (enforced when using pay-per-request billing)."""
+        self._process_results_job: asyncio.Task | None = None
+        """Async task that processes results from the `_process_results_queue`"""
 
         self._garbage_collecting_job: asyncio.Task | None = None
         """Periodic job to check the active duels and recycle the expired ones."""
 
-        self._judge_workers: list[asyncio.Task] = []
-        """Worker tasks for judging completed duels."""
+        self._judge_service: JudgeService = JudgeService(
+            config=config,
+            pending_judgement_queue=self._pending_judgement_queue,
+            process_results_queue=self._process_results_queue,
+        )
+        """Wrapper that communicates with the vllm server."""
 
     async def start_garbage_collection_cron(self) -> None:
         self._garbage_collecting_job = asyncio.create_task(self._garbage_collection_cron())
@@ -154,8 +113,16 @@ class DuelsTaskStorage(BaseTaskStorage):
         for duel in expired_duels:
             bt.logging.debug(f"[{duel.left.uid}] vs [{duel.right.uid}] duel was recycled")
             self._active_duels.pop(duel.task.id, None)
+            self._pending_duels.pop(duel.timestamp_nonce, None)
+            if duel in self._pending_duels_by_miner[duel.left.uid]:
+                self._pending_duels_by_miner[duel.left.uid].remove(duel)
+            if duel in self._pending_duels_by_miner[duel.right.uid]:
+                self._pending_duels_by_miner[duel.right.uid].remove(duel)
 
     def get_next_task(self, *, miner_uid: int) -> DuelTask | None:
+        if not self._config.duels.enabled:
+            return None
+
         current_time = time.time()
         self._last_pull_time[miner_uid] = current_time
 
@@ -182,13 +149,13 @@ class DuelsTaskStorage(BaseTaskStorage):
         bt.logging.debug(
             f"[{miner_uid}] received a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({duel.task.prompt[:100]}). "
             f"Stats: {len(self._pending_duels)} ({len(miner_duels)}) + {len(self._active_duels)} "
-            f"+ {self._pending_judgement.qsize()}"
+            f"+ {self._pending_judgement_queue.qsize()}"
         )
 
         return duel.task
 
     def _fill_pending_duels(self, current_time: float) -> None:
-        total_duels = len(self._pending_duels) + self._pending_judgement.qsize()
+        total_duels = len(self._pending_duels) + self._pending_judgement_queue.qsize()
         if total_duels >= PENDING_DUELS_SIZE:
             return
 
@@ -289,12 +256,10 @@ class DuelsTaskStorage(BaseTaskStorage):
             miner = duel.left
             opponent = duel.right
             miner_position = 1
-            opponent_position = 2
         else:
             miner = duel.right
             opponent = duel.left
             miner_position = 2
-            opponent_position = 1
 
         miner.results = results
 
@@ -309,21 +274,48 @@ class DuelsTaskStorage(BaseTaskStorage):
             return
 
         if miner.results.view is None and opponent.results.view is None:
-            winner = 0
+            worst = 0
         elif miner.results.view is None:
-            winner = opponent_position
+            worst = miner_position
         elif opponent.results.view is None:
-            winner = miner_position
+            worst = 3 - miner_position
         else:
-            winner = None
+            worst = None
 
-        if winner is not None:
+        if worst is not None:
             await self._process_duel_results(
-                duel, judgement=JudgeResponse(winner=winner, explanation="One or both miners failed to generate")
+                duel, judgement=JudgeResponse(worst=worst, issues="One or both miners failed to generate")
             )
             return
 
-        await self._pending_judgement.put(duel)
+        await self._pending_judgement_queue.put(duel)
+
+    def has_task(self, *, task_id: str) -> bool:
+        return task_id in self._active_duels
+
+    async def start_judging_duels(self) -> None:
+        await self._judge_service.start_judging_duels()
+        self._process_results_job = asyncio.create_task(self._process_next_duel_results())
+
+    def stop_judging_duels(self) -> None:
+        self._judge_service.stop_judging_duels()
+        if self._process_results_job is not None:
+            self._process_results_job.cancel()
+
+    async def _process_next_duel_results(self) -> None:
+        while True:
+            try:
+                duel, judgement = await asyncio.wait_for(self._process_results_queue.get(), timeout=1.0)
+
+                await self._process_duel_results(duel, judgement)
+
+                self._process_results_queue.task_done()
+            except TimeoutError:
+                await asyncio.sleep(1)
+                continue
+            except Exception as e:
+                bt.logging.error(f"Processing duel results failed with: {e}")
+                self._process_results_queue.task_done()
 
     async def _process_duel_results(self, duel: Duel, judgement: JudgeResponse) -> None:
         if duel.left.results is None or duel.right.results is None:  # pragma: no cover
@@ -345,112 +337,48 @@ class DuelsTaskStorage(BaseTaskStorage):
                 "trueskill_after": rank_after.trueskill.mu,
             }
 
+        if judgement.worst == 1:
+            winner = 2
+        elif judgement.worst == 2:
+            winner = 1
+        else:
+            winner = 0
+
         left_rank_before = self._ranks.get_miner_rank(duel.left.uid).model_copy(deep=True)
         right_rank_before = self._ranks.get_miner_rank(duel.right.uid).model_copy(deep=True)
-        update_ranks(duel.left.results.rank, duel.right.results.rank, winner=judgement.winner)
+        update_ranks(duel.left.results.rank, duel.right.results.rank, winner=winner)
 
         bt.logging.debug(
-            f"[{duel.left.uid}] vs [{duel.right.uid}] duel processed. "
-            f"Winner: {judgement.winner} ({duel.task.prompt[:100]})"
+            f"[{duel.left.uid}] rank: {left_rank_before.elo.rank} -> {duel.left.results.rank.elo.rank} "
+            f"({duel.task.prompt[:100]})"
+        )
+        bt.logging.debug(
+            f"[{duel.right.uid}] rank: {right_rank_before.elo.rank} -> {duel.right.results.rank.elo.rank} "
+            f"({duel.task.prompt[:100]})"
         )
 
         duel_results = {
+            "finish_time": time.time(),
             "timestamp_nonce": duel.timestamp_nonce,
             "prompt": duel.task.prompt,
-            "winner": judgement.winner,
-            "explanation": judgement.explanation,
+            "winner": winner,
+            "explanation": judgement.issues,
             "left": _fill_duel_results(duel.left.results, left_rank_before, duel.left.results.rank),
             "right": _fill_duel_results(duel.right.results, right_rank_before, duel.right.results.rank),
         }
         asyncio.create_task(
             self._publish_results(
-                results=duel_results, preview1=duel.left.results.view, preview2=duel.right.results.view
+                left_uid=duel.left.uid,
+                right_uid=duel.right.uid,
+                results=duel_results,
+                preview1=duel.left.results.view,
+                preview2=duel.right.results.view,
             )
         )
 
-    def has_task(self, *, task_id: str) -> bool:
-        return task_id in self._active_duels
-
-    async def start_judging_duels(self) -> None:
-        for i in range(self._config.duels.judge_workers):
-            self._judge_workers.append(asyncio.create_task(self._judge_next_duel(i)))
-
-    async def _judge_next_duel(self, worker_id: int) -> None:
-        while True:
-            try:
-                since_start = max(1.0, time.time() - self._duels_start)
-                current_judge_rate: float = self._duels_judged / since_start
-                if current_judge_rate > self._duels_per_second_limit:
-                    delay = self._duels_judged / self._duels_per_second_limit - since_start
-                    bt.logging.debug(
-                        f"Judge worker {worker_id}: {current_judge_rate} duels/second. Delay: {delay} seconds"
-                    )
-                    await asyncio.sleep(delay)
-
-                duel = await asyncio.wait_for(self._pending_judgement.get(), timeout=1.0)
-
-                judgement = await self._request_duel(duel)
-                self._duels_judged += 1
-
-                if judgement is None:
-                    bt.logging.warning(f"[{duel.left.uid}] vs [{duel.right.uid}] duel failed (validator fault)")
-                else:
-                    await self._process_duel_results(duel=duel, judgement=judgement)
-
-                self._pending_judgement.task_done()
-            except TimeoutError:
-                continue
-            except Exception as e:
-                bt.logging.error(f"Judge worker {worker_id} failed with: {e}")
-                self._pending_judgement.task_done()
-
-    async def _request_duel(self, duel: Duel) -> JudgeResponse | None:
-        if duel.left.results is None or duel.right.results is None:  # pragma: no cover
-            bt.logging.error(
-                f"[{duel.left.uid}] and [{duel.right.uid}] duel undefined behaviour, "
-                f"no results when results are expected"
-            )
-            return None
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                start_time = time.time()
-                endpoint = self._config.duels.judge_endpoint
-                form_data = aiohttp.FormData()
-                form_data.add_field("prompt", duel.task.prompt)
-                form_data.add_field(
-                    "preview1", duel.left.results.view, filename="preview1.png", content_type="image/png"
-                )
-                form_data.add_field(
-                    "preview2", duel.right.results.view, filename="preview2.png", content_type="image/png"
-                )
-                async with session.post(
-                    endpoint,
-                    data=form_data,
-                ) as response:
-                    if response.status == 200:
-                        judgement = JudgeResponse.model_validate(await response.json())
-                        bt.logging.debug(
-                            f"[{duel.left.uid}] and [{duel.right.uid}] duel evaluation finished "
-                            f"in {time.time() - start_time:.4f} seconds. "
-                            f"Result: {judgement.winner}. Prompt: {duel.task.prompt[:100]}"
-                        )
-                        return judgement
-                    else:
-                        bt.logging.error(
-                            f"Duel evaluation failed: "
-                            f"[{response.status}] {response.reason}. Prompt: {duel.task.prompt[:100]}"
-                        )
-            except aiohttp.ClientConnectorError:
-                bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {endpoint}.")
-            except TimeoutError:
-                bt.logging.error(f"The request to the endpoint timed out: {endpoint}")
-            except aiohttp.ClientError as e:
-                bt.logging.error(f"An unexpected client error occurred: {e} ({endpoint})")
-            except Exception as e:
-                bt.logging.error(f"An unexpected error occurred: {e} ({endpoint})")
-
-    async def _publish_results(self, results: dict[str, Any], preview1: bytes | None, preview2: bytes | None) -> None:
+    async def _publish_results(
+        self, left_uid: int, right_uid: int, results: dict[str, Any], preview1: bytes | None, preview2: bytes | None
+    ) -> None:
         async with aiohttp.ClientSession() as session:
             try:
                 endpoint = self._config.duels.duel_saver_endpoint
@@ -463,6 +391,10 @@ class DuelsTaskStorage(BaseTaskStorage):
                     data=form_data,
                 ) as response:
                     response.raise_for_status()
+                bt.logging.debug(
+                    f"[{left_uid}] vs [{right_uid}] duel published. Duel ID: {results['timestamp_nonce']} "
+                    f"({results['prompt'][:100]})"
+                )
             except aiohttp.ClientConnectorError:
                 bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {endpoint}.")
             except TimeoutError:

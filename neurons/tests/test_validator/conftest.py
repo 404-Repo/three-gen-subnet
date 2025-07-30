@@ -36,14 +36,13 @@ from validator.validator import Validator
 
 from tests.test_validator.subtensor_mocks import METAGRAPH_INFO, NEURONS, WALLETS
 
-
 FROZEN_TIME = datetime(year=2025, month=1, day=1)
 TASK_THROTTLE_PERIOD = 20
 TASK_COOLDOWN = 60
 TASK_COOLDOWN_PENALTY = 120
 COOLDOWN_VIOLATION_PENALTY = 30
 COOLDOWN_VIOLATIONS_THRESHOLD = 10
-with Path("tests/resources/robocop with hammer in one hand.spz").open("rb") as f:
+with Path("tests/resources/robocop with hammer in one hand.spz").resolve().open("rb") as f:
     data = f.read()
 MINER_RESULT_FULL = str(pybase64.b64encode(pyspz.decompress(data, include_normals=False)).decode(encoding="utf-8"))
 MINER_RESULT = "dummy"
@@ -171,10 +170,11 @@ def config(
             "--task.organic.assigned_miners_count",
             f"{ASSIGNED_MINERS_COUNT}",
             "--task.gateway.enabled",
+            "--duels.enabled",
             "--duels.start_delay",
             f"{DUELS_START_DELAY}",
             "--duels.judge_endpoint",
-            judge_server.url_for("/api/duel/"),
+            judge_server.url_for("/v1/"),
             "--duels.duel_saver_endpoint",
             duel_save_server.url_for("/api/save_duel/"),
         ],
@@ -202,8 +202,17 @@ def reset_validation_server(validation_server: HTTPServer) -> HTTPServer:
 
 @pytest.fixture(scope="function")
 def judge_server(make_httpserver: HTTPServer) -> HTTPServer:
-    make_httpserver.expect_request("/api/duel/", method="POST").respond_with_json(
-        {"winner": 1, "explanation": "mock explanation"}
+    make_httpserver.expect_request("/v1/chat/completions", method="POST").respond_with_json(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "content": '{"issues": "issues", "worst": 2}',
+                    },
+                }
+            ]
+        }
     )
     return make_httpserver
 

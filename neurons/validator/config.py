@@ -311,7 +311,7 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         "--duels.judge_workers",
         type=int,
         help="Concurrent tasks to judge duels",
-        default=3,
+        default=8,
     )
     parser.add_argument(
         "--duels.duels_per_minute",
@@ -325,6 +325,12 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         help="Specifies the URL of the endpoint responsible for judging the duel. "
         "This endpoint should handle the / POST route.",
         default="http://127.0.0.1:8095/api/duel/",
+    )
+    parser.add_argument(
+        "--duels.judge_api_key",
+        type=str,
+        help="Judge service API-Key",
+        default="",
     )
     parser.add_argument(
         "--duels.duel_saver_endpoint",

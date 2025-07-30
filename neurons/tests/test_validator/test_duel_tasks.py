@@ -1,17 +1,23 @@
 import asyncio
 import json
+from datetime import timedelta
 
 from pytest_httpserver import HTTPServer
 
 import pytest
 import time_machine
-from asyncpg.pgproto.pgproto import timedelta
-from pytest import MonkeyPatch
 
 from tests.test_validator.conftest import FROZEN_TIME, create_pull_task, create_submit_result
 from tests.test_validator.subtensor_mocks import WALLETS
 from validator.duels.duels_task_storage import GARBAGE_COLLECTION_CYCLE
 from validator.validator import Validator
+
+
+async def pull_and_submit(validator: Validator, miner_uid: int) -> None:
+    pull = await validator.pull_task(create_pull_task(miner_uid))
+    assert pull.task is not None
+    synapse = create_submit_result(miner_uid, pull.task)
+    await validator.submit_results(synapse)
 
 
 async def mark_miners_as_active(validator: Validator, miners_uids: list[int]) -> None:
@@ -20,16 +26,7 @@ async def mark_miners_as_active(validator: Validator, miners_uids: list[int]) ->
 
     with time_machine.travel(one_task_before, tick=False):
         for miner_id in miners_uids:
-            pull = await validator.pull_task(create_pull_task(miner_id))
-            assert pull.task is not None
-            await validator.submit_results(create_submit_result(miner_id, pull.task))
-
-
-async def pull_and_submit(validator: Validator, miner_uid: int) -> None:
-    pull = await validator.pull_task(create_pull_task(miner_uid))
-    assert pull.task is not None
-    synapse = create_submit_result(miner_uid, pull.task)
-    await validator.submit_results(synapse)
+            await pull_and_submit(validator, miner_id)
 
 
 async def pull_and_submit_empty_results(validator: Validator, miner_uid: int) -> None:
@@ -49,7 +46,6 @@ class TestDuelTasks:
         reset_validation_server: HTTPServer,
         validator: Validator,
         duel_save_server: HTTPServer,
-        monkeypatch: MonkeyPatch,
     ) -> None:
         # Notes:
         #   - before the duel starts, miners should pull a task to mark themselves as active.
@@ -87,20 +83,22 @@ class TestDuelTasks:
             await asyncio.sleep(0.1)  # sleep to switch to the taskmanager submit
 
             assert len(validator.task_manager._duel_task_storage._active_duels) == 0
-            assert validator.task_manager._duel_task_storage._pending_judgement.qsize() == 1
+            assert validator.task_manager._duel_task_storage._pending_judgement_queue.qsize() == 1
 
             await validator.task_manager._duel_task_storage.start_judging_duels()
             await asyncio.sleep(0.1)  # sleep to switch to the judge runner
 
+            assert validator.task_manager._duel_task_storage._pending_judgement_queue.qsize() == 0
             assert len(validator.task_manager._duel_task_storage._active_duels) == 0
             await asyncio.sleep(0.1)  # sleep to switch to the duel publication
 
             duel_save_server.check_assertions()
             expected_duel_result = {
+                "finish_time": 0,
                 "timestamp_nonce": 1735691400,
                 "prompt": "Monkey",
                 "winner": 1,
-                "explanation": "mock explanation",
+                "explanation": "issues",
                 "left": {
                     "hotkey": WALLETS[174].hotkey.ss58_address,
                     "coldkey": WALLETS[174].coldkey.ss58_address,
@@ -122,8 +120,12 @@ class TestDuelTasks:
                     "trueskill_after": 20.60621630152532,
                 },
             }
-            saved_results = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
-            assert json.loads(saved_results.form["results"]) == expected_duel_result
+            publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
+            saved_results = json.loads(publish_request.form["results"])
+            saved_results["finish_time"] = 0
+            assert saved_results == expected_duel_result
+
+            validator.task_manager._duel_task_storage.stop_judging_duels()
 
     @pytest.mark.asyncio
     async def test_one_miner_failed(
@@ -132,7 +134,6 @@ class TestDuelTasks:
         reset_validation_server: HTTPServer,
         validator: Validator,
         duel_save_server: HTTPServer,
-        monkeypatch: MonkeyPatch,
     ) -> None:
         await mark_miners_as_active(validator, miners_uids=[170, 174])
 
@@ -148,12 +149,13 @@ class TestDuelTasks:
             await asyncio.sleep(0.1)  # sleep to switch to the taskmanager submit
 
             assert len(validator.task_manager._duel_task_storage._active_duels) == 0
-            assert validator.task_manager._duel_task_storage._pending_judgement.qsize() == 0
+            assert validator.task_manager._duel_task_storage._pending_judgement_queue.qsize() == 0
 
             await asyncio.sleep(0.1)  # sleep to switch to the duel publication
 
             duel_save_server.check_assertions()
             expected_duel_result = {
+                "finish_time": 0,
                 "timestamp_nonce": 1735691400,
                 "prompt": "Monkey",
                 "winner": 1,
@@ -179,8 +181,10 @@ class TestDuelTasks:
                     "trueskill_after": 20.60621630152532,
                 },
             }
-            saved_results = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
-            assert json.loads(saved_results.form["results"]) == expected_duel_result
+            publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
+            saved_results = json.loads(publish_request.form["results"])
+            saved_results["finish_time"] = 0
+            assert saved_results == expected_duel_result
 
     @pytest.mark.asyncio
     async def test_both_miner_failed(
@@ -189,7 +193,6 @@ class TestDuelTasks:
         reset_validation_server: HTTPServer,
         validator: Validator,
         duel_save_server: HTTPServer,
-        monkeypatch: MonkeyPatch,
     ) -> None:
         await mark_miners_as_active(validator, miners_uids=[170, 174])
 
@@ -203,12 +206,13 @@ class TestDuelTasks:
             await asyncio.sleep(0.1)  # sleep to switch to the taskmanager submit
 
             assert len(validator.task_manager._duel_task_storage._active_duels) == 0
-            assert validator.task_manager._duel_task_storage._pending_judgement.qsize() == 0
+            assert validator.task_manager._duel_task_storage._pending_judgement_queue.qsize() == 0
 
             await asyncio.sleep(0.1)  # sleep to switch to the duel publication
 
             duel_save_server.check_assertions()
             expected_duel_result = {
+                "finish_time": 0,
                 "timestamp_nonce": 1735691400,
                 "prompt": "Monkey",
                 "winner": 0,
@@ -234,8 +238,10 @@ class TestDuelTasks:
                     "trueskill_after": 25.0,
                 },
             }
-            saved_results = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
-            assert json.loads(saved_results.form["results"]) == expected_duel_result
+            publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
+            saved_results = json.loads(publish_request.form["results"])
+            saved_results["finish_time"] = 0
+            assert saved_results == expected_duel_result
 
     @pytest.mark.asyncio
     async def test_no_duel_task(
@@ -244,7 +250,6 @@ class TestDuelTasks:
         reset_validation_server: HTTPServer,
         validator: Validator,
         duel_save_server: HTTPServer,
-        monkeypatch: MonkeyPatch,
     ) -> None:
         duel_start = FROZEN_TIME + timedelta(seconds=validator.config.duels.start_delay)
         with time_machine.travel(duel_start, tick=True):
@@ -259,7 +264,6 @@ class TestDuelTasks:
         reset_validation_server: HTTPServer,
         validator: Validator,
         duel_save_server: HTTPServer,
-        monkeypatch: MonkeyPatch,
     ) -> None:
         await mark_miners_as_active(validator, miners_uids=[170, 174])
 
@@ -268,6 +272,9 @@ class TestDuelTasks:
             await pull_and_submit(validator, miner_uid=170)
             await asyncio.sleep(0.1)  # sleep to switch to the taskmanager submit
 
+            assert len(validator.task_manager._duel_task_storage._pending_duels) == 1
+            assert len(validator.task_manager._duel_task_storage._pending_duels_by_miner[170]) == 0
+            assert len(validator.task_manager._duel_task_storage._pending_duels_by_miner[174]) == 1
             assert len(validator.task_manager._duel_task_storage._active_duels) == 1
 
         # Miner 174 never finishes his task
@@ -277,4 +284,8 @@ class TestDuelTasks:
         )
         with time_machine.travel(duel_recycle_time, tick=True):
             await validator.task_manager._duel_task_storage._collect_garbage()
+
+            assert len(validator.task_manager._duel_task_storage._pending_duels) == 0
+            assert len(validator.task_manager._duel_task_storage._pending_duels_by_miner[170]) == 0
+            assert len(validator.task_manager._duel_task_storage._pending_duels_by_miner[174]) == 0
             assert len(validator.task_manager._duel_task_storage._active_duels) == 0

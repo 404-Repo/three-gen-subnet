@@ -20,9 +20,10 @@ from pyinstrument import Profiler
 from pyinstrument.renderers import JSONRenderer
 from rich import print
 from serve import decode_and_validate_txt
-from validator import ValidationResponse
 
 from benchmark.execution_tree_visualizer import ExecutionTreeVisualizer
+
+from engine.data_structures import ValidationResponse
 
 
 class BenchmarkValidationResult(BaseModel):
