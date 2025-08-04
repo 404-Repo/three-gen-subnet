@@ -1,0 +1,17 @@
+name: three-gen-vllm
+channels:
+  - defaults
+  - nvidia
+  - conda-forge
+  - pytorch
+
+dependencies:
+  - python=3.11
+  - pip
+  - cuda-toolkit=12.6
+  - gcc=12.4
+  - gxx=12.4
+  - ninja
+  - pip:
+      - torch==2.7.1
+      - vllm==0.10.0
