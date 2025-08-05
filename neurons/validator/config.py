@@ -311,13 +311,13 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         "--duels.judge_workers",
         type=int,
         help="Concurrent tasks to judge duels",
-        default=8,
+        default=2,
     )
     parser.add_argument(
         "--duels.duels_per_minute",
         type=int,
         help="Maximum requests per minute (enforced when using pay-per-request billing)",
-        default=60,
+        default=20,
     )
     parser.add_argument(
         "--duels.judge_endpoint",
@@ -330,7 +330,7 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         "--duels.judge_api_key",
         type=str,
         help="Judge service API-Key",
-        default="",
+        default="local",
     )
     parser.add_argument(
         "--duels.duel_saver_endpoint",
