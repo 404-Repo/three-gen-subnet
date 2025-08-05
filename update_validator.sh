@@ -24,12 +24,12 @@ source_script() {
 # Navigate to the neurons directory and source update script
 
 cd "$base_dir/neurons" || exit 1
-#source_script "update_env.sh"
+source_script "update_env.sh"
 
 # Navigate to the validation directory and source update script
 
 cd "../validation" || exit 1
-#source_script "update_env.sh"
+source_script "update_env.sh"
 
 # Return to the base directory
 cd ".." || exit 1
@@ -87,7 +87,7 @@ restart_with_retry() {
 }
 
 # Restart validation process up to 5 times
-#restart_with_retry "$VALIDATION_CONFIG" 5
+restart_with_retry "$VALIDATION_CONFIG" 5
 
 # Restart validator process
 pm2 restart "$VALIDATOR_CONFIG"
