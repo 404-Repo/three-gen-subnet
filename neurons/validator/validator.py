@@ -531,7 +531,7 @@ class Validator:
             synapse.validation_threshold = self.config.generation.quality_threshold
             synapse.throttle_period = self.config.generation.throttle_period
             bt.logging.debug(
-                f"[{miner.uid}] asked for a new task while having assigned task ({synapse.task.prompt[:100]}). )"
+                f"[{miner.uid}] asked for a new task while having assigned task ({synapse.task.prompt[:100]})."
             )
             return True
         return False
