@@ -102,22 +102,14 @@ class TestDuelTasks:
                 "left": {
                     "hotkey": WALLETS[174].hotkey.ss58_address,
                     "coldkey": WALLETS[174].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1616.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1668.95123159519,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 29.393783698474685,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1584.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1331.04876840481,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 20.60621630152532,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
@@ -163,22 +155,14 @@ class TestDuelTasks:
                 "left": {
                     "hotkey": WALLETS[174].hotkey.ss58_address,
                     "coldkey": WALLETS[174].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1616.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1668.95123159519,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 29.393783698474685,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1584.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1331.04876840481,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 20.60621630152532,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
@@ -220,22 +204,14 @@ class TestDuelTasks:
                 "left": {
                     "hotkey": WALLETS[174].hotkey.ss58_address,
                     "coldkey": WALLETS[174].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1600.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1500.0,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 25.0,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
-                    "elo_before": 1600.0,
-                    "elo_after": 1600.0,
                     "glicko_before": 1500.0,
                     "glicko_after": 1500.0,
-                    "trueskill_before": 25.0,
-                    "trueskill_after": 25.0,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]

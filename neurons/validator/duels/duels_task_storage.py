@@ -329,12 +329,8 @@ class DuelsTaskStorage(BaseTaskStorage):
             return {
                 "hotkey": results.hotkey,
                 "coldkey": results.coldkey,
-                "elo_before": rank_before.elo.rank,
-                "elo_after": rank_after.elo.rank,
                 "glicko_before": rank_before.glicko.rank,
                 "glicko_after": rank_after.glicko.rank,
-                "trueskill_before": rank_before.trueskill.mu,
-                "trueskill_after": rank_after.trueskill.mu,
             }
 
         if judgement.worst == 1:
@@ -349,11 +345,11 @@ class DuelsTaskStorage(BaseTaskStorage):
         update_ranks(duel.left.results.rank, duel.right.results.rank, winner=winner)
 
         bt.logging.debug(
-            f"[{duel.left.uid}] rank: {left_rank_before.elo.rank} -> {duel.left.results.rank.elo.rank} "
+            f"[{duel.left.uid}] rank: {left_rank_before.glicko.rank} -> {duel.left.results.rank.glicko.rank} "
             f"({duel.task.prompt[:100]})"
         )
         bt.logging.debug(
-            f"[{duel.right.uid}] rank: {right_rank_before.elo.rank} -> {duel.right.results.rank.elo.rank} "
+            f"[{duel.right.uid}] rank: {right_rank_before.glicko.rank} -> {duel.right.results.rank.glicko.rank} "
             f"({duel.task.prompt[:100]})"
         )
 
