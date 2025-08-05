@@ -17,7 +17,7 @@ def test_quality_metric():
     gs_data = gs_data.send_to_device(device)
 
     renderer = Renderer()
-    images = renderer.render_gs(gs_data, 16, 224, 224) #, cam_rad=3.0, ref_bbox_size=1.0)
+    images = renderer.render_gs(gs_data, 16, 224, 224)  # , cam_rad=3.0, ref_bbox_size=1.0)
 
     quality_metric = ImageQualityMetric()
     quality_metric.load_models()

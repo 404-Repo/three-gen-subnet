@@ -1,7 +1,5 @@
 import gc
-from pathlib import Path
 
-import numpy as np
 import torch
 from loguru import logger
 
@@ -19,20 +17,18 @@ class ImageQualityMetric:
         self._verbose = verbose
 
     def load_models(
-        self, 
-        repo_id: str = "404-Gen/validation",
-        quality_scorer_model: str = "quality_scorer.pth"
-        ) -> None:
+        self, repo_id: str = "404-Gen/validation", quality_scorer_model: str = "quality_scorer.pth"
+    ) -> None:
         """Function for loading DinoNet quality model
-        
+
         Args:
             repo_id: Hugging Face repository ID
             quality_scorer_model: Name of the quality scorer model
         """
-            
+
         # Load DinoNet quality classifier
         self._quality_classifier_model.load_model(repo_id, quality_scorer_model)
-        
+
         if self._verbose:
             logger.info("DinoNet quality model loaded successfully")
 
@@ -48,28 +44,28 @@ class ImageQualityMetric:
         self, images: list[torch.Tensor], mean_op: str = "mean", use_filter_outliers: bool = False
     ) -> float:
         """Function for computing quality score using DinoNet
-        
+
         Args:
             images: List of torch tensors representing images
             mean_op: Type of mean operation to apply
             use_filter_outliers: Whether to filter outliers before computing mean
-            
+
         Returns:
             float: Combined quality score for all images
         """
 
         if self._quality_classifier_model._model is None:
             raise RuntimeError("DinoNet quality model has not been loaded!")
-        
+
         # Get DinoNet quality scores for all images
         quality_scores = self._quality_classifier_model.score(list(images))
         final_scores = torch.tensor(quality_scores)
-        
+
         if use_filter_outliers:
             final_scores = filter_outliers(final_scores)
-        
+
         final_score = compute_mean(final_scores, mean_op)
-        
+
         if self._verbose:
             logger.debug(f"DinoNet quality scores: {quality_scores}")
             logger.debug(f"Final combined score: {final_score}")

@@ -62,7 +62,7 @@ class SimilarityMetrics:
                 for img in images
             ]
 
-            x1 = torch.cat(proc, 0)              # pair (i)
+            x1 = torch.cat(proc, 0)  # pair (i)
             x2 = torch.cat(proc[1:] + proc[:1], 0)  # pair (i+1)
 
             lpips_scores_torch = self._lpips_metric(x1, x2).squeeze().detach().cpu()

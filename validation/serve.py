@@ -1,7 +1,9 @@
 import argparse
+import asyncio
 import gc
 import io
 from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from time import time
 
@@ -43,6 +45,14 @@ def get_args() -> tuple[argparse.Namespace, list[str]]:
 app = FastAPI()
 args, _ = get_args()
 
+# Set max_workers=1 to serialize GPU requests and prevent inefficient parallel execution.
+# GPU workloads don't parallelize well - multiple concurrent requests compete for the same
+# GPU resources, causing each request to take longer (2 requests = 2x total time).
+# By queuing requests sequentially, we ensure the first request completes as quickly as
+# possible. This is especially important for miners with fixed cooldowns, as serialized
+# processing spreads requests evenly over time rather than bunching completions together.
+executor = ThreadPoolExecutor(max_workers=1)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
@@ -80,7 +90,7 @@ def _decode_assets(request: ValidationRequest | RenderRequest) -> bytes:
     return assets
 
 
-def _prepare_input_data(
+def prepare_input_data(
     assets: bytes,
     renderer: Renderer,
     ply_data_loader: PlyLoader,
@@ -205,7 +215,15 @@ def decode_and_validate_txt(
 ) -> tuple[ValidationResponse, TimeStat]:
     t1 = time()
     assets = _decode_assets(request)
-    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator, render_views_number=16, render_img_width=518, render_img_height=518)
+    gs_data, gs_rendered_images, time_stat = prepare_input_data(
+        assets,
+        renderer,
+        ply_data_loader,
+        validator,
+        render_views_number=16,
+        render_img_width=518,
+        render_img_height=518,
+    )
 
     if gs_data is not None and request.prompt is not None:
         t2 = time()
@@ -231,11 +249,14 @@ async def validate_txt_to_3d_ply(request: ValidationRequest) -> ValidationRespon
     Validates the input prompt and PLY data to produce scores.
     """
     try:
-        response, time_stat = decode_and_validate_txt(
-            request=request,
-            ply_data_loader=app.state.ply_data_loader,
-            renderer=app.state.renderer,
-            validator=app.state.validator,
+        loop = asyncio.get_running_loop()
+        response, time_stat = await loop.run_in_executor(
+            executor,
+            decode_and_validate_txt,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.validator,
         )
     except Exception as e:
         logger.exception(e)
@@ -246,7 +267,7 @@ async def validate_txt_to_3d_ply(request: ValidationRequest) -> ValidationRespon
     return response
 
 
-def _decode_and_validate_img(
+def decode_and_validate_img(
     request: ValidationRequest,
     ply_data_loader: PlyLoader,
     renderer: Renderer,
@@ -254,7 +275,7 @@ def _decode_and_validate_img(
 ) -> tuple[ValidationResponse, TimeStat]:
     t1 = time()
     assets = _decode_assets(request)
-    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator)
+    gs_data, gs_rendered_images, time_stat = prepare_input_data(assets, renderer, ply_data_loader, validator)
 
     if gs_data is not None and request.prompt_image:
         t2 = time()
@@ -283,11 +304,14 @@ async def validate_img_to_3d_ply(request: ValidationRequest) -> ValidationRespon
     Validates the input prompt and PLY data to produce scores.
     """
     try:
-        response, time_stat = _decode_and_validate_img(
-            request=request,
-            ply_data_loader=app.state.ply_data_loader,
-            renderer=app.state.renderer,
-            validator=app.state.validator,
+        loop = asyncio.get_running_loop()
+        response, time_stat = await loop.run_in_executor(
+            executor,
+            decode_and_validate_img,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.validator,
         )
     except Exception as e:
         logger.exception(e)
@@ -325,15 +349,18 @@ def combine_images4(
 async def render_duel_view(request: RenderRequest) -> StreamingResponse:
     try:
         assets = _decode_assets(request)
-        gs_data, gs_rendered_images, _ = _prepare_input_data(
+        loop = asyncio.get_running_loop()
+        gs_data, gs_rendered_images, _ = await loop.run_in_executor(
+            executor,
+            prepare_input_data,
             assets,
             app.state.renderer,
             app.state.ply_data_loader,
             app.state.validator,
-            render_views_number=4,
-            render_img_width=512,
-            render_img_height=512,
-            render_theta_angles=[20.0, 120.0, 220.0, 310.0],
+            4,
+            512,
+            512,
+            [20.0, 120.0, 220.0, 310.0],
         )
         if not gs_data:
             raise RuntimeError("Invalid splats data")

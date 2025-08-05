@@ -1,14 +1,12 @@
 import gc
-from typing import Any
-import warnings
 
 import numpy as np
 import torch
 import torch.nn as nn
-from loguru import logger
-from torchvision import transforms
-from PIL import Image
 from huggingface_hub import hf_hub_download
+from loguru import logger
+from PIL import Image
+from torchvision import transforms
 
 
 class QualityClassifierModel:
@@ -28,7 +26,7 @@ class QualityClassifierModel:
 
     def load_model(self, repo_id: str, quality_scorer_model: str) -> None:
         """Function for loading DinoNet model
-        
+
         Args:
             repo_id: Hugging Face repository ID
             quality_scorer_model: Name of the quality scorer model
@@ -41,22 +39,22 @@ class QualityClassifierModel:
         backbone = torch.hub.load("facebookresearch/dinov2", self._model_name, pretrained=True)
         model = DINOv2Net(backbone, emb_dim=self._emb_dim)
         self._model_path = hf_hub_download(repo_id=repo_id, filename=quality_scorer_model)
-        self._model_state = torch.load(self._model_path, map_location=self._device, weights_only=True)        
-        
+        self._model_state = torch.load(self._model_path, map_location=self._device, weights_only=True)
+
         # Load full model weights
         model.load_state_dict(self._model_state)
         model.eval().to(self._device)
         self._model = model
-        
+
         # Update transform with correct image size
         self._transform = self._get_image_transform(self._image_size)
-        
+
         logger.info(f"DinoNet quality scorer loaded to device {self._device}")
         self._model.eval()
 
     def unload_model(self) -> None:
         """Function for unloading model"""
-        
+
         if self._model is not None:
             del self._model
             self._model = None
@@ -66,68 +64,70 @@ class QualityClassifierModel:
 
     def score(self, images: list[torch.Tensor]) -> np.ndarray:
         """Function for generation of quality scores for a batch of images
-        
+
         Args:
             images: List of torch tensors representing images
-            
+
         Returns:
             np.ndarray: Quality scores for each image (raw sigmoid outputs)
         """
-        
+
         if self._model is None:
             raise RuntimeError("The model has not been loaded!")
 
         processed_images = self.preprocess_inputs(images)
         scores = []
-        
+
         with torch.no_grad():
             for img_tensor in processed_images:
                 # Add batch dimension and move to device
                 x = img_tensor.unsqueeze(0).to(self._device)
-                
+
                 # Get embedding and score from DinoNet
                 _, score_logit = self._model(x)
-                
-                # Return raw sigmoid output 
+
+                # Return raw sigmoid output
                 score = torch.sigmoid(score_logit).item()
                 scores.append(score)
-        
+
         return np.array(scores)
 
     def preprocess_inputs(self, images: list[torch.Tensor]) -> list[torch.Tensor]:
         """Preprocess images for input to the DinoNet model
-        
+
         Args:
             images: List of torch tensors in format (H, W, C) with values 0-255
-            
+
         Returns:
             List of preprocessed torch tensors ready for DinoNet
         """
         processed_images = []
-        
+
         for img_tensor in images:
             # Convert tensor to PIL Image for transforms
             # Input format: (H, W, C) with values 0-255
             img_array = img_tensor.cpu().numpy().astype(np.uint8)
             pil_image = Image.fromarray(img_array)
-            
+
             # Apply transforms (resize, crop, normalize)
             processed_tensor = self._transform(pil_image)
             processed_images.append(processed_tensor)
-        
+
         return processed_images
 
     def _get_image_transform(self, image_size=518):
         """Get standard image transforms for DINOv2 (matching training configuration)"""
-        return transforms.Compose([
-            transforms.Resize(image_size, antialias=True),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],  # ImageNet
-                std=[0.229, 0.224, 0.225],
-            ),
-        ])
+        return transforms.Compose(
+            [
+                transforms.Resize(image_size, antialias=True),
+                transforms.CenterCrop(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],  # ImageNet
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
 
 
 class DINOv2Net(nn.Module):
@@ -139,11 +139,11 @@ class DINOv2Net(nn.Module):
 
     def __init__(self, backbone, emb_dim: int = 256):
         super().__init__()
-        self.backbone = backbone          # Vision transformer from DINOv2
-        feat_dim = backbone.embed_dim     # 384, 768, 1024 … depending on variant
+        self.backbone = backbone  # Vision transformer from DINOv2
+        feat_dim = backbone.embed_dim  # 384, 768, 1024 … depending on variant
 
         # Two small heads
-        self.emb_head   = nn.Linear(feat_dim, emb_dim)
+        self.emb_head = nn.Linear(feat_dim, emb_dim)
         self.score_head = nn.Linear(feat_dim, 1)
 
     def forward(self, x):
@@ -152,9 +152,7 @@ class DINOv2Net(nn.Module):
           • normalized embedding   (B, emb_dim)
           • raw score logits       (B, 1)
         """
-        feats = self.backbone(x)                  # (B, feat_dim)
-        emb   = nn.functional.normalize(
-            self.emb_head(feats), p=2, dim=-1
-        )                                         # L2-normalize
-        score = self.score_head(feats).squeeze(1) # (B,)
+        feats = self.backbone(x)  # (B, feat_dim)
+        emb = nn.functional.normalize(self.emb_head(feats), p=2, dim=-1)  # L2-normalize
+        score = self.score_head(feats).squeeze(1)  # (B,)
         return emb, score
