@@ -331,6 +331,8 @@ class DuelsTaskStorage(BaseTaskStorage):
                 "coldkey": results.coldkey,
                 "glicko_before": rank_before.glicko.rank,
                 "glicko_after": rank_after.glicko.rank,
+                "glicko_rd": rank_after.glicko.rd,
+                "glicko_vol": rank_after.glicko.vol,
             }
 
         if judgement.worst == 1:

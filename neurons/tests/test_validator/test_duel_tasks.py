@@ -104,12 +104,16 @@ class TestDuelTasks:
                     "coldkey": WALLETS[174].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1668.95123159519,
+                    "glicko_rd": 296.19808829689504,
+                    "glicko_vol": 0.2,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1331.04876840481,
+                    "glicko_rd": 296.19808829689504,
+                    "glicko_vol": 0.2,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
@@ -157,12 +161,16 @@ class TestDuelTasks:
                     "coldkey": WALLETS[174].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1668.95123159519,
+                    "glicko_rd": 296.19808829689504,
+                    "glicko_vol": 0.2,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1331.04876840481,
+                    "glicko_rd": 296.19808829689504,
+                    "glicko_vol": 0.2,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
@@ -206,12 +214,16 @@ class TestDuelTasks:
                     "coldkey": WALLETS[174].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1500.0,
+                    "glicko_rd": 296.17900101404155,
+                    "glicko_vol": 0.2,
                 },
                 "right": {
                     "hotkey": WALLETS[170].hotkey.ss58_address,
                     "coldkey": WALLETS[170].coldkey.ss58_address,
                     "glicko_before": 1500.0,
                     "glicko_after": 1500.0,
+                    "glicko_rd": 296.17900101404155,
+                    "glicko_vol": 0.2,
                 },
             }
             publish_request = [req for req, res in duel_save_server.log if req.path == "/api/save_duel/"][0]
