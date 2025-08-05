@@ -3,7 +3,7 @@
 # Script to run poe run-check
 
 # Ensure we're in the project root directory
-cd "$(dirname "$0")/.." || exit
+cd "$(dirname "$0")" || exit
 
 # Define color codes for output
 GREEN='\033[0;32m'

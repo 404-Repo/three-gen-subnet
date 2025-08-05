@@ -1,4 +1,5 @@
 import gc
+from typing import Any
 
 import numpy as np
 import torch
@@ -32,11 +33,13 @@ class QualityClassifierModel:
             quality_scorer_model: Name of the quality scorer model
         """
         # Use default DinoNet parameters
-        assert repo_id is not None, "Repo ID is required"
-        assert quality_scorer_model is not None, "Quality scorer model is required"
+        if repo_id is None:
+            raise ValueError("Repo ID is required")
+        if quality_scorer_model is None:
+            raise ValueError("Quality scorer model is required")
 
         # Load model weights
-        backbone = torch.hub.load("facebookresearch/dinov2", self._model_name, pretrained=True)
+        backbone = torch.hub.load("facebookresearch/dinov2", self._model_name, pretrained=True)  # nosec B614
         model = DINOv2Net(backbone, emb_dim=self._emb_dim)
         self._model_path = hf_hub_download(repo_id=repo_id, filename=quality_scorer_model)
         self._model_state = torch.load(self._model_path, map_location=self._device, weights_only=True)
@@ -115,7 +118,7 @@ class QualityClassifierModel:
 
         return processed_images
 
-    def _get_image_transform(self, image_size=518):
+    def _get_image_transform(self, image_size: int = 518) -> transforms.Compose:
         """Get standard image transforms for DINOv2 (matching training configuration)"""
         return transforms.Compose(
             [
@@ -137,7 +140,7 @@ class DINOv2Net(nn.Module):
       • a scoring head     (single logit for BCEWithLogitsLoss)
     """
 
-    def __init__(self, backbone, emb_dim: int = 256):
+    def __init__(self, backbone: Any, emb_dim: int = 256) -> None:
         super().__init__()
         self.backbone = backbone  # Vision transformer from DINOv2
         feat_dim = backbone.embed_dim  # 384, 768, 1024 … depending on variant
@@ -146,7 +149,7 @@ class DINOv2Net(nn.Module):
         self.emb_head = nn.Linear(feat_dim, emb_dim)
         self.score_head = nn.Linear(feat_dim, 1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
           • normalized embedding   (B, emb_dim)

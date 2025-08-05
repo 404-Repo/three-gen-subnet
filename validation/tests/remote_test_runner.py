@@ -5,17 +5,16 @@ import sys
 import os
 from pathlib import Path
 
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir)
-sys.path.insert(0, parentdir + "/validation")
+CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+sys.path.insert(0, PARENT_DIR)
+sys.path.insert(0, PARENT_DIR + "/validation")
 
 import requests
 from loguru import logger
 from engine.data_structures import ValidationRequest
 
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 current_file_path = Path(__file__).resolve()
 test_data_folder = current_file_path.parent / "resources"
 DEFAULT_FILEPATH = test_data_folder / "hamburger.ply"
