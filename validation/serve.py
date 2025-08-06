@@ -1,7 +1,9 @@
 import argparse
+import asyncio
 import gc
 import io
 from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from time import time
 from typing import cast
@@ -29,7 +31,7 @@ from loguru import logger
 from PIL import Image
 
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -43,6 +45,14 @@ def get_args() -> tuple[argparse.Namespace, list[str]]:
 
 app = FastAPI()
 args, _ = get_args()
+
+# Set max_workers=1 to serialize GPU requests and prevent inefficient parallel execution.
+# GPU workloads don't parallelize well - multiple concurrent requests compete for the same
+# GPU resources, causing each request to take longer (2 requests = 2x total time).
+# By queuing requests sequentially, we ensure the first request completes as quickly as
+# possible. This is especially important for miners with fixed cooldowns, as serialized
+# processing spreads requests evenly over time rather than bunching completions together.
+executor = ThreadPoolExecutor(max_workers=1)
 
 
 @asynccontextmanager
@@ -243,12 +253,15 @@ async def validate_txt_to_3d_ply(request: RequestData) -> ResponseData:
 
     """
     try:
-        validation_result = decode_and_validate_txt(
-            request=request,
-            ply_data_loader=app.state.ply_data_loader,
-            renderer=app.state.renderer,
-            zstd_decompressor=app.state.zstd_decompressor,
-            validator=app.state.validator,
+        loop = asyncio.get_running_loop()
+        validation_result = await loop.run_in_executor(
+            executor,
+            decode_and_validate_txt,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.zstd_decompressor,
+            app.state.validator,
         )
         response = validation_result.response_data
     except Exception as e:
@@ -260,37 +273,48 @@ async def validate_txt_to_3d_ply(request: RequestData) -> ResponseData:
     return response
 
 
+def decode_and_validate_img(
+    request: RequestData,
+    ply_data_loader: PlyLoader,
+    renderer: Renderer,
+    validator: ValidationEngine,
+) -> ResponseData:
+    assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
+    gs_data, gs_rendered_images, _ = _prepare_input_data(
+        assets, app.state.renderer, app.state.ply_data_loader, app.state.validator
+    )
+    if gs_data and request.prompt_image:
+        image_data = pybase64.b64decode(request.prompt_image)
+        prompt_image = Image.open(io.BytesIO(image_data))
+        torch_prompt_image = torch.tensor(np.asarray(prompt_image))
+        validation_results = _validate_image_vs_image(torch_prompt_image, gs_rendered_images)
+        response = _finalize_results(
+            validation_results,
+            gs_data,
+            request.generate_preview,
+            request.preview_score_threshold,
+            app.state.renderer,
+        )
+    else:
+        response = ResponseData(score=0.0)
+    return response
+
+
 @app.post("/validate_img_to_3d_ply/", response_model=ResponseData)
 async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
     """
     Validates the input prompt and PLY data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
-
     """
     try:
-        assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
-        gs_data, gs_rendered_images, _ = _prepare_input_data(
-            assets, app.state.renderer, app.state.ply_data_loader, app.state.validator
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            executor,
+            decode_and_validate_img,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.validator,
         )
-        if gs_data and request.prompt_image:
-            image_data = pybase64.b64decode(request.prompt_image)
-            prompt_image = Image.open(io.BytesIO(image_data))
-            torch_prompt_image = torch.tensor(np.asarray(prompt_image))
-            validation_results = _validate_image_vs_image(torch_prompt_image, gs_rendered_images)
-            response = _finalize_results(
-                validation_results,
-                gs_data,
-                request.generate_preview,
-                request.preview_score_threshold,
-                app.state.renderer,
-            )
-        else:
-            response = ResponseData(score=0.0)
     except Exception as e:
         logger.exception(e)
         response = ResponseData(score=0.0)
