@@ -9,7 +9,7 @@ import pytest
 import time_machine
 from pytest_httpserver import HTTPServer
 
-from validator.duels.ranks import DuelRanks
+from validator.duels.ratings import DuelRatings
 from validator.gateway.gateway_api import GatewayApi
 from validator.gateway.http3_client.http3_client import Http3Client, Http3Response
 from validator.task_manager.task import (
@@ -47,7 +47,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that the task order is correct.
@@ -64,7 +64,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             with time_machine.travel(FROZEN_TIME, tick=False):
                 tasks: list[ValidatorTask] = []
@@ -119,7 +119,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         If a legacy task was selected by miner and gateway task was added, then
@@ -129,7 +129,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             with time_machine.travel(FROZEN_TIME, tick=False):
                 # Remove all gateway tasks.
@@ -196,7 +196,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task lifecycle is correct.
@@ -208,7 +208,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             now = time.time()
             with time_machine.travel(now, tick=True) as travel:
@@ -256,7 +256,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task can be assigned to second miner during send_result_timeout.
@@ -267,7 +267,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             now = time.time()
             with time_machine.travel(now, tick=True):
@@ -318,7 +318,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task can be assigned to second miner during send_result_timeout.
@@ -329,7 +329,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             # Remove all gateway tasks.
             validator.task_manager._organic_task_storage._gateway_task_queue.clear()
@@ -380,7 +380,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task count is limited by miner count.
@@ -390,7 +390,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             task_id: str | None = None
             # The same task should be assigned to the miners below.
@@ -417,7 +417,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task can be assigned to a strong miner if it was not assigned to any miner before.
@@ -426,7 +426,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             task_id: str | None = None
             # The same task should be assigned to the weak miners below.
@@ -469,7 +469,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that best result is selected from the results.
@@ -479,7 +479,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             scores: dict[str, float] = {}
             task: ValidatorTask | None = None
@@ -544,7 +544,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that best result is selected from the results.
@@ -554,7 +554,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             # Remove all gateway tasks.
             validator.task_manager._organic_task_storage._gateway_task_queue.clear()
@@ -654,7 +654,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that result is submitted if timeout occurs after first result.
@@ -664,7 +664,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             # Pull and submit the first task.
             reset_validation_server.clear()
@@ -704,7 +704,7 @@ class TestGatewayTasks:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Test that task is removed when timeout occurs
@@ -714,7 +714,7 @@ class TestGatewayTasks:
             config=config,
             subtensor=subtensor,
             task_manager=task_manager,
-            ranks=ranks,
+            ratings=ratings,
         ) as validator:
             await asyncio.sleep(task_manager._organic_task_storage._organic_task_expire_timeout + 0.2)
             _ = await validator.pull_task(create_pull_task(1))

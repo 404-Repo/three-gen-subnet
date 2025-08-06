@@ -13,7 +13,7 @@ import time_machine
 from common.protocol import Feedback, Task
 from pytest_httpserver import HTTPServer
 
-from validator.duels.ranks import DuelRanks
+from validator.duels.ratings import DuelRatings
 from validator.task_manager.task import AssignedMiner
 from validator.task_manager.task_manager import TaskManager
 from validator.validator import Validator
@@ -319,6 +319,8 @@ class TestSingleMinerRules:
         )
 
         # Verify initial state
+        default_reward_rating = 1500.0
+        assert validator.ratings.get_miner_reward_rating(1) == default_reward_rating
         assert validator.miners[1].fidelity_score == 1.0
         assert len(validator.miners[1].observations) == 0
 
@@ -343,7 +345,7 @@ class TestSingleMinerRules:
                 # If it is 5th submission then observations will be from 1, 2, 3, 4, 5 hour.
                 # Initial submission will be droped.
                 expected_observations = i + 1 if i < 4 else 5
-                expected_reward = expected_observations * current_fidelity
+                expected_reward = expected_observations * default_reward_rating
                 assert len(validator.miners[1].observations) == expected_observations
 
                 # Check reward
@@ -391,7 +393,7 @@ class TestSingleMinerRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Tests behavior when a miner submits a task with a uncompressed result.
@@ -403,7 +405,7 @@ class TestSingleMinerRules:
                 config=config,
                 subtensor=subtensor,
                 task_manager=task_manager,
-                ranks=ranks,
+                ratings=ratings,
             ) as validator:
                 _ = await validator.pull_task(create_pull_task(1))
                 assert validator.miners[1].assigned_task is not None
@@ -440,7 +442,7 @@ class TestSingleMinerRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         """
         Tests behavior when a miner submits a task with a pyspz compressed result.
@@ -452,7 +454,7 @@ class TestSingleMinerRules:
                 config=config,
                 subtensor=subtensor,
                 task_manager=task_manager,
-                ranks=ranks,
+                ratings=ratings,
             ) as validator:
                 _ = await validator.pull_task(create_pull_task(1))
                 assert validator.miners[1].assigned_task is not None

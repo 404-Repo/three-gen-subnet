@@ -13,7 +13,7 @@ from common.protocol import SubmitResults
 from validator.config import config
 from validator.duels.data_structures import Duel, MinerInDuel, MinerResults
 from validator.duels.judge_service import JudgeResponse, JudgeService
-from validator.duels.ranks import DuelRanks, Rank, duel_ranks, update_ranks
+from validator.duels.ratings import DuelRatings, Rating, duel_ratings, update_ratings
 from validator.task_manager.task import DuelTask
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
 from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage, synthetic_task_storage
@@ -35,7 +35,7 @@ class DuelsTaskStorage(BaseTaskStorage):
         wallet: bt.wallet | None,
         validation_service: ValidationService,
         synthetic_task_storage: SyntheticTaskStorage,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
     ) -> None:
         super().__init__(config=config, wallet=wallet)
 
@@ -45,8 +45,8 @@ class DuelsTaskStorage(BaseTaskStorage):
         self._validation_service = validation_service
         """Reference to the validation service. Used to request rendering results view for the judge."""
 
-        self._ranks = ranks
-        """Reference to the ranks that manages all miner ranks."""
+        self._ratings = ratings
+        """Reference to the ratings structure that manages all miner ratings."""
 
         self._duels_start: float = time.time() + self._config.duels.start_delay
         """Time to start duels, necessary delay to fill `_last_pull_time`."""
@@ -212,7 +212,7 @@ class DuelsTaskStorage(BaseTaskStorage):
             score=validation_res.score,
             coldkey=axon.coldkey,
             hotkey=axon.hotkey,
-            rank=self._ranks.get_miner_rank(miner_uid),
+            rating=self._ratings.get_miner_rating(miner_uid),
         )
         await self._render_and_submit(
             synapse=synapse,
@@ -247,7 +247,7 @@ class DuelsTaskStorage(BaseTaskStorage):
             score=0.0,
             coldkey=axon.coldkey,
             hotkey=axon.hotkey,
-            rank=self._ranks.get_miner_rank(miner_uid),
+            rating=self._ratings.get_miner_rating(miner_uid),
         )
         await self._submit_results(miner_uid=miner_uid, duel=duel, results=results)
 
@@ -325,14 +325,16 @@ class DuelsTaskStorage(BaseTaskStorage):
             )
             return
 
-        def _fill_duel_results(results: MinerResults, rank_before: Rank, rank_after: Rank) -> dict[str, str | float]:
+        def _fill_duel_results(
+            results: MinerResults, rating_before: Rating, rating_after: Rating
+        ) -> dict[str, str | float]:
             return {
                 "hotkey": results.hotkey,
                 "coldkey": results.coldkey,
-                "glicko_before": rank_before.glicko.rank,
-                "glicko_after": rank_after.glicko.rank,
-                "glicko_rd": rank_after.glicko.rd,
-                "glicko_vol": rank_after.glicko.vol,
+                "glicko_before": rating_before.glicko.rating,
+                "glicko_after": rating_after.glicko.rating,
+                "glicko_rd": rating_after.glicko.rd,
+                "glicko_vol": rating_after.glicko.vol,
             }
 
         if judgement.worst == 1:
@@ -342,16 +344,16 @@ class DuelsTaskStorage(BaseTaskStorage):
         else:
             winner = 0
 
-        left_rank_before = self._ranks.get_miner_rank(duel.left.uid).model_copy(deep=True)
-        right_rank_before = self._ranks.get_miner_rank(duel.right.uid).model_copy(deep=True)
-        update_ranks(duel.left.results.rank, duel.right.results.rank, winner=winner)
+        left_r_before = self._ratings.get_miner_rating(duel.left.uid).model_copy(deep=True)
+        right_r_before = self._ratings.get_miner_rating(duel.right.uid).model_copy(deep=True)
+        update_ratings(duel.left.results.rating, duel.right.results.rating, winner=winner)
 
         bt.logging.debug(
-            f"[{duel.left.uid}] rank: {left_rank_before.glicko.rank} -> {duel.left.results.rank.glicko.rank} "
+            f"[{duel.left.uid}] rating: {left_r_before.glicko.rating} -> {duel.left.results.rating.glicko.rating} "
             f"({duel.task.prompt[:100]})"
         )
         bt.logging.debug(
-            f"[{duel.right.uid}] rank: {right_rank_before.glicko.rank} -> {duel.right.results.rank.glicko.rank} "
+            f"[{duel.right.uid}] rating: {right_r_before.glicko.rating} -> {duel.right.results.rating.glicko.rating} "
             f"({duel.task.prompt[:100]})"
         )
 
@@ -361,8 +363,8 @@ class DuelsTaskStorage(BaseTaskStorage):
             "prompt": duel.task.prompt,
             "winner": winner,
             "explanation": judgement.issues,
-            "left": _fill_duel_results(duel.left.results, left_rank_before, duel.left.results.rank),
-            "right": _fill_duel_results(duel.right.results, right_rank_before, duel.right.results.rank),
+            "left": _fill_duel_results(duel.left.results, left_r_before, duel.left.results.rating),
+            "right": _fill_duel_results(duel.right.results, right_r_before, duel.right.results.rating),
         }
         asyncio.create_task(
             self._publish_results(
@@ -408,5 +410,5 @@ duel_task_storage = DuelsTaskStorage(
     wallet=None,
     synthetic_task_storage=synthetic_task_storage,
     validation_service=validation_service,
-    ranks=duel_ranks,
+    ratings=duel_ratings,
 )

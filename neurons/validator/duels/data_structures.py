@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from validator.duels.ranks import Rank
+from validator.duels.ratings import Rating
 from validator.task_manager.task import DuelTask
 
 
@@ -15,8 +15,8 @@ class MinerResults(BaseModel):
     """Miner hotkey (filled when results are received, to handle the case of the ownership change)."""
     coldkey: str
     """Miner coldkey (filled when results are received, to handle the case of the ownership change)."""
-    rank: Rank
-    """Miner rank. Reference, so will have up-to-date information, even if miner ownership changes."""
+    rating: Rating
+    """Miner rating. Reference, so will have up-to-date information, even if miner ownership changes."""
 
 
 class MinerInDuel(BaseModel):

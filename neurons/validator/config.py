@@ -292,7 +292,7 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--duels.enabled",
         action="store_true",
-        help="Enables ranking tasks",
+        help="Enables rating tasks",
         default=False,
     )
     parser.add_argument(

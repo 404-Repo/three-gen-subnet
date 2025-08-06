@@ -82,6 +82,9 @@ class JudgeService:
         for worker in self._judge_workers:
             worker.cancel()
 
+    def judge_performance(self) -> float:
+        return (time.time() - self._duels_start) / self._duels_judged
+
     async def _judge_next_duel(self, worker_id: int) -> None:
         """Take the next duel from the queue and send it to the judge service."""
 
@@ -100,9 +103,8 @@ class JudgeService:
                 if judgement is None:
                     bt.logging.warning(f"[{duel.left.uid}] vs [{duel.right.uid}] duel failed (validator fault)")
                 else:
-                    judge_perfomance: float = (time.time() - self._duels_start) / self._duels_judged
                     bt.logging.debug(
-                        f"[{duel.left.uid}] vs [{duel.right.uid}] duel judged ({judge_perfomance:.2f} sec). "
+                        f"[{duel.left.uid}] vs [{duel.right.uid}] duel judged ({self.judge_performance():.2f} sec). "
                         f"Worst: {judgement.worst} ({duel.task.prompt[:100]})."
                     )
 
@@ -123,7 +125,8 @@ class JudgeService:
         current_judge_rate: float = self._duels_judged / since_start
         if current_judge_rate > self._duels_per_second_limit:
             delay = self._duels_judged / self._duels_per_second_limit - since_start
-            bt.logging.debug(f"Judge worker {worker_id}: {current_judge_rate} duels/second. Delay: {delay} seconds")
+            if delay > 2.0:  # Not to spam the log.
+                bt.logging.debug(f"Judge worker {worker_id}: {current_judge_rate} duels/second. Delay: {delay} seconds")
             await asyncio.sleep(delay)
 
     async def _request_duel(self, duel: Duel) -> JudgeResponse | None:

@@ -16,7 +16,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel
 
 from validator.api.public_api_server import PublicAPIServer
-from validator.duels.ranks import DuelRanks
+from validator.duels.ratings import DuelRatings
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.task_manager.task_manager import TaskManager
@@ -47,8 +47,8 @@ class Validator:
     """Task manager for fetching tasks from the network."""
     miners: list[MinerData]
     """List of miners."""
-    ranks: DuelRanks
-    """List of miner ranks."""
+    ratings: DuelRatings
+    """Holds miners duel ratings."""
     updater: AutoUpdater
     """Validator auto-updates."""
     public_server: PublicAPIServer | None
@@ -65,7 +65,7 @@ class Validator:
         config: bt.config,
         task_manager: TaskManager,
         validation_service: ValidationService,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
         wallet: bt.wallet | None = None,
         subtensor: bt.subtensor | None = None,
     ) -> None:
@@ -89,7 +89,7 @@ class Validator:
         )
         self._check_validator_registered()
         self._init_miners()
-        self._init_ranks(ranks=ranks)
+        self._init_ratings(ratings=ratings)
         self._init_metagraph()
         self._init_axon()
         self.telemetry = Telemetry(self.miners, self.wallet, self.metagraph, self.config)
@@ -118,9 +118,9 @@ class Validator:
             bt.logging.exception(f"Failed to load the miners state: {e}")
         bt.logging.info("Miners initialized.")
 
-    def _init_ranks(self, ranks: DuelRanks) -> None:
-        self.ranks = ranks
-        self.ranks.load_ranks(full_path=self.config.neuron.full_path)
+    def _init_ratings(self, ratings: DuelRatings) -> None:
+        self.ratings = ratings
+        self.ratings.load_ratings(full_path=self.config.neuron.full_path)
 
     def _check_validator_registered(self) -> None:
         # Check if the validator is registered on the network.
@@ -146,7 +146,7 @@ class Validator:
             self.config.neuron.log_info_interval,
             self.config.public_api.strong_miners_count,
         )
-        self.metagraph_sync.sync(self.miners, self.ranks)
+        self.metagraph_sync.sync(self.miners, self.ratings)
         bt.logging.info(f"Metagraph: {self.metagraph}")
         self.uid = self.metagraph.hotkeys.index(self.wallet.hotkey.ss58_address)
         bt.logging.info(
@@ -341,7 +341,9 @@ class Validator:
 
         if current_time is None:
             current_time = int(time.time())
-        reward = miner.calculate_reward(current_time)
+        reward = miner.calculate_reward(
+            current_time=current_time, rating=self.ratings.get_miner_reward_rating(miner.uid)
+        )
         synapse.feedback = Feedback(
             validation_failed=validation_failed,
             task_fidelity_score=fidelity_score,
@@ -428,13 +430,13 @@ class Validator:
 
             if self.metagraph_sync.should_sync():
                 self.save_state()
-                self.ranks.save_ranks(full_path=self.config.neuron.full_path)
-                self.metagraph_sync.sync(self.miners, self.ranks)
+                self.ratings.save_ratings(full_path=self.config.neuron.full_path)
+                self.metagraph_sync.sync(self.miners, self.ratings)
                 self._set_weights()
 
             if await self.updater.should_update():
                 self.save_state()
-                self.ranks.save_ranks(full_path=self.config.neuron.full_path)
+                self.ratings.save_ratings(full_path=self.config.neuron.full_path)
                 await self.updater.update()
                 break
 
@@ -457,7 +459,13 @@ class Validator:
             return
 
         current_time = int(time.time())
-        rewards = np.array([miner.calculate_reward(current_time) for miner in self.miners])
+        reward_ratings = self.ratings.get_reward_ratings()
+        rewards = np.array(
+            [
+                miner.calculate_reward(current_time=current_time, rating=rating)
+                for miner, rating in zip(self.miners, reward_ratings, strict=False)
+            ]
+        )
         bt.logging.debug(f"Rewards: {rewards}")
 
         def strip_sigmoid(x: NDArray[np.uint16], n: int) -> NDArray[np.float64]:

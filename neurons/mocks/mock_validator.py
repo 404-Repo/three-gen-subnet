@@ -7,7 +7,7 @@ import anyio
 import bittensor as bt
 from common.protocol import SubmitResults
 from validator.config import _build_parser
-from validator.duels.ranks import DuelRanks, duel_ranks
+from validator.duels.ratings import DuelRatings, duel_ratings
 from validator.miner_data import MinerData
 from validator.task_manager.task_manager import TaskManager, task_manager
 from validator.validation_service import ValidationResponse, ValidationService
@@ -56,7 +56,7 @@ class MockValidator(Validator):
         config: bt.config,
         task_manager: TaskManager,
         validation_service: ValidationService,
-        ranks: DuelRanks,
+        ratings: DuelRatings,
         gateway_wallet: bt.wallet,
         wallet: bt.wallet | None = None,
         subtensor: bt.subtensor | None = None,
@@ -72,7 +72,7 @@ class MockValidator(Validator):
             validation_service=validation_service,
             wallet=wallet,
             subtensor=subtensor,
-            ranks=ranks,
+            ratings=ratings,
         )
 
         # Override the metagraph with a mock metagraph
@@ -144,7 +144,7 @@ async def main() -> None:
         config=config,
         task_manager=task_manager,
         validation_service=MockValidation(),
-        ranks=duel_ranks,
+        ratings=duel_ratings,
         gateway_wallet=gateway_wallet,
     )
     task_manager._organic_task_storage._wallet = gateway_wallet

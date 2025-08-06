@@ -20,7 +20,7 @@ from common.protocol import PullTask, SubmitResults, Task
 from pytest_httpserver import HTTPServer
 from validator.config import _build_parser
 from validator.duels.duels_task_storage import DuelsTaskStorage
-from validator.duels.ranks import DuelRanks
+from validator.duels.ratings import DuelRatings
 from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_manager import GatewayManager
@@ -286,12 +286,12 @@ def subtensor() -> bt.MockSubtensor:
 
 
 @pytest.fixture(scope="function")
-def ranks() -> DuelRanks:
-    return DuelRanks()
+def ratings() -> DuelRatings:
+    return DuelRatings()
 
 
 @pytest.fixture(scope="function")
-def task_manager(config: bt.config, ranks: DuelRanks) -> TaskManager:
+def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
     synthetic_task_storage = SyntheticTaskStorage(
         default_prompts_path=config.task.synthetic.default_prompts_path,
         synthetic_prompt_service=SyntheticPromptService(
@@ -328,14 +328,16 @@ def task_manager(config: bt.config, ranks: DuelRanks) -> TaskManager:
             wallet=None,
             synthetic_task_storage=synthetic_task_storage,
             validation_service=validation_service,
-            ranks=ranks,
+            ratings=ratings,
         ),
         config=config,
     )
 
 
 @pytest.fixture
-def validator(config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ranks: DuelRanks) -> Validator:
+def validator(
+    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
+) -> Validator:
     validation_service = ValidationService(
         endpoints=config.validation.endpoints,
         storage_enabled=config.validation.storage_enabled,
@@ -347,13 +349,13 @@ def validator(config: bt.config, subtensor: bt.MockSubtensor, task_manager: Task
         subtensor=subtensor,
         task_manager=task_manager,
         validation_service=validation_service,
-        ranks=ranks,
+        ratings=ratings,
     )
 
 
 @asynccontextmanager
 async def get_validator_with_available_organic_tasks(
-    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ranks: DuelRanks
+    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
 ) -> AsyncGenerator[Validator, None]:
     """
     Returns validator with the same number of organic and legacy tasks.
@@ -374,7 +376,7 @@ async def get_validator_with_available_organic_tasks(
         subtensor=subtensor,
         task_manager=task_manager,
         validation_service=validation_service,
-        ranks=ranks,
+        ratings=ratings,
     )
 
     # Put legacy organic tasks to the task manager.

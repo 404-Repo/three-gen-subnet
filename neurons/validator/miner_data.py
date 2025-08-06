@@ -100,13 +100,13 @@ class MinerData(BaseModel):
         while self.observations and self.observations[0] < expiration_threshold:
             self.observations.popleft()
 
-    def calculate_reward(self, current_time: int, observation_window: int = 4 * 60 * 60) -> float:
+    def calculate_reward(self, current_time: int, rating: float, observation_window: int = 4 * 60 * 60) -> float:
         """
         Calculate the reward for the miner.
         It is calculated by multiplying fidelity score by the number of not-outdated observations.
         """
         self._expire_observations(current_time, observation_window)
-        return len(self.observations) * self.fidelity_score
+        return len(self.observations) * rating
 
     def reset_data(self, new_hotkey: str) -> None:
         # Resets miners when new hotkey kicks out the previous one.
