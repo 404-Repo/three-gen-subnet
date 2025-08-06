@@ -51,7 +51,7 @@ class SyntheticAssetStorage:
                     "score": {
                         "2.0.0": validation.score,
                         "iqa": validation.iqa,
-                        "clip": validation.clip,
+                        "clip": validation.alignment_score,
                         "ssim": validation.ssim,
                         "lpips": validation.lpips,
                     },
