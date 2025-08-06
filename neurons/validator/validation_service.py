@@ -61,7 +61,7 @@ class ValidationService:
                         )
                         bt.logging.debug(
                             f"Validation score: {results.score:.2f}, "
-                            f"time: {validation_time:2f} sec ({self._peak_validation_time:2.f} sec). "
+                            f"time: {validation_time:.2f} sec ({self._peak_validation_time:.2f} sec). "
                             f"Prompt: {prompt[:100]}."
                         )
                     else:
