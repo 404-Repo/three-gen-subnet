@@ -277,11 +277,12 @@ def decode_and_validate_img(
     request: RequestData,
     ply_data_loader: PlyLoader,
     renderer: Renderer,
+    zstd_decompressor: zstandard.ZstdDecompressor,
     validator: ValidationEngine,
 ) -> ResponseData:
-    assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
+    assets = decode_assets(request, zstd_decomp=zstd_decompressor)
     gs_data, gs_rendered_images, _ = _prepare_input_data(
-        assets, app.state.renderer, app.state.ply_data_loader, app.state.validator
+        assets, renderer, ply_data_loader, validator
     )
     if gs_data and request.prompt_image:
         image_data = pybase64.b64decode(request.prompt_image)
@@ -313,6 +314,7 @@ async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
             request,
             app.state.ply_data_loader,
             app.state.renderer,
+            app.state.zstd_decompressor,
             app.state.validator,
         )
     except Exception as e:
