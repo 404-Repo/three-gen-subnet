@@ -325,6 +325,8 @@ class TestSingleMinerRules:
         assert len(validator.miners[1].observations) == 0
 
         # Perform 10 submissions, 1 hour apart
+        # | - 1 hour - | - 1 hour - | - 1 hour - | - 1 hour - | - 1 hour - |
+        # 4 hours window, not including the left value if it's exactly on the line.
         moving_average_alpha = config.validation.moving_average_alpha
         expected_fidelity = 1.0  # Initial fidelity score
         base_time = FROZEN_TIME
@@ -342,9 +344,12 @@ class TestSingleMinerRules:
                 assert current_fidelity == pytest.approx(expected_fidelity, abs=0.01)
 
                 # Check observations
-                # If it is 5th submission then observations will be from 1, 2, 3, 4, 5 hour.
-                # Initial submission will be droped.
-                expected_observations = i + 1 if i < 4 else 5
+                # 1 submission  - 1 observation (start of the observation time)
+                # 2 submissions - 2 observations (1 hour passed)
+                # 3 submissions - 3 observations (2 hour passed)
+                # 4 submissions - 4 observations (3 hour passed)
+                # 5 submissions - 4 observations (4 hour passed, first submission dropped)
+                expected_observations = min(i + 1, 4)
                 expected_reward = expected_observations * default_reward_rating
                 assert len(validator.miners[1].observations) == expected_observations
 

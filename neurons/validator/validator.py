@@ -511,10 +511,7 @@ class Validator:
         miner_uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if miner_uid is None:
             synapse.cooldown_until = int(time.time()) + 3600
-            bt.logging.warning(
-                f"[{miner_uid}]: Unexpected behavior. Miner {synapse.dendrite.hotkey} ({synapse.dendrite.ip}) "
-                f"is not registered"
-            )
+            bt.logging.debug(f"Miner {synapse.dendrite.hotkey} ({synapse.dendrite.ip}) is not registered")
         return miner_uid
 
     def _check_miner_on_cooldown(self, *, synapse: PullTask, miner: MinerData) -> bool:
