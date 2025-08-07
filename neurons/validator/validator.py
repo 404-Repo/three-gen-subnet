@@ -460,6 +460,7 @@ class Validator:
 
         current_time = int(time.time())
         reward_ratings = self.ratings.get_reward_ratings()
+        bt.logging.debug(f"Ratings: {reward_ratings}")
         rewards = np.array(
             [
                 miner.calculate_reward(current_time=current_time, rating=rating)
