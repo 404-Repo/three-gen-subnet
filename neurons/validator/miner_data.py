@@ -69,12 +69,14 @@ class MinerData(BaseModel):
         Updates the miner's fidelity score using formula (1-alpha)*prev_score + alpha*new_score.
         """
         self.observations.append(task_finish_time)
+        self._expire_observations(current_time=task_finish_time)
         prev_fidelity_score = self.fidelity_score
         self.fidelity_score = prev_fidelity_score * (1 - moving_average_alpha) + moving_average_alpha * fidelity_score
 
         bt.logging.debug(
-            f"[{self.uid}] score: {fidelity_score}. Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
-            f" Observations (4h): {len(self.observations)}"
+            f"[{self.uid}] score: {fidelity_score:.2f}. "
+            f"Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}. "
+            f"Observations (4h): {len(self.observations)}"
         )
 
     def is_on_cooldown(self) -> bool:
