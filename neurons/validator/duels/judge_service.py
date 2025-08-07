@@ -83,6 +83,8 @@ class JudgeService:
             worker.cancel()
 
     def judge_performance(self) -> float:
+        if self._duels_judged == 0:
+            return 0
         return (time.time() - self._duels_start) / self._duels_judged
 
     async def _judge_next_duel(self, worker_id: int) -> None:
