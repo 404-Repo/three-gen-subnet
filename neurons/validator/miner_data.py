@@ -97,7 +97,7 @@ class MinerData(BaseModel):
         Observations that are older than observation_window are removed.
         """
         expiration_threshold = current_time - observation_window
-        while self.observations and self.observations[0] < expiration_threshold:
+        while self.observations and self.observations[0] <= expiration_threshold:
             self.observations.popleft()
 
     def calculate_reward(self, current_time: int, rating: float, observation_window: int = 4 * 60 * 60) -> float:
