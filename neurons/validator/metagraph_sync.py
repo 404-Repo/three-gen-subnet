@@ -3,6 +3,7 @@ import weakref
 
 import bittensor as bt
 
+from validator.duels.ratings import DuelRatings
 from validator.miner_data import MinerData
 
 
@@ -36,7 +37,7 @@ class MetagraphSynchronizer:
     def should_sync(self) -> bool:
         return self._last_sync_time + self._sync_interval <= time.time()
 
-    def sync(self, miners: list[MinerData]) -> None:
+    def sync(self, miners: list[MinerData], ratings: DuelRatings) -> None:
         """
         The method:
         - synchronizes bittensor network state using metagraph;
@@ -67,14 +68,8 @@ class MetagraphSynchronizer:
 
             bt.logging.debug(f"[{uid}] changed the owner from {miner.hotkey} to {axon.hotkey}")
 
-            if miner.hotkey is not None:
-                # TODO: Migration from version 23 to version 24. Remove the check and reset always
-                miner.observations.clear()
-                miner.fidelity_score = 1.0
-
-            miner.cooldown_until = 0
-            miner.cooldown_violations = 0
-            miner.hotkey = axon.hotkey
+            miner.reset_data(new_hotkey=axon.hotkey)
+            ratings.reset_rating(uid)
 
     def log_info(self, uid: int) -> None:
         if self._last_info_time + self._log_info_interval > time.time():

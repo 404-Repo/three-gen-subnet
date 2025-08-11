@@ -9,7 +9,6 @@ readme = "README.md"
 python = ">=3.11,<3.13"
 bittensor = { version = "9.0.0" }
 bittensor-wallet = { version = "3.0.3" }
-zstandard = { version = "0.23.0" }
 pybase64 = { version = "1.4.0" }
 pyspz = { git = "https://github.com/404-Repo/spz.git", tag = "0.1" }
 mnemonic = "^0.21"

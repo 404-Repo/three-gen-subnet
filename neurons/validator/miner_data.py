@@ -69,12 +69,14 @@ class MinerData(BaseModel):
         Updates the miner's fidelity score using formula (1-alpha)*prev_score + alpha*new_score.
         """
         self.observations.append(task_finish_time)
+        self._expire_observations(current_time=task_finish_time)
         prev_fidelity_score = self.fidelity_score
         self.fidelity_score = prev_fidelity_score * (1 - moving_average_alpha) + moving_average_alpha * fidelity_score
 
         bt.logging.debug(
-            f"[{self.uid}] score: {fidelity_score}. Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}."
-            f" Observations (4h): {len(self.observations)}"
+            f"[{self.uid}] score: {fidelity_score:.2f}. "
+            f"Avg score: {prev_fidelity_score:.2f} -> {self.fidelity_score:.2f}. "
+            f"Observations (4h): {len(self.observations)}"
         )
 
     def is_on_cooldown(self) -> bool:
@@ -97,13 +99,21 @@ class MinerData(BaseModel):
         Observations that are older than observation_window are removed.
         """
         expiration_threshold = current_time - observation_window
-        while self.observations and self.observations[0] < expiration_threshold:
+        while self.observations and self.observations[0] <= expiration_threshold:
             self.observations.popleft()
 
-    def calculate_reward(self, current_time: int, observation_window: int = 4 * 60 * 60) -> float:
+    def calculate_reward(self, current_time: int, rating: float, observation_window: int = 4 * 60 * 60) -> float:
         """
         Calculate the reward for the miner.
         It is calculated by multiplying fidelity score by the number of not-outdated observations.
         """
         self._expire_observations(current_time, observation_window)
-        return len(self.observations) * self.fidelity_score
+        return len(self.observations) * rating
+
+    def reset_data(self, new_hotkey: str) -> None:
+        # Resets miners when new hotkey kicks out the previous one.
+        self.observations.clear()
+        self.fidelity_score = 1.0
+        self.cooldown_until = 0
+        self.cooldown_violations = 0
+        self.hotkey = new_hotkey

@@ -1,0 +1,9 @@
+name: three-gen-vllm
+channels:
+  - defaults
+
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - vllm==0.10.0 --extra-index-url https://download.pytorch.org/whl/cu128

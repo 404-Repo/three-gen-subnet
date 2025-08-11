@@ -24,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_storage_args(parser)
     add_telemetry_args(parser)
     add_task_args(parser)
+    add_duels_args(parser)
 
     return parser
 
@@ -284,6 +285,70 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Defines the delay in seconds before the first fetch of the synthetic prompts",
         default=30,  # 30 seconds
+    )
+
+
+def add_duels_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--duels.disabled",
+        action="store_true",
+        help="Disable the duels rating system",
+        default=False,
+    )
+    parser.add_argument(
+        "--duels.start_delay",
+        type=int,
+        help="Delay in seconds before starting duels to collect active miner information",
+        default=1800,  # 30 minutes
+    )
+    parser.add_argument(
+        "--duels.inactivity_time",
+        type=int,
+        help="Time in seconds after which inactive miners are excluded from duels.",
+        default=1200,  # 20 minutes
+    )
+    parser.add_argument(
+        "--duels.judge_workers",
+        type=int,
+        help="Number of concurrent workers for judging duels",
+        default=1,
+    )
+    parser.add_argument(
+        "--duels.duels_per_minute",
+        type=float,
+        help="Maximum duel requests per minute (rate limiting for pay-per-request billing)",
+        default=6,
+    )
+    parser.add_argument(
+        "--duels.no_pause_on_slow_validation",
+        action="store_false",
+        dest="duels.pause_duels_on_slow_validation",
+        help="Disable automatic stopping of duels when validation becomes slow.",
+        default=True,
+    )
+    parser.add_argument(
+        "--duels.slow_validation_threshold",
+        type=float,
+        help="Validation time threshold in seconds above which duels are stopped.",
+        default=10.0,
+    )
+    parser.add_argument(
+        "--duels.judge_endpoint",
+        type=str,
+        help="URL of the judge service endpoint (should accept POST requests to /)",
+        default="http://127.0.0.1:8095/v1/",
+    )
+    parser.add_argument(
+        "--duels.judge_api_key",
+        type=str,
+        help="API key for authentication with the judge service",
+        default="local",
+    )
+    parser.add_argument(
+        "--duels.duel_saver_endpoint",
+        type=str,
+        help="URL of the duel results storage endpoint (should accept POST requests to /)",
+        default="http://35.246.174.235:4001/api/save_duel/",
     )
 
 

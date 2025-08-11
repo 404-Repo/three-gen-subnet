@@ -19,6 +19,8 @@ from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLA
 from common.protocol import PullTask, SubmitResults, Task
 from pytest_httpserver import HTTPServer
 from validator.config import _build_parser
+from validator.duels.duels_task_storage import DuelsTaskStorage
+from validator.duels.ratings import DuelRatings
 from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_manager import GatewayManager
@@ -34,14 +36,13 @@ from validator.validator import Validator
 
 from tests.test_validator.subtensor_mocks import METAGRAPH_INFO, NEURONS, WALLETS
 
-
 FROZEN_TIME = datetime(year=2025, month=1, day=1)
 TASK_THROTTLE_PERIOD = 20
 TASK_COOLDOWN = 60
 TASK_COOLDOWN_PENALTY = 120
 COOLDOWN_VIOLATION_PENALTY = 30
 COOLDOWN_VIOLATIONS_THRESHOLD = 10
-with Path("tests/resources/robocop with hammer in one hand.spz").open("rb") as f:
+with Path("tests/resources/robocop with hammer in one hand.spz").resolve().open("rb") as f:
     data = f.read()
 MINER_RESULT_FULL = str(pybase64.b64encode(pyspz.decompress(data, include_normals=False)).decode(encoding="utf-8"))
 MINER_RESULT = "dummy"
@@ -61,6 +62,7 @@ GATEWAY_DOMAIN = "127.0.0.1"
 GATEWAY_PORT = 4443
 BOOTSTRAP_GATEWAY = f"https://{GATEWAY_DOMAIN}:{GATEWAY_PORT}"
 GATEWAY_TASK_COUNT = 100
+DUELS_START_DELAY = 1800
 
 
 def create_pull_task(uid: int | None) -> PullTask:
@@ -117,7 +119,13 @@ def storage_server(make_httpserver: HTTPServer) -> HTTPServer:
 
 
 @pytest.fixture(scope="function")
-def config(validation_server: HTTPServer, synthetic_prompt_server: HTTPServer, storage_server: HTTPServer) -> bt.config:
+def config(
+    validation_server: HTTPServer,
+    synthetic_prompt_server: HTTPServer,
+    storage_server: HTTPServer,
+    judge_server: HTTPServer,
+    duel_save_server: HTTPServer,
+) -> bt.config:
     parser = _build_parser()
     default_prompts_path = Path(__file__).parent.parent / "resources" / "prompts.txt"
     return bt.config(
@@ -161,10 +169,13 @@ def config(validation_server: HTTPServer, synthetic_prompt_server: HTTPServer, s
             f"{STRONG_MINER_COUNT}",
             "--task.organic.assigned_miners_count",
             f"{ASSIGNED_MINERS_COUNT}",
-            "--storage.enabled",
-            "--storage.endpoint_url",
-            storage_server.url_for(""),
             "--task.gateway.enabled",
+            "--duels.start_delay",
+            f"{DUELS_START_DELAY}",
+            "--duels.judge_endpoint",
+            judge_server.url_for("/v1/"),
+            "--duels.duel_saver_endpoint",
+            duel_save_server.url_for("/api/save_duel/"),
         ],
     )
 
@@ -174,6 +185,7 @@ def validation_server(make_httpserver: HTTPServer) -> HTTPServer:
     make_httpserver.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
         {"score": VALIDATION_SCORE}
     )
+    make_httpserver.expect_request("/render_duel_view/", method="POST").respond_with_data(b"render.png")
     return make_httpserver
 
 
@@ -183,7 +195,31 @@ def reset_validation_server(validation_server: HTTPServer) -> HTTPServer:
     validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
         {"score": VALIDATION_SCORE}
     )
+    validation_server.expect_request("/render_duel_view/", method="POST").respond_with_data(b"render.png")
     return validation_server
+
+
+@pytest.fixture(scope="function")
+def judge_server(make_httpserver: HTTPServer) -> HTTPServer:
+    make_httpserver.expect_request("/v1/chat/completions", method="POST").respond_with_json(
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "content": '{"issues": "issues", "worst": 2}',
+                    },
+                }
+            ]
+        }
+    )
+    return make_httpserver
+
+
+@pytest.fixture(scope="function")
+def duel_save_server(make_httpserver: HTTPServer) -> HTTPServer:
+    make_httpserver.expect_request("/api/save_duel/", method="POST").respond_with_json({"status": "ok"})
+    return make_httpserver
 
 
 # Mock is necessary because GatewayApi uses http3 that is not compatible with pytest-httpserver.
@@ -249,7 +285,32 @@ def subtensor() -> bt.MockSubtensor:
 
 
 @pytest.fixture(scope="function")
-def task_manager(config: bt.config) -> TaskManager:
+def ratings() -> DuelRatings:
+    return DuelRatings()
+
+
+@pytest.fixture(scope="function")
+def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
+    synthetic_task_storage = SyntheticTaskStorage(
+        default_prompts_path=config.task.synthetic.default_prompts_path,
+        synthetic_prompt_service=SyntheticPromptService(
+            prompt_service_url=config.task.synthetic.prompter.endpoint,
+            batch_size=config.task.synthetic.prompter.batch_size,
+        ),
+        synthetic_asset_storage=SyntheticAssetStorage(
+            enabled=config.storage.enabled,
+            service_api_key=config.storage.service_api_key,
+            endpoint_url=config.storage.endpoint_url,
+            validation_score_threshold=config.storage.validation_score_threshold,
+        ),
+        config=config,
+        wallet=WALLETS[0],
+    )
+    validation_service = ValidationService(
+        endpoints=config.validation.endpoints,
+        storage_enabled=config.validation.storage_enabled,
+        validation_score_threshold=config.storage.validation_score_threshold,
+    )
     return TaskManager(
         organic_task_storage=OrganicTaskStorage(
             gateway_manager=GatewayManager(
@@ -259,28 +320,24 @@ def task_manager(config: bt.config) -> TaskManager:
             ),
             config=config,
             wallet=WALLETS[0],
+            ratings=ratings,
         ),
-        synthetic_task_storage=SyntheticTaskStorage(
-            default_prompts_path=config.task.synthetic.default_prompts_path,
-            synthetic_prompt_service=SyntheticPromptService(
-                prompt_service_url=config.task.synthetic.prompter.endpoint,
-                batch_size=config.task.synthetic.prompter.batch_size,
-            ),
-            synthetic_asset_storage=SyntheticAssetStorage(
-                enabled=config.storage.enabled,
-                service_api_key=config.storage.service_api_key,
-                endpoint_url=config.storage.endpoint_url,
-                validation_score_threshold=config.storage.validation_score_threshold,
-            ),
+        synthetic_task_storage=synthetic_task_storage,
+        duel_task_storage=DuelsTaskStorage(
             config=config,
             wallet=WALLETS[0],
+            synthetic_task_storage=synthetic_task_storage,
+            validation_service=validation_service,
+            ratings=ratings,
         ),
         config=config,
     )
 
 
 @pytest.fixture
-def validator(config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager) -> Validator:
+def validator(
+    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
+) -> Validator:
     validation_service = ValidationService(
         endpoints=config.validation.endpoints,
         storage_enabled=config.validation.storage_enabled,
@@ -292,15 +349,16 @@ def validator(config: bt.config, subtensor: bt.MockSubtensor, task_manager: Task
         subtensor=subtensor,
         task_manager=task_manager,
         validation_service=validation_service,
+        ratings=ratings,
     )
 
 
 @asynccontextmanager
 async def get_validator_with_available_organic_tasks(
-    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager
+    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
 ) -> AsyncGenerator[Validator, None]:
     """
-    Retrurns validator with the same number of organic and legacy tasks.
+    Returns validator with the same number of organic and legacy tasks.
     Do not use it inside time_machine context with tick=False. Will hand.
     """
 
@@ -318,6 +376,7 @@ async def get_validator_with_available_organic_tasks(
         subtensor=subtensor,
         task_manager=task_manager,
         validation_service=validation_service,
+        ratings=ratings,
     )
 
     # Put legacy organic tasks to the task manager.

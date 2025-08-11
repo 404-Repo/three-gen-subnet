@@ -1,35 +1,36 @@
 import argparse
+import asyncio
 import gc
 import io
 from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from time import time
-from typing import cast
 
 import numpy as np
 import pybase64
 import pyspz
 import torch
 import uvicorn
-import zstandard
 from engine.data_structures import (
     GaussianSplattingData,
-    RequestData,
-    ResponseData,
+    RenderRequest,
     TimeStat,
+    ValidationRequest,
+    ValidationResponse,
     ValidationResult,
-    ValidationResultData,
 )
 from engine.io.ply import PlyLoader
 from engine.rendering.renderer import Renderer
 from engine.utils.gs_data_checker_utils import is_input_data_valid
 from engine.validation_engine import ValidationEngine
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from loguru import logger
 from PIL import Image
+from starlette.responses import StreamingResponse
 
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
@@ -44,6 +45,14 @@ def get_args() -> tuple[argparse.Namespace, list[str]]:
 app = FastAPI()
 args, _ = get_args()
 
+# Set max_workers=1 to serialize GPU requests and prevent inefficient parallel execution.
+# GPU workloads don't parallelize well - multiple concurrent requests compete for the same
+# GPU resources, causing each request to take longer (2 requests = 2x total time).
+# By queuing requests sequentially, we ensure the first request completes as quickly as
+# possible. This is especially important for miners with fixed cooldowns, as serialized
+# processing spreads requests evenly over time rather than bunching completions together.
+executor = ThreadPoolExecutor(max_workers=1)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
@@ -51,7 +60,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Startup logic
     app.state.validator = ValidationEngine()
     app.state.validator.load_pipelines()
-    app.state.zstd_decompressor = zstandard.ZstdDecompressor()
     app.state.renderer = Renderer()
     app.state.ply_data_loader = PlyLoader()
     gc.collect()
@@ -62,12 +70,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 app.router.lifespan_context = lifespan
 
 
-def _prepare_input_data(
-    assets: bytes, renderer: Renderer, ply_data_loader: PlyLoader, validator: ValidationEngine
+def _decode_assets(request: ValidationRequest | RenderRequest) -> bytes:
+    t1 = time()
+    assets = pybase64.b64decode(request.data, validate=True)
+    t2 = time()
+    logger.info(
+        f"Assets decoded. Size: {len(request.data)} -> {len(assets)}. "
+        f"Time taken: {t2 - t1:.2f} sec. Prompt: {request.prompt}."
+    )
+
+    if request.compression == 2:  # SPZ compression.
+        compressed_size = len(assets)
+        assets = pyspz.decompress(assets, include_normals=False)
+        logger.info(
+            f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
+            f"Time taken: {time() - t2:.2f} sec. Prompt: {request.prompt}."
+        )
+
+    return assets
+
+
+def prepare_input_data(
+    assets: bytes,
+    renderer: Renderer,
+    ply_data_loader: PlyLoader,
+    validator: ValidationEngine,
+    render_views_number: int = 16,
+    render_img_width: int = 518,
+    render_img_height: int = 518,
+    render_theta_angles: list[float] | None = None,
 ) -> tuple[GaussianSplattingData | None, list[torch.Tensor], TimeStat]:
     """Function for preparing input data for further processing"""
 
     time_stat = TimeStat()
+
     # Loading input data
     t1 = time()
     pcl_buffer = io.BytesIO(assets)
@@ -82,7 +118,13 @@ def _prepare_input_data(
 
     # Render images for validation
     gs_data_gpu = gs_data.send_to_device(validator.device)
-    images = renderer.render_gs(gs_data_gpu, 16, 224, 224)
+    images = renderer.render_gs(
+        gs_data_gpu,
+        views_number=render_views_number,
+        img_width=render_img_width,
+        img_height=render_img_height,
+        theta_angles=render_theta_angles,
+    )
     t3 = time()
     time_stat.image_rendering_time = t3 - t2
     logger.info(f"Image Rendering took: {time_stat.image_rendering_time} sec.")
@@ -111,22 +153,22 @@ def _validate_text_vs_image(
 ) -> ValidationResult:
     """Function for validation of the data that was generated using provided prompt"""
 
-    # Validate input GS data by assessing rendered images
     t1 = time()
     val_res: ValidationResult = validator.validate_text_to_gs(prompt, images)
-    logger.info(f" Score: {val_res.final_score}. Prompt: {prompt}")
-    val_res.validation_time = time() - t1
-    logger.info(f"Validation took: {val_res.validation_time} sec.")
+    logger.info(f"Score: {val_res.final_score}. Prompt: {prompt}")
+    logger.info(f"Validation took: {time() - t1:6f} sec.")
     return val_res
 
 
 def _validate_image_vs_image(
     prompt_image: torch.Tensor,
     images: list[torch.Tensor],
+    validator: ValidationEngine,
 ) -> ValidationResult:
     """Function for validation of the data that was generated using prompt-image"""
+
     t1 = time()
-    val_res: ValidationResult = app.state.validator.validate_image_to_gs(prompt_image, images)
+    val_res: ValidationResult = validator.validate_image_to_gs(prompt_image, images)
     logger.info(f" Score: {val_res.final_score}. Prompt: provided image.")
     logger.info(f" Validation took: {time() - t1} sec.")
     return val_res
@@ -138,8 +180,8 @@ def _finalize_results(
     generate_preview: bool,
     preview_score_threshold: float,
     renderer: Renderer,
-) -> ResponseData:
-    """Function that finalize results"""
+) -> ValidationResponse:
+    """Function that finalizes results"""
     if generate_preview:
         encoded_preview = _render_preview_image(
             gs_data, validation_results.final_score, preview_score_threshold, renderer
@@ -147,7 +189,7 @@ def _finalize_results(
     else:
         encoded_preview = None
 
-    return ResponseData(
+    return ValidationResponse(
         score=validation_results.final_score,
         iqa=validation_results.combined_quality_score,
         alignment_score=validation_results.alignment_score,
@@ -165,47 +207,29 @@ def _cleanup() -> None:
     logger.info(f"Cache purge took: {time() - t1} sec. VRAM Memory: {gpu_memory_free} / {gpu_memory_total}")
 
 
-def decode_assets(request: RequestData, zstd_decomp: zstandard.ZstdDecompressor) -> bytes:
-    t1 = time()
-    assets = pybase64.b64decode(request.data, validate=True)
-    t2 = time()
-    logger.info(
-        f"Assets decoded. Size: {len(request.data)} -> {len(assets)}. "
-        f"Time taken: {t2 - t1:.2f} sec. Prompt: {request.prompt}."
-    )
-
-    if request.compression == 1:  # Legacy. Zstd compression.
-        compressed_size = len(assets)
-        assets = zstd_decomp.decompress(assets)
-        logger.info(
-            f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
-            f"Time taken: {time() - t2:.2f} sec. Prompt: {request.prompt}."
-        )
-    elif request.compression == 2:  # SPZ compression.
-        compressed_size = len(assets)
-        assets = pyspz.decompress(assets, include_normals=False)
-        logger.info(
-            f"Decompressed. Size: {compressed_size} -> {len(assets)}. "
-            f"Time taken: {time() - t2:.2f} sec. Prompt: {request.prompt}."
-        )
-
-    return assets
-
-
 def decode_and_validate_txt(
-    request: RequestData,
+    request: ValidationRequest,
     ply_data_loader: PlyLoader,
     renderer: Renderer,
-    zstd_decompressor: zstandard.ZstdDecompressor,
     validator: ValidationEngine,
-    include_time_stat: bool = False,
-) -> ValidationResultData:
+) -> tuple[ValidationResponse, TimeStat]:
     t1 = time()
-    assets = decode_assets(request, zstd_decomp=zstd_decompressor)
-    gs_data, gs_rendered_images, time_stat = _prepare_input_data(assets, renderer, ply_data_loader, validator)
-    if gs_data and request.prompt is not None:
+    assets = _decode_assets(request)
+    gs_data, gs_rendered_images, time_stat = prepare_input_data(
+        assets,
+        renderer,
+        ply_data_loader,
+        validator,
+        render_views_number=16,
+        render_img_width=518,
+        render_img_height=518,
+    )
+
+    if gs_data is not None and request.prompt is not None:
+        t2 = time()
         validation_result = _validate_text_vs_image(request.prompt, gs_rendered_images, validator)
-        time_stat.validation_time = cast(float, validation_result.validation_time)
+        time_stat.validation_time = time() - t2
+
         response = _finalize_results(
             validation_result,
             gs_data,
@@ -215,11 +239,149 @@ def decode_and_validate_txt(
         )
         time_stat.total_time = time() - t1
     else:
-        response = ResponseData(score=0.0)
-    return ValidationResultData(
-        response_data=response,
-        time_stat=time_stat if include_time_stat else None,
-    )
+        response = ValidationResponse(score=0.0)
+    return response, time_stat
+
+
+@app.post("/validate_txt_to_3d_ply/", response_model=ValidationResponse)
+async def validate_txt_to_3d_ply(request: ValidationRequest) -> ValidationResponse:
+    """
+    Validates the input prompt and PLY data to produce scores.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        response, time_stat = await loop.run_in_executor(
+            executor,
+            decode_and_validate_txt,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.validator,
+        )
+    except Exception as e:
+        logger.exception(e)
+        response = ValidationResponse(score=0.0)
+    finally:
+        _cleanup()
+
+    return response
+
+
+def decode_and_validate_img(
+    request: ValidationRequest,
+    ply_data_loader: PlyLoader,
+    renderer: Renderer,
+    validator: ValidationEngine,
+) -> tuple[ValidationResponse, TimeStat]:
+    t1 = time()
+    assets = _decode_assets(request)
+    gs_data, gs_rendered_images, time_stat = prepare_input_data(assets, renderer, ply_data_loader, validator)
+
+    if gs_data is not None and request.prompt_image:
+        t2 = time()
+        image_data = pybase64.b64decode(request.prompt_image)
+        prompt_image = Image.open(io.BytesIO(image_data))
+        torch_prompt_image = torch.tensor(np.asarray(prompt_image))
+        validation_results = _validate_image_vs_image(torch_prompt_image, gs_rendered_images, validator)
+        time_stat.validation_time = t2 - time()
+
+        response = _finalize_results(
+            validation_results,
+            gs_data,
+            request.generate_preview,
+            request.preview_score_threshold,
+            renderer,
+        )
+        time_stat.total_time = time() - t1
+    else:
+        response = ValidationResponse(score=0.0)
+    return response, time_stat
+
+
+@app.post("/validate_img_to_3d_ply/", response_model=ValidationResponse)
+async def validate_img_to_3d_ply(request: ValidationRequest) -> ValidationResponse:
+    """
+    Validates the input prompt and PLY data to produce scores.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        response, time_stat = await loop.run_in_executor(
+            executor,
+            decode_and_validate_img,
+            request,
+            app.state.ply_data_loader,
+            app.state.renderer,
+            app.state.validator,
+        )
+    except Exception as e:
+        logger.exception(e)
+        response = ValidationResponse(score=0.0)
+    finally:
+        _cleanup()
+    return response
+
+
+def combine_images4(
+    images: list[torch.Tensor], img_width: int, img_height: int, gap: int, resize_factor: float
+) -> Image.Image:
+    row_width = img_width * 2 + gap
+    column_height = img_height * 2 + gap
+
+    combined_image = Image.new("RGB", (row_width, column_height), color="black")
+
+    pil_images = [Image.fromarray(img.detach().cpu().numpy()) for img in images]
+
+    combined_image.paste(pil_images[0], (0, 0))
+    combined_image.paste(pil_images[1], (img_width + gap, 0))
+    combined_image.paste(pil_images[2], (0, img_height + gap))
+    combined_image.paste(pil_images[3], (img_width + gap, img_height + gap))
+
+    w, h = combined_image.size
+    if resize_factor != 1.0:
+        combined_image = combined_image.resize(
+            (int(w * resize_factor), int(h * resize_factor)), Image.Resampling.LANCZOS
+        )
+
+    return combined_image
+
+
+@app.post("/render_duel_view/")
+async def render_duel_view(request: RenderRequest) -> StreamingResponse:
+    try:
+        assets = _decode_assets(request)
+        loop = asyncio.get_running_loop()
+        gs_data, gs_rendered_images, _ = await loop.run_in_executor(
+            executor,
+            prepare_input_data,
+            assets,
+            app.state.renderer,
+            app.state.ply_data_loader,
+            app.state.validator,
+            4,
+            512,
+            512,
+            [20.0, 120.0, 220.0, 310.0],
+        )
+        if not gs_data:
+            raise RuntimeError("Invalid splats data")
+
+        if len(gs_rendered_images) != 4:
+            raise RuntimeError(f"Failed to generate 4 views, only {len(gs_rendered_images)} views are generated")
+
+        final_image = combine_images4(
+            images=gs_rendered_images, img_width=512, img_height=512, gap=5, resize_factor=1.0
+        )
+
+        img_byte_arr = io.BytesIO()
+        final_image.save(img_byte_arr, format="PNG")
+        img_byte_arr.seek(0)
+
+        return StreamingResponse(img_byte_arr, media_type="image/png")
+    except Exception as e:
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    finally:
+        _cleanup()
 
 
 @app.get("/version/", response_model=str)
@@ -228,75 +390,6 @@ async def version() -> str:
     Returns current endpoint version.
     """
     return str(VERSION)
-
-
-@app.post("/validate_txt_to_3d_ply/", response_model=ResponseData)
-async def validate_txt_to_3d_ply(request: RequestData) -> ResponseData:
-    """
-    Validates the input prompt and PLY data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
-
-    """
-    try:
-        validation_result = decode_and_validate_txt(
-            request=request,
-            ply_data_loader=app.state.ply_data_loader,
-            renderer=app.state.renderer,
-            zstd_decompressor=app.state.zstd_decompressor,
-            validator=app.state.validator,
-        )
-        response = validation_result.response_data
-    except Exception as e:
-        logger.exception(e)
-        response = ResponseData(score=0.0)
-    finally:
-        _cleanup()
-
-    return response
-
-
-@app.post("/validate_img_to_3d_ply/", response_model=ResponseData)
-async def validate_img_to_3d_ply(request: RequestData) -> ResponseData:
-    """
-    Validates the input prompt and PLY data to produce scores.
-
-    Parameters:
-    - request (RequestData): An instance of RequestData containing the input prompt and data.
-
-    Returns:
-    - ResponseData: An instance of ResponseData containing the scores generated from the validation_lib process.
-
-    """
-    try:
-        assets = decode_assets(request, zstd_decomp=app.state.zstd_decompressor)
-        gs_data, gs_rendered_images, _ = _prepare_input_data(
-            assets, app.state.renderer, app.state.ply_data_loader, app.state.validator
-        )
-        if gs_data and request.prompt_image:
-            image_data = pybase64.b64decode(request.prompt_image)
-            prompt_image = Image.open(io.BytesIO(image_data))
-            torch_prompt_image = torch.tensor(np.asarray(prompt_image))
-            validation_results = _validate_image_vs_image(torch_prompt_image, gs_rendered_images)
-            response = _finalize_results(
-                validation_results,
-                gs_data,
-                request.generate_preview,
-                request.preview_score_threshold,
-                app.state.renderer,
-            )
-        else:
-            response = ResponseData(score=0.0)
-    except Exception as e:
-        logger.exception(e)
-        response = ResponseData(score=0.0)
-    finally:
-        _cleanup()
-    return response
 
 
 if __name__ == "__main__":

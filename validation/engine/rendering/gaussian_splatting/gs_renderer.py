@@ -100,6 +100,7 @@ class GaussianSplattingRenderer:
             self._camera.z_far,
             backgrounds=backgrounds,
             render_mode="RGB",
+            packed=False,
         )
 
         if rendered_colors.shape != (num_cameras, self._camera.image_width, self._camera.image_height, 3):

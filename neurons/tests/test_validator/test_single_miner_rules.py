@@ -10,9 +10,10 @@ import pybase64
 import pyspz
 import pytest
 import time_machine
-import zstandard
 from common.protocol import Feedback, Task
 from pytest_httpserver import HTTPServer
+
+from validator.duels.ratings import DuelRatings
 from validator.task_manager.task import AssignedMiner
 from validator.task_manager.task_manager import TaskManager
 from validator.validator import Validator
@@ -48,13 +49,13 @@ class TestSingleMinerRules:
     async def test_pull_task_from_unknown_miner(
         self, validator: Validator, reset_validation_server: HTTPServer
     ) -> None:
-        """Unknown miner can't pull task."""
+        """Unknown miner can't pull a task."""
         result = await validator.pull_task(create_pull_task(None))
         assert result.task is None
 
     @pytest.mark.asyncio
     async def test_pull_repeated_task(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
-        """If miner pulls the same task many times then it will receive this task again."""
+        """If miner pulls the same task many times, then it will receive this task again."""
 
         now = time.time()
         with time_machine.travel(now, tick=False) as travel:
@@ -89,8 +90,8 @@ class TestSingleMinerRules:
         time_travel: time_machine.travel,
         reset_validation_server: HTTPServer,
     ) -> None:
-        """Miner can't pull task if it is on cooldown.
-        In this case the task is not assigned and cooldown is increased.
+        """Miner can't pull a task if it is on cooldown.
+        In this case, the task is not assigned and cooldown is increased.
         """
         existing_cooldown = int(time_machine.time()) + TASK_COOLDOWN
         validator.miners[1].cooldown_until = existing_cooldown
@@ -126,7 +127,7 @@ class TestSingleMinerRules:
             assert validator.miners[1].cooldown_until == pull.cooldown_until
             assert validator.miners[1].cooldown_violations == COOLDOWN_VIOLATIONS_THRESHOLD + idx
 
-        # After cooldown penalty period miner can pull task again
+        # After cooldown penalty period, miner can pull task again
         next_pull_time = existing_cooldown + COOLDOWN_VIOLATION_PENALTY * 3
         with time_machine.travel(next_pull_time, tick=False):
             pull = await validator.pull_task(create_pull_task(1))
@@ -135,7 +136,7 @@ class TestSingleMinerRules:
             assert validator.miners[1].cooldown_until == existing_cooldown + COOLDOWN_VIOLATION_PENALTY * 3
             assert validator.miners[1].cooldown_violations == COOLDOWN_VIOLATIONS_THRESHOLD + 3
 
-            # If miner submits the result then cooldown violations are decreased by 1
+            # If miner submits the result, then cooldown violations are decreased by 1
             await validator.submit_results(create_submit_result(1, pull.task))
             assert validator.miners[1].cooldown_violations == COOLDOWN_VIOLATIONS_THRESHOLD + 2
 
@@ -159,30 +160,30 @@ class TestSingleMinerRules:
         reset_validation_server: HTTPServer,
     ) -> None:
         """
-        When miner submits task successfully cooldown id defined in MinerData.reset_task().
+        When miner submits a task successfully, cooldown id defined in MinerData.reset_task().
 
         TASK_COOLDOWN = 60
         TASK_THROTTLE_PERIOD = 20
         Case 1.
-        Task was assigned to miner. It did it 5 seconds that is less than throttle period.
+        The Task was assigned to miner. It did it 5 seconds that is less than a throttle period.
         So cooldown until is assigned time + cooldown = 60 seconds.
-        Remaining cooldown is 60 - 5 = 55 seconds.
+        The Remaining cooldown is 60-5=55 seconds.
 
         Case 2.
-        Task was assigned to miner. It did it 15 seconds that is less than throttle period.
-        So cooldown until is assigned time + cooldown 60 seconds.
-        Remaining cooldown is 60 - 15 = 45 seconds.
+        The Task was assigned to miner. It did it 15 seconds that are less than a throttle period.
+        So cooldown until is assigned time and cooldown 60 seconds.
+        The Remaining cooldown is 60-15=45 seconds.
 
         Case 3.
-        Task was assigned to miner. It did it 20 seconds that is equal to throttle period.
-        So cooldown until is assigned time + cooldown 60 seconds.
-        Remaining cooldown is 60 - 20 = 40 seconds.
+        The Task was assigned to miner. It did it 20 seconds that is equal to a throttle period.
+        So cooldown until is assigned time and cooldown 60 seconds.
+        The Remaining cooldown is 60-20=40 seconds.
 
         Case 4.
-        Task was assigned to miner. It did it 30 seconds that is more than cooldown.
-        So cooldown until is
-        task submit time - throttle period  + cooldown 60 seconds = 30 - 20 + 60 = 70 seconds.
-        Remaining cooldown is 70 - 30 = 40 seconds.
+        The Task was assigned to miner. It did it 30 seconds that is more than cooldown.
+        Such a cooldown until is
+        task submit time - throttle period and cooldown 60 seconds = 30-20+60=70 seconds.
+        The Remaining cooldown is 70-30 = 40 seconds.
         """
         pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
@@ -193,7 +194,7 @@ class TestSingleMinerRules:
 
     @pytest.mark.asyncio
     async def test_submit_task_unknown_neuron(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
-        """When miner is unknown it can't submit successfully task."""
+        """When miner is unknown, it can't submit successful task."""
         pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
         submit = await validator.submit_results(create_submit_result(None, pull.task))
@@ -203,12 +204,12 @@ class TestSingleMinerRules:
 
     @pytest.mark.asyncio
     async def test_submit_task_wrong_task(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
-        """Miner can't submit unknown task."""
+        """Miner can't submit an unknown task."""
         pull = await validator.pull_task(create_pull_task(1))
         submit = await validator.submit_results(create_submit_result(1, Task(prompt="invalid task")))
 
         assert submit.results == ""
-        assert submit.feedback == Feedback(average_fidelity_score=1)
+        assert submit.feedback == Feedback(average_fidelity_score=1, current_duel_rating=1500)
         assert submit.feedback.task_fidelity_score == 0.0
         assert validator.miners[1].assigned_task == pull.task
 
@@ -223,7 +224,7 @@ class TestSingleMinerRules:
         synapse.results = ""  # Task skip
         submit = await validator.submit_results(synapse)
 
-        assert submit.feedback == Feedback(average_fidelity_score=1)
+        assert submit.feedback == Feedback(average_fidelity_score=1, current_duel_rating=1500)
         assert validator.miners[1].assigned_task is None
         assert validator.miners[1].cooldown_until == int(time_machine.time()) + TASK_COOLDOWN
 
@@ -232,8 +233,8 @@ class TestSingleMinerRules:
         self, validator: Validator, reset_validation_server: HTTPServer
     ) -> None:
         """
-        Miner can't submit task with invalid signature.
-        In this case additionally TASK_COOLDOWN_PENALTY is applied.
+        Miner can't submit a task with invalid signature.
+        In this case, additionally, TASK_COOLDOWN_PENALTY is applied.
         """
         pull = await validator.pull_task(create_pull_task(1))
         assert pull.task is not None
@@ -241,7 +242,7 @@ class TestSingleMinerRules:
         synapse.signature = pybase64.b64encode(WALLETS[1].hotkey.sign("")).decode("utf-8")
         submit = await validator.submit_results(synapse)
 
-        assert submit.feedback == Feedback(average_fidelity_score=1)
+        assert submit.feedback == Feedback(average_fidelity_score=1, current_duel_rating=1500)
         assert validator.miners[1].assigned_task is None
         assert validator.miners[1].cooldown_until == int(time_machine.time()) + TASK_COOLDOWN + TASK_COOLDOWN_PENALTY
 
@@ -250,7 +251,7 @@ class TestSingleMinerRules:
         self, validator: Validator, time_travel: time_machine.travel, validation_server: HTTPServer
     ) -> None:
         """
-        When miner submits bad asset then validation gives bad score that is interpreted as 0.
+        When miner submits bad asset then validation gives bad score interpreted as 0.
         In this case cooldown penalty is applied to miner and the score is 0.
         """
         validation_server.clear()
@@ -270,7 +271,7 @@ class TestSingleMinerRules:
     @pytest.mark.asyncio
     async def test_submit_task_window_check(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
         """
-        When the miner submits the task observations are added to his observations list.
+        When the miner submits the task, observations are added to his observation list.
         It contains the time of the task submission.
         It contains only tasks for the given window - last 4 hours.
         """
@@ -304,11 +305,11 @@ class TestSingleMinerRules:
         reset_validation_server: HTTPServer,
     ) -> None:
         """
-        Tests how miner reward changes over 10 consecutive submissions, one hour apart.
+        Tests how miner rewards changes over 10 consecutive submissions, one hour apart.
 
         This test:
         1. Verifies the reward calculation formula (observations * fidelity_score)
-        2. Tracks how the average fidelity score (EMA) evolves with each submission
+        2. Track how the average fidelity score (EMA) evolves with each submission
         3. Confirms that observations outside the 4-hour window are expired
         """
         # Set up validation server to return a constant score
@@ -318,10 +319,14 @@ class TestSingleMinerRules:
         )
 
         # Verify initial state
+        default_reward_rating = 1500.0
+        assert validator.ratings.get_miner_reward_rating(1) == default_reward_rating
         assert validator.miners[1].fidelity_score == 1.0
         assert len(validator.miners[1].observations) == 0
 
         # Perform 10 submissions, 1 hour apart
+        # | - 1 hour - | - 1 hour - | - 1 hour - | - 1 hour - | - 1 hour - |
+        # 4 hours window, not including the left value if it's exactly on the line.
         moving_average_alpha = config.validation.moving_average_alpha
         expected_fidelity = 1.0  # Initial fidelity score
         base_time = FROZEN_TIME
@@ -339,10 +344,13 @@ class TestSingleMinerRules:
                 assert current_fidelity == pytest.approx(expected_fidelity, abs=0.01)
 
                 # Check observations
-                # If it is 5th submission then observations will be from 1, 2, 3, 4, 5 hour.
-                # Initial submission will be droped.
-                expected_observations = i + 1 if i < 4 else 5
-                expected_reward = expected_observations * current_fidelity
+                # 1 submission  - 1 observation (start of the observation time)
+                # 2 submissions - 2 observations (1 hour passed)
+                # 3 submissions - 3 observations (2 hour passed)
+                # 4 submissions - 4 observations (3 hour passed)
+                # 5 submissions - 4 observations (4 hour passed, first submission dropped)
+                expected_observations = min(i + 1, 4)
+                expected_reward = expected_observations * default_reward_rating
                 assert len(validator.miners[1].observations) == expected_observations
 
                 # Check reward
@@ -361,7 +369,7 @@ class TestSingleMinerRules:
     ) -> None:
         """
         Tests behavior when a miner submits results after the task timeout has expired.
-        In this case miner should receive reward as usual.
+        In this case, miner should receive reward as usual.
         """
         # Get task assignment time
         _ = await validator.pull_task(create_pull_task(1))
@@ -390,6 +398,7 @@ class TestSingleMinerRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ratings: DuelRatings,
     ) -> None:
         """
         Tests behavior when a miner submits a task with a uncompressed result.
@@ -401,6 +410,7 @@ class TestSingleMinerRules:
                 config=config,
                 subtensor=subtensor,
                 task_manager=task_manager,
+                ratings=ratings,
             ) as validator:
                 _ = await validator.pull_task(create_pull_task(1))
                 assert validator.miners[1].assigned_task is not None
@@ -437,6 +447,7 @@ class TestSingleMinerRules:
         subtensor: bt.MockSubtensor,
         task_manager: TaskManager,
         validator: Validator,
+        ratings: DuelRatings,
     ) -> None:
         """
         Tests behavior when a miner submits a task with a pyspz compressed result.
@@ -448,6 +459,7 @@ class TestSingleMinerRules:
                 config=config,
                 subtensor=subtensor,
                 task_manager=task_manager,
+                ratings=ratings,
             ) as validator:
                 _ = await validator.pull_task(create_pull_task(1))
                 assert validator.miners[1].assigned_task is not None
@@ -482,7 +494,7 @@ class TestSingleMinerRules:
     async def test_submit_task_too_fast(self, validator: Validator, reset_validation_server: HTTPServer) -> None:
         """
         Tests behavior when a miner submits a task too fast.
-        In this case validation timeout should be applied and only one submission should be accepted.
+        In this case, validation timeout should be applied and only one submission should be accepted.
         """
         validation_lock_duration = 0.1
         submit_count = 10

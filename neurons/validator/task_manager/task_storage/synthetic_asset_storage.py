@@ -49,9 +49,9 @@ class SyntheticAssetStorage:
                     "submit_time": synapse.submit_time,
                     "signature": signature,
                     "score": {
-                        "2.0.0": validation.score,
+                        "2.1.0": validation.score,
                         "iqa": validation.iqa,
-                        "clip": validation.clip,
+                        "clip": validation.alignment_score,
                         "ssim": validation.ssim,
                         "lpips": validation.lpips,
                     },

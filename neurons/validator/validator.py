@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel
 
 from validator.api.public_api_server import PublicAPIServer
+from validator.duels.ratings import DuelRatings
 from validator.metagraph_sync import MetagraphSynchronizer
 from validator.miner_data import MinerData
 from validator.task_manager.task_manager import TaskManager
@@ -46,6 +47,8 @@ class Validator:
     """Task manager for fetching tasks from the network."""
     miners: list[MinerData]
     """List of miners."""
+    ratings: DuelRatings
+    """Holds miners duel ratings."""
     updater: AutoUpdater
     """Validator auto-updates."""
     public_server: PublicAPIServer | None
@@ -62,6 +65,7 @@ class Validator:
         config: bt.config,
         task_manager: TaskManager,
         validation_service: ValidationService,
+        ratings: DuelRatings,
         wallet: bt.wallet | None = None,
         subtensor: bt.subtensor | None = None,
     ) -> None:
@@ -85,6 +89,7 @@ class Validator:
         )
         self._check_validator_registered()
         self._init_miners()
+        self._init_ratings(ratings=ratings)
         self._init_metagraph()
         self._init_axon()
         self.telemetry = Telemetry(self.miners, self.wallet, self.metagraph, self.config)
@@ -100,10 +105,11 @@ class Validator:
         # File is used to preserve validator state in between restarts because miner can start its job
         # before restart and finish it after restart.
         self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
+
         path = self.config.neuron.full_path / "state.txt"
         if not path.exists():
             bt.logging.warning("No saved state found")
-            self.miners = [MinerData(uid=x) for x in range(NEURONS_LIMIT)]
+
         try:
             with path.open("r") as f:
                 content = f.read()
@@ -111,6 +117,10 @@ class Validator:
         except Exception as e:
             bt.logging.exception(f"Failed to load the miners state: {e}")
         bt.logging.info("Miners initialized.")
+
+    def _init_ratings(self, ratings: DuelRatings) -> None:
+        self.ratings = ratings
+        self.ratings.load_ratings(full_path=self.config.neuron.full_path)
 
     def _check_validator_registered(self) -> None:
         # Check if the validator is registered on the network.
@@ -136,7 +146,7 @@ class Validator:
             self.config.neuron.log_info_interval,
             self.config.public_api.strong_miners_count,
         )
-        self.metagraph_sync.sync(self.miners)
+        self.metagraph_sync.sync(self.miners, self.ratings)
         bt.logging.info(f"Metagraph: {self.metagraph}")
         self.uid = self.metagraph.hotkeys.index(self.wallet.hotkey.ss58_address)
         bt.logging.info(
@@ -161,7 +171,7 @@ class Validator:
         bt.logging.info(f"Axon created: {self.axon}")
 
     async def pull_task(self, synapse: PullTask) -> PullTask:
-        """Returns new task to the miner if it is allowed."""
+        """Returns a new task to the miner if it is allowed."""
 
         miner_uid = self._check_miner_registered(synapse=synapse)
         if miner_uid is None:
@@ -174,8 +184,10 @@ class Validator:
 
         is_strong_miner = self.metagraph_sync.is_strong_miner(miner_uid)
 
-        task = self.task_manager.get_next_task(
-            hotkey=synapse.dendrite.hotkey, is_strong_miner=is_strong_miner, miner_uid=miner_uid
+        task = await self.task_manager.get_next_task(
+            miner_uid=miner_uid,
+            is_strong_miner=is_strong_miner,
+            metagraph=self.metagraph,
         )
         synapse.task = Task(id=task.id, prompt=task.prompt)
         miner.assign_task(synapse.task)
@@ -190,7 +202,7 @@ class Validator:
             return synapse
         miner = self.miners[miner_uid]
         if not self._check_miner_signature(synapse=synapse, miner=miner):
-            return self._process_task_failure(
+            return await self._process_task_failure(
                 synapse=synapse, miner=miner, cooldown_penalty=self.config.generation.cooldown_penalty
             )
         miner.cooldown_violations = max(0, miner.cooldown_violations - 1)
@@ -199,7 +211,7 @@ class Validator:
             return self._add_feedback_and_strip(synapse, miner)
         if synapse.results == "":
             bt.logging.debug(f"[{miner_uid}] submitted empty results ({synapse.task.id} | {synapse.task.prompt[:100]})")
-            return self._process_task_failure(synapse=synapse, miner=miner, cooldown_penalty=0)
+            return await self._process_task_failure(synapse=synapse, miner=miner, cooldown_penalty=0)
 
         return await self._validate_results(synapse=synapse, miner=miner, miner_uid=miner_uid)
 
@@ -216,7 +228,7 @@ class Validator:
         validation_res = await self.validation_service.validate(synapse=synapse, neuron_uid=miner.uid)
         if validation_res is None:
             bt.logging.error(f"[{miner_uid}]: validation failed ({synapse.task.prompt[:100]})")
-            return self._process_task_failure(  # type: ignore
+            return await self._process_task_failure(
                 synapse=synapse, miner=miner, cooldown_penalty=0, validation_failed=True
             )
         bt.logging.debug(
@@ -234,7 +246,7 @@ class Validator:
             return self._add_feedback_and_strip(synapse, miner)
 
         if validation_res.score < self.config.generation.quality_threshold:
-            return self._process_task_failure(
+            return await self._process_task_failure(
                 synapse=synapse,
                 miner=miner,
                 score=validation_res.score,
@@ -266,7 +278,7 @@ class Validator:
         # Add task metrics.
         self.telemetry.add_task_metrics(
             miner_hotkey=synapse.dendrite.hotkey,
-            miner_coldkey=self.metagraph.coldkeys[miner.uid],
+            miner_coldkey=self.metagraph.axons[miner.uid].coldkey,
             score=validation_res.score,
             delivery_time=delivery_time,
             size=len(synapse.results),
@@ -275,11 +287,13 @@ class Validator:
         # Submit task results.
         synapse_copy = synapse.model_copy()
         asyncio.create_task(
-            self.task_manager.submit_result(synapse=synapse_copy, validation_res=validation_res, miner_uid=miner_uid)
+            self.task_manager.submit_result(
+                synapse=synapse_copy, validation_res=validation_res, miner_uid=miner_uid, metagraph=self.metagraph
+            )
         )
         return self._add_feedback_and_strip(synapse, miner, current_time=current_time, fidelity_score=fidelity_score)
 
-    def _process_task_failure(
+    async def _process_task_failure(
         self,
         synapse: SubmitResults,
         miner: MinerData,
@@ -294,16 +308,19 @@ class Validator:
             cooldown=self.config.generation.task_cooldown + cooldown_penalty,
         )
 
-        self.task_manager.fail_task(
-            task_id=synapse.task.id,
-            task_prompt=synapse.task.prompt,
-            hotkey=synapse.dendrite.hotkey,
-            miner_uid=miner.uid,
+        asyncio.create_task(
+            self.task_manager.fail_task(
+                task_id=synapse.task.id,
+                task_prompt=synapse.task.prompt,
+                hotkey=synapse.dendrite.hotkey,
+                miner_uid=miner.uid,
+                metagraph=self.metagraph,
+            )
         )
 
         self.telemetry.add_task_metrics(
             miner_hotkey=synapse.dendrite.hotkey,
-            miner_coldkey=self.metagraph.coldkeys[miner.uid],
+            miner_coldkey=self.metagraph.axons[miner.uid].coldkey,
             score=score,
             delivery_time=delivery_time,
             size=len(synapse.results),
@@ -324,12 +341,14 @@ class Validator:
 
         if current_time is None:
             current_time = int(time.time())
-        reward = miner.calculate_reward(current_time)
+        current_rating = self.ratings.get_miner_reward_rating(miner.uid)
+        reward = miner.calculate_reward(current_time=current_time, rating=current_rating)
         synapse.feedback = Feedback(
             validation_failed=validation_failed,
             task_fidelity_score=fidelity_score,
             average_fidelity_score=miner.fidelity_score,
             generations_within_the_window=len(miner.observations),
+            current_duel_rating=current_rating,
             current_miner_reward=reward,
         )
         synapse.cooldown_until = miner.cooldown_until
@@ -411,11 +430,13 @@ class Validator:
 
             if self.metagraph_sync.should_sync():
                 self.save_state()
-                self.metagraph_sync.sync(self.miners)
+                self.ratings.save_ratings(full_path=self.config.neuron.full_path)
+                self.metagraph_sync.sync(self.miners, self.ratings)
                 self._set_weights()
 
             if await self.updater.should_update():
                 self.save_state()
+                self.ratings.save_ratings(full_path=self.config.neuron.full_path)
                 await self.updater.update()
                 break
 
@@ -426,7 +447,7 @@ class Validator:
         try:
             path = self.config.neuron.full_path / "state.txt"
             with path.open("w") as f:
-                f.write(Validator.State(miners=self.miners).json())
+                f.write(Validator.State(miners=self.miners).model_dump_json())
         except Exception as e:
             bt.logging.exception(f"Validator state saving failed with {e}")
 
@@ -438,7 +459,14 @@ class Validator:
             return
 
         current_time = int(time.time())
-        rewards = np.array([miner.calculate_reward(current_time) for miner in self.miners])
+        reward_ratings = self.ratings.get_reward_ratings()
+        bt.logging.debug(f"Ratings: {reward_ratings}")
+        rewards = np.array(
+            [
+                miner.calculate_reward(current_time=current_time, rating=rating)
+                for miner, rating in zip(self.miners, reward_ratings, strict=False)
+            ]
+        )
         bt.logging.debug(f"Rewards: {rewards}")
 
         def strip_sigmoid(x: NDArray[np.uint16], n: int) -> NDArray[np.float64]:
@@ -483,10 +511,7 @@ class Validator:
         miner_uid = self._get_neuron_uid(synapse.dendrite.hotkey)
         if miner_uid is None:
             synapse.cooldown_until = int(time.time()) + 3600
-            bt.logging.warning(
-                f"[{miner_uid}]: Unexpected behavior. Miner {synapse.dendrite.hotkey} ({synapse.dendrite.ip}) "
-                f"is not registered"
-            )
+            bt.logging.debug(f"Miner {synapse.dendrite.hotkey} ({synapse.dendrite.ip}) is not registered")
         return miner_uid
 
     def _check_miner_on_cooldown(self, *, synapse: PullTask, miner: MinerData) -> bool:
@@ -512,7 +537,7 @@ class Validator:
             synapse.validation_threshold = self.config.generation.quality_threshold
             synapse.throttle_period = self.config.generation.throttle_period
             bt.logging.debug(
-                f"[{miner.uid}] asked for a new task while having assigned task ({synapse.task.prompt[:100]}). )"
+                f"[{miner.uid}] asked for a new task while having assigned task ({synapse.task.prompt[:100]})."
             )
             return True
         return False

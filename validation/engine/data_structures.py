@@ -34,10 +34,9 @@ class ValidationResult(BaseModel):
     alignment_score: float  # clip similarity scores
     ssim_score: float  # structure similarity index score
     lpips_score: float  # perceptive similarity score
-    validation_time: float | None = None  # time that validation took
 
 
-class RequestData(BaseModel):
+class ValidationRequest(BaseModel):
     prompt: str | None = Field(default=None, max_length=1024, description="Prompt used to generate assets")
     prompt_image: str | None = Field(default=None, description="Prompt-image used to generate assets")
     data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
@@ -46,7 +45,7 @@ class RequestData(BaseModel):
     preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
 
 
-class ResponseData(BaseModel):
+class ValidationResponse(BaseModel):
     score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
     iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
     alignment_score: float = Field(
@@ -57,13 +56,14 @@ class ResponseData(BaseModel):
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
 
 
+class RenderRequest(BaseModel):
+    prompt: str | None = Field(default=None, max_length=1024, description="Prompt used to generate assets")
+    data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
+    compression: int = Field(default=0, description="0 for uncompressed results, 2 for spz compression")
+
+
 class TimeStat(BaseModel):
     loading_data_time: float = Field(default=0.0, description="Loading data time")
     image_rendering_time: float = Field(default=0.0, description="Image rendering time")
     validation_time: float = Field(default=0.0, description="Validation time")
     total_time: float = Field(default=0.0, description="Total time of server processing")
-
-
-class ValidationResultData(BaseModel):
-    response_data: ResponseData  # Response data with validation result
-    time_stat: TimeStat | None = None  # Performance statistics of the validation

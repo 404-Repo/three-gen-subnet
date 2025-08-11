@@ -10,8 +10,7 @@ from typing import Any
 import pandas as pd
 import pybase64
 import torch
-import zstandard
-from engine.data_structures import RequestData, TimeStat, ValidationResultData
+from engine.data_structures import TimeStat, ValidationRequest, ValidationResponse
 from engine.io.ply.loader import PlyLoader
 from engine.rendering.renderer import Renderer
 from engine.validation_engine import ValidationEngine
@@ -31,7 +30,7 @@ class BenchmarkValidationResult(BaseModel):
     """
 
     try_cnt: int
-    validation_results: list[ValidationResultData]
+    validation_results: list[tuple[ValidationResponse, TimeStat]]
     avg_load_time: float
     avg_image_render_time: float
     avg_validation_time: float
@@ -70,7 +69,6 @@ class BenchmarkValidation:
         print("[green]1. Preparing validator... (1 from 5)[/green]")
         validator = ValidationEngine()
         validator.load_pipelines()
-        zstd_decompressor = zstandard.ZstdDecompressor()
         renderer = Renderer()
         ply_data_loader = PlyLoader()
         gc.collect()
@@ -80,7 +78,7 @@ class BenchmarkValidation:
         with BenchmarkValidation._SAMPLE_SPZ_MODEL_FILE.open("rb") as file:
             data = pybase64.b64encode_as_string(file.read())
             prompt = BenchmarkValidation._SAMPLE_SPZ_MODEL_FILE.stem
-        request_data = RequestData(
+        request_data = ValidationRequest(
             prompt=prompt,
             data=data,
             compression=2,
@@ -93,7 +91,6 @@ class BenchmarkValidation:
                 validator=validator,
                 ply_data_loader=ply_data_loader,
                 renderer=renderer,
-                zstd_decompressor=zstd_decompressor,
                 try_cnt=try_cnt,
             )
 
@@ -117,25 +114,22 @@ class BenchmarkValidation:
     def benchmark_validation(
         *,
         validator: ValidationEngine,
-        zstd_decompressor: zstandard.ZstdDecompressor,
         ply_data_loader: PlyLoader,
         renderer: Renderer,
-        request: RequestData,
+        request: ValidationRequest,
         try_cnt: int,
-    ) -> list[ValidationResultData]:
+    ) -> list[tuple[ValidationResponse, TimeStat]]:
         """
         Does try_cnt validation runs and returns profiling statistics.
         Method also saves statistics results to the files in temp directory as zip archive benchmark_validation.zip.
         """
-        results: list[ValidationResultData] = []
+        results: list[tuple[ValidationResponse, TimeStat]] = []
         for _ in range(try_cnt):
             validation_result = decode_and_validate_txt(
                 request=request,
                 validator=validator,
-                zstd_decompressor=zstd_decompressor,
                 renderer=renderer,
                 ply_data_loader=ply_data_loader,
-                include_time_stat=True,
             )
             results.append(validation_result)
 
@@ -143,12 +137,12 @@ class BenchmarkValidation:
 
     @staticmethod
     def _get_result(
-        *, validation_results: list[ValidationResultData], execution_tree: dict[str, Any]
+        *, validation_results: list[tuple[ValidationResponse, TimeStat]], execution_tree: dict[str, Any]
     ) -> BenchmarkValidationResult:
         """
         Calculates statistics and returns benchmark validation result.
         """
-        time_stats: list[TimeStat] = [result.time_stat for result in validation_results if result.time_stat is not None]
+        time_stats: list[TimeStat] = [time_stat for response, time_stat in validation_results]
 
         avg_load_time = sum([stat.loading_data_time for stat in time_stats]) / len(time_stats)
         avg_image_render_time = sum([stat.image_rendering_time for stat in time_stats]) / len(time_stats)
@@ -177,9 +171,7 @@ class BenchmarkValidation:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             # Save time stats for each iteration.
-            time_stats = [
-                result.time_stat.model_dump() for result in result.validation_results if result.time_stat is not None
-            ]
+            time_stats = [time_stat.model_dump() for response, time_stat in result.validation_results]
             time_stats_df = pd.DataFrame(time_stats)
             iteration_csv_buffer = io.BytesIO()
             time_stats_df.to_csv(iteration_csv_buffer, index=False)
