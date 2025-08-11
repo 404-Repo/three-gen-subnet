@@ -19,14 +19,6 @@ conda env create -f conda_env_vllm.yml
 conda activate three-gen-vllm
 conda info --env
 
-TEMP_DIR=$(mktemp -d -t flash_install_XXXXXX)
-wget -O "$TEMP_DIR/flash_attn-2.7.4.post1-cp311-cp311-linux_x86_64.whl" "https://github.com/404-Repo/compiled_libs/releases/download/flash-attn-cu126-torch270/flash_attn-2.7.4.post1-cp311-cp311-linux_x86_64.whl"
-pip install "$TEMP_DIR/flash_attn-2.7.4.post1-cp311-cp311-linux_x86_64.whl"
-
-wget -O "$TEMP_DIR/flashinfer_python-0.2.5-cp39-abi3-linux_x86_64.whl" "https://github.com/404-Repo/compiled_libs/releases/download/flashinfer-cu126-torch270/flashinfer_python-0.2.5-cp39-abi3-linux_x86_64.whl"
-pip install "$TEMP_DIR/flashinfer_python-0.2.5-cp39-abi3-linux_x86_64.whl"
-rm -rf "$TEMP_DIR"
-
 # Store the path of the Conda interpreter
 CONDA_VLLM_PATH=$(which vllm)
 CONDA_BIN_DIR=$(dirname "$CONDA_VLLM_PATH")
