@@ -37,8 +37,6 @@ conda info --env
 CUDA_HOME=${CONDA_PREFIX}
 CPATH="$CONDA_PREFIX/targets/x86_64-linux/include:$CONDA_PREFIX/include"
 LD_LIBRARY_PATH="$CONDA_PREFIX/targets/x86_64-linux/lib:$CONDA_PREFIX/lib"
-
-# Build gsplat from source.
 pip install git+https://github.com/nerfstudio-project/gsplat.git@v1.5.3
 
 echo "Environment update completed successfully."
