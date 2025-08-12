@@ -1,13 +1,12 @@
 import gc
 from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from loguru import logger
-from PIL import Image
-from torchvision import transforms
+
+from engine.utils.gs_data_checker_utils import sigmoid
 
 
 class QualityClassifierModel:
@@ -23,9 +22,8 @@ class QualityClassifierModel:
         self._emb_dim = 256
         self._model_name = "dinov2_vits14"
         self._image_size = 518
-        self._transform = self._get_image_transform()
-        self._norm_mean: torch.Tensor | None = None
-        self._norm_std: torch.Tensor | None = None
+        self._norm_mean = torch.tensor([0.485, 0.456, 0.406], device=self._device).view(3, 1, 1)
+        self._norm_std = torch.tensor([0.229, 0.224, 0.225], device=self._device).view(3, 1, 1)
 
     def load_model(self, repo_id: str, quality_scorer_model: str) -> None:
         """Function for loading DinoNet model
@@ -53,15 +51,8 @@ class QualityClassifierModel:
         model.eval().to(self._device)
         self._model = model
 
-        # Update transform with correct image size
-        self._transform = self._get_image_transform(self._image_size)
-
         logger.info(f"DinoNet quality scorer loaded to device {self._device}")
         self._model.eval()
-
-        # Pre-compute normalization tensors on device
-        self._norm_mean = torch.tensor([0.485, 0.456, 0.406], device=self._device).view(3, 1, 1)
-        self._norm_std = torch.tensor([0.229, 0.224, 0.225], device=self._device).view(3, 1, 1)
 
     def unload_model(self) -> None:
         """Function for unloading model"""
@@ -73,35 +64,36 @@ class QualityClassifierModel:
         torch.cuda.empty_cache()
         gc.collect()
 
-    def score(self, images: list[torch.Tensor]) -> np.ndarray:
+    def score(self, images: list[torch.Tensor]) -> torch.Tensor:
         """Function for generation of quality scores for a batch of images
 
         Args:
             images: List of torch tensors representing images
 
         Returns:
-            np.ndarray: Quality scores for each image (raw sigmoid outputs)
+            torch.Tensor: Quality scores for each image (raw sigmoid outputs)
         """
 
         if self._model is None:
             raise RuntimeError("The model has not been loaded!")
 
         processed_images = self.preprocess_inputs(images)
-        scores = []
 
         with torch.no_grad():
+            scores = torch.empty(len(images), device=self._device)
+            i = 0
             for img_tensor in processed_images:
                 # Add batch dimension and move to device
                 x = img_tensor.unsqueeze(0).to(self._device)
 
                 # Get embedding and score from DinoNet
                 _, score_logit = self._model(x)
-
                 # Return raw sigmoid output
-                score = torch.sigmoid(score_logit).item()
-                scores.append(score)
+                score = sigmoid(score_logit)
+                scores[i] = score
+                i += 1
 
-        return np.array(scores)
+        return scores
 
     def preprocess_inputs(self, images: list[torch.Tensor]) -> list[torch.Tensor]:
         """Preprocess images for input to the DinoNet model
@@ -116,15 +108,8 @@ class QualityClassifierModel:
 
         for img_tensor in images:
             # Apply tensor transforms directly (avoid PIL conversion)
-            if self._norm_mean is not None:
-                processed_tensor = self._tensor_transform(img_tensor)
-                processed_images.append(processed_tensor)
-            else:
-                # Fallback to PIL transforms if model not loaded
-                img_array = img_tensor.cpu().numpy().astype(np.uint8)
-                pil_image = Image.fromarray(img_array)
-                processed_tensor = self._transform(pil_image)
-                processed_images.append(processed_tensor)
+            processed_tensor = self._tensor_transform(img_tensor)
+            processed_images.append(processed_tensor)
 
         return processed_images
 
@@ -139,27 +124,13 @@ class QualityClassifierModel:
             size=(self._image_size, self._image_size),
             mode="bilinear",
             align_corners=False,
-            antialias=True,
+            antialias=False,
         ).squeeze(0)
 
         # Production-safe type narrowing
         if self._norm_mean is None or self._norm_std is None:
             raise RuntimeError("Normalization tensors not initialized. Model must be loaded first.")
         return (x - self._norm_mean) / self._norm_std
-
-    def _get_image_transform(self, image_size: int = 518) -> transforms.Compose:
-        """Get standard image transforms for DINOv2 (matching training configuration)"""
-        return transforms.Compose(
-            [
-                transforms.Resize(image_size, antialias=True),
-                transforms.CenterCrop(image_size),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],  # ImageNet
-                    std=[0.229, 0.224, 0.225],
-                ),
-            ]
-        )
 
 
 class DINOv2Net(nn.Module):

@@ -58,8 +58,7 @@ class ImageQualityMetric:
             raise RuntimeError("DinoNet quality model has not been loaded!")
 
         # Get DinoNet quality scores for all images
-        quality_scores = self._quality_classifier_model.score(list(images))
-        final_scores = torch.tensor(quality_scores)
+        final_scores = self._quality_classifier_model.score(list(images))
 
         if use_filter_outliers:
             final_scores = filter_outliers(final_scores)
@@ -67,7 +66,6 @@ class ImageQualityMetric:
         final_score = compute_mean(final_scores, mean_op)
 
         if self._verbose:
-            logger.debug(f"DinoNet quality scores: {quality_scores}")
-            logger.debug(f"Final combined score: {final_score}")
+            logger.debug(f"DinoNet quality scores: {final_score}")
 
         return float(final_score)
