@@ -30,7 +30,7 @@ from PIL import Image
 from starlette.responses import StreamingResponse
 
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 
 def get_args() -> tuple[argparse.Namespace, list[str]]:
