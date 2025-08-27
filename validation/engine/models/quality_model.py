@@ -1,12 +1,16 @@
 import gc
+from collections.abc import Callable
 from typing import Any
 
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from loguru import logger
+from safetensors.torch import load_model
+from transformers import Dinov2Model
 
 from engine.utils.gs_data_checker_utils import sigmoid
+from engine.utils.model_compilation_utils import configure_torch_for_gpu, safe_compile_model
 
 
 class QualityClassifierModel:
@@ -17,13 +21,26 @@ class QualityClassifierModel:
 
     def __init__(self) -> None:
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._model: nn.Module | None = None
+
+        # Configure GPU-adaptive settings
+        self._compile_mode = configure_torch_for_gpu()
+
+        # Enable TF32 for better performance on Ampere GPUs
+        # useful but at the cost of precision (the scores are affected at the 3rd decimal point)
+        # if torch.cuda.is_available():
+        #     torch.set_float32_matmul_precision("high")
+
+        self._model: Callable[..., Any] | None = None
         self._model_path = ""
         self._emb_dim = 256
-        self._model_name = "dinov2_vits14"
+        self._model_name = "dinov2-small"
         self._image_size = 518
-        self._norm_mean = torch.tensor([0.485, 0.456, 0.406], device=self._device).view(3, 1, 1)
-        self._norm_std = torch.tensor([0.229, 0.224, 0.225], device=self._device).view(3, 1, 1)
+
+        # Use proper tensor creation to avoid copy warnings
+        norm_mean = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32)
+        norm_std = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32)
+        self._norm_mean = norm_mean.to(self._device).view(3, 1, 1)
+        self._norm_std = norm_std.to(self._device).view(3, 1, 1)
 
     def load_model(self, repo_id: str, quality_scorer_model: str) -> None:
         """Function for loading DinoNet model
@@ -38,21 +55,27 @@ class QualityClassifierModel:
         if quality_scorer_model is None:
             raise ValueError("Quality scorer model is required")
 
-        # Load model weights
-        backbone = torch.hub.load("facebookresearch/dinov2", self._model_name, pretrained=True)  # nosec B614
-        model = DINOv2Net(backbone, emb_dim=self._emb_dim)
-        self._model_path = hf_hub_download(
-            repo_id=repo_id, revision="4438c19183d7b13f56cd9ce2ce08964bc072533b", filename=quality_scorer_model
+        # Load HF transformers DINOv2 backbone (safer than torch.hub)
+        # Pin to specific revision for security and reproducibility
+        backbone = Dinov2Model.from_pretrained(
+            f"facebook/{self._model_name}", revision="150c8e7bb7cef2d30ec31b13a517af14840ee3f7"
         )
-        self._model_state = torch.load(self._model_path, map_location=self._device, weights_only=True)  # nosec B614
+        self._model = DINOv2Net(backbone, emb_dim=self._emb_dim)
+        self._model_path = hf_hub_download(
+            repo_id=repo_id, revision="948bf06988b630681c7bc468aebf2bbe010856f7", filename=quality_scorer_model
+        )
+        load_model(self._model, self._model_path, strict=False)
+        self._model.eval().to(self._device)
 
-        # Load full model weights
-        model.load_state_dict(self._model_state)
-        model.eval().to(self._device)
-        self._model = model
+        # Use adaptive compilation based on GPU capabilities
+        self._model = safe_compile_model(self._model, self._compile_mode)
 
-        logger.info(f"DinoNet quality scorer loaded to device {self._device}")
-        self._model.eval()
+        # Warmup compilation with dummy input to avoid first-call delay
+        dummy_input = torch.randn(1, 3, self._image_size, self._image_size, device=self._device)
+        with torch.no_grad():
+            _ = self._model(dummy_input)  # Triggers compilation
+
+        logger.info(f"DinoNet quality scorer loaded to device {self._device} with mode {self._compile_mode}")
 
     def unload_model(self) -> None:
         """Function for unloading model"""
@@ -87,7 +110,7 @@ class QualityClassifierModel:
                 x = img_tensor.unsqueeze(0).to(self._device)
 
                 # Get embedding and score from DinoNet
-                _, score_logit = self._model(x)
+                score_logit = self._model(x)
                 # Return raw sigmoid output
                 score = sigmoid(score_logit)
                 scores[i] = score
@@ -113,7 +136,7 @@ class QualityClassifierModel:
 
         return processed_images
 
-    def _tensor_transform(self, img_tensor: torch.Tensor) -> torch.Tensor:
+    def _tensor_transform(self, img_tensor: torch.Tensor) -> Any:
         """Efficient tensor-based transforms without PIL conversion"""
         # Convert (H,W,C) to (C,H,W) and normalize to [0,1]
         x = img_tensor.to(self._device).permute(2, 0, 1).float() / 255.0
@@ -143,19 +166,19 @@ class DINOv2Net(nn.Module):
     def __init__(self, backbone: Any, emb_dim: int = 256) -> None:
         super().__init__()
         self.backbone = backbone  # Vision transformer from DINOv2
-        feat_dim = backbone.embed_dim  # 384, 768, 1024 … depending on variant
+        feat_dim = backbone.config.hidden_size  # 384, 768, 1024 … depending on variant
 
         # Two small heads
         self.emb_head = nn.Linear(feat_dim, emb_dim)
         self.score_head = nn.Linear(feat_dim, 1)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Returns:
           • normalized embedding   (B, emb_dim)
           • raw score logits       (B, 1)
         """
-        feats = self.backbone(x)  # (B, feat_dim)
-        emb = nn.functional.normalize(self.emb_head(feats), p=2, dim=-1)  # L2-normalize
-        score = self.score_head(feats).squeeze(1)  # (B,)
-        return emb, score
+        # HF DINOv2 returns ModelOutput, # CLS token features (B, feat_dim)
+        feats = self.backbone(x).last_hidden_state[:, 0]
+        score: torch.Tensor = self.score_head(feats).squeeze(1)  # (B,)
+        return score

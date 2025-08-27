@@ -109,6 +109,7 @@ class Validator:
         path = self.config.neuron.full_path / "state.txt"
         if not path.exists():
             bt.logging.warning("No saved state found")
+            return
 
         try:
             with path.open("r") as f:
@@ -225,7 +226,14 @@ class Validator:
         else:
             miner.validation_locked_until = int(time.time()) + self.config.validation.validation_lock_duration
 
-        validation_res = await self.validation_service.validate(synapse=synapse, neuron_uid=miner.uid)
+        grid_preview_needed = self.task_manager.grid_preview_needed(synapse=synapse)
+
+        validation_res = await self.validation_service.validate(
+            synapse=synapse,
+            neuron_uid=miner.uid,
+            generate_single_preview=self.config.storage.enabled,
+            generate_grid_preview=grid_preview_needed,
+        )
         if validation_res is None:
             bt.logging.error(f"[{miner_uid}]: validation failed ({synapse.task.prompt[:100]})")
             return await self._process_task_failure(

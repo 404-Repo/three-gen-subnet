@@ -74,6 +74,8 @@ class GatewayApi:
         task: GatewayTask,
         score: float | None = None,
         miner_hotkey: str | None = None,
+        miner_uid: int | None = None,
+        miner_rating: float | None = None,
         asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
@@ -82,8 +84,8 @@ class GatewayApi:
         timestamp = int(time.time())
         msg = f"404_GATEWAY_{timestamp}"
         signature = pybase64.b64encode(validator_hotkey.sign(msg)).decode(encoding="utf-8")
-        bt.logging.warning(f"GatewayApi: adding result to {url}")
-        payload = {
+        bt.logging.debug(f"GatewayApi: adding result to {url}")
+        payload: dict[str, int | float | str | bytes | None] = {
             "id": task.id,
             "signature": signature,
             "timestamp": msg,
@@ -94,6 +96,8 @@ class GatewayApi:
             payload["miner_hotkey"] = miner_hotkey
             payload["asset"] = asset
             payload["score"] = score
+            payload["miner_uid"] = miner_uid
+            payload["miner_rating"] = miner_rating
         else:
             payload["status"] = "failure"
             payload["reason"] = error
@@ -108,6 +112,3 @@ class GatewayApi:
             self._host_to_latency[host] = latency
         else:
             self._host_to_latency[host] = 0.8 * self._host_to_latency[host] + 0.2 * latency
-
-
-gateway_api = GatewayApi()

@@ -13,7 +13,7 @@ import pytest
 from engine.io.ply import PlyLoader
 from engine.rendering.renderer import Renderer
 from engine.validation_engine import ValidationEngine
-from engine.data_structures import ValidationResult, GaussianSplattingData
+from engine.data_structures import ValidationResponse, GaussianSplattingData
 
 
 @pytest.fixture
@@ -35,6 +35,6 @@ def test_validator(ply_data):
     validator = ValidationEngine()
     validator.load_pipelines()
 
-    score: ValidationResult = validator.validate_text_to_gs(prompt, images)
+    score: ValidationResponse = validator.validate_text_to_gs(prompt, images)
 
     assert score.final_score > 0.8

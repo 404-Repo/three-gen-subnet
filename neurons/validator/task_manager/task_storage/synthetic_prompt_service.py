@@ -5,8 +5,6 @@ import bittensor as bt
 import pybase64
 from bittensor_wallet import Keypair
 
-from validator.config import config
-
 
 class SyntheticPromptService:
     """
@@ -38,9 +36,3 @@ class SyntheticPromptService:
 
         bt.logging.info(f"{len(prompts)}/{self._batch_size} synthetic prompts fetched.")
         return prompts
-
-
-synthetic_prompt_service = SyntheticPromptService(
-    prompt_service_url=config.task.synthetic.prompter.endpoint,
-    batch_size=config.task.synthetic.prompter.batch_size,
-)

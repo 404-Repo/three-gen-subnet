@@ -3,11 +3,10 @@ import random as rd
 import bittensor as bt
 from bittensor_wallet import Keypair
 
-from validator.config import config
 from validator.gateway.gateway import Gateway
-from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult, gateway_api
-from validator.gateway.gateway_scorer import GatewayScorer, gateway_scorer
-from validator.task_manager.task import GatewayOrganicTask
+from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
+from validator.gateway.gateway_scorer import GatewayScorer
+from validator.task_manager.task_storage.organic_task import GatewayOrganicTask
 
 
 class GatewayManager:
@@ -58,6 +57,8 @@ class GatewayManager:
         task: GatewayOrganicTask,
         score: float | None = None,
         miner_hotkey: str | None = None,
+        miner_uid: int | None = None,
+        miner_rating: float | None = None,
         asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
@@ -71,13 +72,8 @@ class GatewayManager:
             ),
             score=score,
             miner_hotkey=miner_hotkey,
+            miner_uid=miner_uid,
+            miner_rating=miner_rating,
             asset=asset,
             error=error,
         )
-
-
-gateway_manager = GatewayManager(
-    gateway_scorer=gateway_scorer,
-    gateway_api=gateway_api,
-    gateway_info_server=config.task.gateway.bootstrap_gateway,
-)

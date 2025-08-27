@@ -5,7 +5,6 @@ import aiohttp
 import bittensor as bt
 from common.protocol import SubmitResults
 
-from validator.config import config
 from validator.validation_service import ValidationResponse
 
 
@@ -70,11 +69,3 @@ class SyntheticAssetStorage:
             bt.logging.error(f"An unexpected client error occurred: {e} ({self.url})")
         except Exception as e:
             bt.logging.error(f"An unexpected error occurred: {e} ({self.url})")
-
-
-synthetic_asset_storage = SyntheticAssetStorage(
-    enabled=config.storage.enabled,
-    service_api_key=config.storage.service_api_key,
-    endpoint_url=config.storage.endpoint_url,
-    validation_score_threshold=config.storage.validation_score_threshold,
-)

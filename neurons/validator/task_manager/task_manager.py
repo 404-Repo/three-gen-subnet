@@ -1,13 +1,12 @@
 import bittensor as bt
 from common.protocol import SubmitResults
 
-from validator.config import config
-from validator.duels.duels_task_storage import DuelsTaskStorage, duel_task_storage
-from validator.task_manager.task import (
+from validator.duels.duels_task_storage import DuelsTaskStorage
+from validator.task_manager.task_storage.organic_task_storage import OrganicTaskStorage
+from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage
+from validator.task_manager.validator_task import (
     ValidatorTask,
 )
-from validator.task_manager.task_storage.organic_task_storage import OrganicTaskStorage, organic_task_storage
-from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage, synthetic_task_storage
 from validator.validation_service import ValidationResponse
 
 
@@ -45,13 +44,22 @@ class TaskManager:
 
         return self._synthetic_task_storage.get_next_task(miner_uid=miner_uid)
 
+    def grid_preview_needed(self, *, synapse: SubmitResults) -> bool:
+        """Some types of tasks require a grid preview (e.g. for duels)."""
+        task_id = synapse.task.id
+        if self._organic_task_storage.has_task(task_id=task_id):
+            return True
+        if self._duel_task_storage.has_task(task_id=task_id):
+            return True
+        return False
+
     async def submit_result(
         self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int, metagraph: bt.metagraph
     ) -> None:
         """Method is called when miner completes the task."""
         task_id = synapse.task.id
         if self._organic_task_storage.has_task(task_id=task_id):
-            self._organic_task_storage.submit_result(
+            await self._organic_task_storage.submit_result(
                 synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
             )
             return
@@ -85,11 +93,3 @@ class TaskManager:
             )
 
         self._synthetic_task_storage.fail_task(task_id=task_id, task_prompt=task_prompt, miner_uid=miner_uid)
-
-
-task_manager = TaskManager(
-    organic_task_storage=organic_task_storage,
-    synthetic_task_storage=synthetic_task_storage,
-    duel_task_storage=duel_task_storage,
-    config=config,
-)
