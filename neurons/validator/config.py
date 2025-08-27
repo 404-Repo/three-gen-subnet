@@ -218,7 +218,7 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--task.organic.send_result_timeout",
         type=int,
-        help="Maximum wait time in seconds for the next results after the first submission occured.",
+        help="Maximum wait time in seconds for the next results after the first submission occurred.",
         default=30,
     )
     parser.add_argument(
@@ -272,7 +272,7 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
         "--task.synthetic.prompter.fetch_interval",
         type=int,
         help="Defines the fetch interval. The prompt batch is quite big (100k+) prompts. No need to fetch frequently",
-        default=60 * 60,  # 1 hour
+        default=30 * 60,  # 30 min
     )
     parser.add_argument(
         "--task.synthetic.prompter.batch_size",
@@ -350,6 +350,3 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         help="URL of the duel results storage endpoint (should accept POST requests to /)",
         default="http://35.246.174.235:4001/api/save_duel/",
     )
-
-
-config = read_config()

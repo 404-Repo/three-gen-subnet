@@ -17,7 +17,7 @@ class ImageQualityMetric:
         self._verbose = verbose
 
     def load_models(
-        self, repo_id: str = "404-Gen/validation", quality_scorer_model: str = "quality_scorer.pth"
+        self, repo_id: str = "404-Gen/validation", quality_scorer_model: str = "quality_scorer.safetensors"
     ) -> None:
         """Function for loading DinoNet quality model
 

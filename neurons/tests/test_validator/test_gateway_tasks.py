@@ -1,845 +1,606 @@
 import asyncio
-import random as rd
-import time
 from typing import Any, cast
-from uuid import uuid4
 
 import bittensor as bt
+import pybase64
 import pytest
 import time_machine
+from asyncpg.pgproto.pgproto import timedelta
 from pytest_httpserver import HTTPServer
+from werkzeug import Request
 
-from validator.duels.ratings import DuelRatings
-from validator.gateway.gateway_api import GatewayApi
-from validator.gateway.http3_client.http3_client import Http3Client, Http3Response
-from validator.task_manager.task import (
-    AssignedMiner,
-    GatewayOrganicTask,
-    LegacyOrganicTask,
-    SyntheticTask,
-    ValidatorTask,
-)
-from validator.task_manager.task_manager import TaskManager
-from validator.task_manager.task_storage.organic_task_storage import OrganicTask
-from validator.validation_service import ValidationService
+from validator.duels.organic_judge_service import OrganicJudgeService
+from validator.task_manager.task_storage.organic_task import OrganicTask, AssignedMiner, OrganicTaskJudgeQueuePriority
 from validator.validator import Validator
 
 from tests.test_validator.conftest import (
     ASSIGNED_MINERS_COUNT,
-    FROZEN_TIME,
-    STRONG_MINER_COUNT,
-    TASK_TIMEOUT,
     GatewayApiMock,
     create_pull_task,
     create_submit_result,
-    get_validator_with_available_organic_tasks,
+    FROZEN_TIME,
+    TASK_TIMEOUT,
+    SECOND_MINER_TIMEOUT,
 )
-from tests.test_validator.subtensor_mocks import WALLETS
 
 
 class TestGatewayTasks:
 
-    @pytest.mark.asyncio
-    async def test_task_order(
-        self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
-    ) -> None:
-        """
-        Test that the task order is correct.
-        First active organic tasks.
-        Then gateway organic tasks.
-        Then legacy organic tasks.
-        Then synthetic tasks.
-
-        All miners are strong. Initially we should take all gateway tasks (4 miners per each).
-        Then we should take legacy organic tasks (4 miners per each).
-        Then we should take synthetic tasks (1 miner per each).
-        """
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            with time_machine.travel(FROZEN_TIME, tick=False):
-                tasks: list[ValidatorTask] = []
-                time = time_machine.time()
-                for idx in range(STRONG_MINER_COUNT):
-                    time += 1
-                    with time_machine.travel(time, tick=False):
-                        pull_task = create_pull_task(idx)
-                        pull_task = await validator.pull_task(pull_task)
-                        assert pull_task.task is not None
-                        is_synthetic = validator.task_manager._synthetic_task_storage.has_task(
-                            task_id=pull_task.task.id
-                        )
-                        if not is_synthetic:
-                            task = validator.task_manager._organic_task_storage._running_tasks.get(
-                                pull_task.task.id, None
-                            )
-                            assert task is not None
-                            tasks.append(task)
-                        else:
-                            tasks.append(SyntheticTask(id=pull_task.task.id, prompt=pull_task.task.prompt))
-                        await validator.submit_results(synapse=create_submit_result(idx, pull_task.task))
-
-            assert len(tasks) == STRONG_MINER_COUNT
-
-            # Check the order of the tasks: initially GatewayOrganicTasks, then LegacyOrganicTasks, then SyntheticTasks.
-            is_gateway_organic_task = True
-            is_legacy_organic_task = False
-            for t in tasks:
-                if is_gateway_organic_task:
-                    assert isinstance(t, GatewayOrganicTask | LegacyOrganicTask)
-                    if isinstance(t, LegacyOrganicTask):
-                        is_gateway_organic_task = False
-                        is_legacy_organic_task = True
-                elif is_legacy_organic_task:
-                    assert isinstance(t, LegacyOrganicTask | SyntheticTask)
-                    if isinstance(t, SyntheticTask):
-                        is_legacy_organic_task = False
-                else:
-                    assert isinstance(t, SyntheticTask)
-
-            # Check that each organic task has the same number of miners assigned to it.
-            for t in tasks:
-                if isinstance(t, GatewayOrganicTask | LegacyOrganicTask):
-                    assert len(t.assigned_miners) == ASSIGNED_MINERS_COUNT
+    @staticmethod
+    def get_grid_preview_from_openai_request(request: Request, left: bool = False, right: bool = False) -> str:
+        assert left != right
+        idx = 2 if left else 4
+        return pybase64.b64decode(
+            request.json["messages"][1]["content"][idx]["image_url"]["url"][22:]  # type: ignore[index]
+        ).decode()
 
     @pytest.mark.asyncio
-    async def test_active_legacy_task_is_prioritized(
+    async def test_all_strong_miners_submit_on_time(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        judge_server: HTTPServer,
         validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
         """
-        If a legacy task was selected by miner and gateway task was added, then
-        active legacy task is prioritized.
+        Base scenario: all miners are strong, they pull the same task, compete, the best result is sent.
         """
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            with time_machine.travel(FROZEN_TIME, tick=False):
-                # Remove all gateway tasks.
-                validator.task_manager._organic_task_storage._gateway_task_queue.clear()
 
-                # Pull legacy task
-                pull_task = create_pull_task(1)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
-                assert task is not None
-                assert isinstance(task, LegacyOrganicTask)
+        organic_task_storage = validator.task_manager._organic_task_storage
 
-                # Add a gateway task to the queue manually
-                validator.task_manager._organic_task_storage._gateway_task_queue.append(
-                    GatewayOrganicTask.create_task(id=str(uuid4()), prompt="prompt", gateway_url="host")
-                )
+        await organic_task_storage._fetch_tasks_from_gateway()
+        assert len(organic_task_storage._gateway_task_queue) > 0
+        # validator fixture uses task_manager fixture;
+        # task_manager fixture uses GatewayApiMock mock from the conftest.py;
+        # GatewayApiMock is created with GATEWAY_TASK_COUNT (e.g. 100) predefined tasks.
 
-                # Pull task and check that is legacy.
-                pull_task_2 = create_pull_task(2)
-                pull_task_2 = await validator.pull_task(pull_task_2)
-                assert pull_task_2.task is not None
-                assert pull_task_2.task.id == pull_task.task.id
-                assert pull_task_2.task.prompt == pull_task.task.prompt
+        assert len(organic_task_storage._running_tasks) == 0
+        assert len(organic_task_storage._running_task_queue) == 0
 
-    @pytest.mark.asyncio
-    async def test_active_synthetic_tasks_are_not_prioritized(
-        self,
-        reset_validation_server: ValidationService,
-        subtensor: bt.MockSubtensor,
-        validator: Validator,
-    ) -> None:
-        """
-        If a synthetic task was selected by miner and organic task was added, then
-        active synthetic task is not prioritized.
-        """
-        with time_machine.travel(FROZEN_TIME, tick=False):
-            pull_task = create_pull_task(1)
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task is not None
-            assert pull_task.task is not None
-            assert validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
+        strong_miners = list(validator.metagraph_sync._strong_miners)[:ASSIGNED_MINERS_COUNT]
+        # Most probably strong miner uids will be 100-199 but why risk?
 
-            # Add the gateway task to the queue manually
-            validator.task_manager._organic_task_storage._gateway_task_queue.append(
-                GatewayOrganicTask.create_task(id=str(uuid4()), prompt="prompt", gateway_url="host")
+        pull = await validator.pull_task(create_pull_task(strong_miners[0], wallets))
+        assert pull.task is not None
+        assert organic_task_storage.has_task(task_id=pull.task.id)
+        organic_task = organic_task_storage._running_task_queue[0]
+        assert len(organic_task_storage._running_tasks) == 1
+        assert len(organic_task_storage._running_task_queue) == 1
+        assert organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
+
+        for uid in strong_miners[1:]:
+            other = await validator.pull_task(create_pull_task(uid, wallets))
+            assert other.task == pull.task
+
+        assert not organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
+        assert len(organic_task.assigned_miners) == ASSIGNED_MINERS_COUNT
+
+        for uid in strong_miners:
+            validator.ratings._ratings[uid].glicko.rating = 1500 + uid
+        # Setting miner ratings to get the initial order of the results.
+        # Each next miner is better than all the previous ones.
+
+        for idx, uid in enumerate(strong_miners, start=1):
+            validation_server.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
+                {
+                    "score": 0.6 + idx / 100.0,
+                    "grid_preview": pybase64.b64encode(f"grid preview {idx}".encode()).decode(),
+                }
             )
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
 
-            # Pull task and check that is organic.
-            pull_task_2 = create_pull_task(2)
-            pull_task_2 = await validator.pull_task(pull_task_2)
-            assert pull_task_2.task is not None
-            assert pull_task_2.task.id != pull_task.task.id
-            task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_2.task.id, None)
-            assert task is not None
-            assert isinstance(task, GatewayOrganicTask)
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
+
+            assert len(organic_task.results_to_judge) == idx
+            assert organic_task.results_to_judge[0][1] == organic_task.assigned_miners[wallets[uid].hotkey.ss58_address]
+            assert organic_task.best_result == organic_task.assigned_miners[wallets[uid].hotkey.ss58_address]
+
+        assert organic_task.all_miners_finished(ASSIGNED_MINERS_COUNT)
+        assert not organic_task.all_work_done(ASSIGNED_MINERS_COUNT)
+
+        await organic_task_storage.start_judging_results()
+
+        # Expected order of duels (based on the glicko rating set above):
+        #   miner 4 vs miner 3 (winner 4, see the judge_server mock)
+        #   miner 4 vs miner 2 (winner 4)
+        #   miner 4 vs miner 1 (winner 4).
+
+        while not organic_task.finalized:
+            await asyncio.sleep(0)
+
+        duel_requests = [req for req, res in judge_server.log if req.path == "/v1/chat/completions"]
+        for idx, req in enumerate(duel_requests, start=1):
+            left_preview = self.get_grid_preview_from_openai_request(req, left=True)
+            right_preview = self.get_grid_preview_from_openai_request(req, right=True)
+
+            assert left_preview == f"grid preview {ASSIGNED_MINERS_COUNT}"  # last one is always the best one
+            assert right_preview == f"grid preview {ASSIGNED_MINERS_COUNT - idx}"  # 3, 2, 1
+
+        assert organic_task.best_result == organic_task.assigned_miners[wallets[strong_miners[-1]].hotkey.ss58_address]
+        assert organic_task.all_work_done(ASSIGNED_MINERS_COUNT)
+        assert organic_task.finalized
+
+        organic_task_storage.stop_judging_results()
+
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 1
+        assert sent_results[organic_task.id].uid == strong_miners[-1]  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_assigned_miners_count(
+        self,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        validator: Validator,
+        wallets: list[bt.Wallet],
+    ) -> None:
+        """
+        Scenario: only ASSIGNED_MINERS_COUNT weak miners pull the task.
+        Scenario: strong miner can additionally pull the task but only one strong miner.
+        """
+        organic_task_storage = validator.task_manager._organic_task_storage
+
+        await organic_task_storage._fetch_tasks_from_gateway()
+        assert len(organic_task_storage._gateway_task_queue) > 0
+        # validator fixture uses task_manager fixture;
+        # task_manager fixture uses GatewayApiMock mock from the conftest.py;
+        # GatewayApiMock is created with GATEWAY_TASK_COUNT (e.g. 100) predefined tasks.
+
+        strong_miners = list(validator.metagraph_sync._strong_miners)
+        weak_miners = [uid for uid in range(len(wallets)) if uid not in validator.metagraph_sync._strong_miners]
+
+        pull = await validator.pull_task(create_pull_task(weak_miners[0], wallets))
+        assert pull.task is not None
+
+        for idx in range(1, ASSIGNED_MINERS_COUNT):
+            other = await validator.pull_task(create_pull_task(weak_miners[idx], wallets))
+            assert other.task == pull.task
+
+        organic_task = organic_task_storage._running_task_queue[0]
+        assert organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
+
+        other = await validator.pull_task(create_pull_task(weak_miners[ASSIGNED_MINERS_COUNT], wallets))
+        assert other.task != pull.task
+        # When ASSIGNED_MINERS_COUNT weak miners pull the same task, next miner must pull another task.
+
+        other = await validator.pull_task(create_pull_task(strong_miners[0], wallets))
+        assert other.task == pull.task
+        assert not organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
+        # The first strong miner must pull the same task.
+
+        other = await validator.pull_task(create_pull_task(strong_miners[1], wallets))
+        assert other.task != pull.task
+        # The second strong miner must pull another task.
 
     @pytest.mark.asyncio
     async def test_task_lifecycle(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
         validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
         """
-        Test that task lifecycle is correct.
-        Task can be assigned to the miner during task timeout.
-        Task can't be assigned to the miner after task timeout.
-        Task is deleted after double task timeout.
+        Scenario: task is no longer assigned if timeout passed.
+        Scenario: task is recycled when expired.
         """
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            now = time.time()
-            with time_machine.travel(now, tick=True) as travel:
-                pull_task = create_pull_task(1)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
-                assert task is not None
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
 
-                # Task can be assigned to the miner before task timeout.
-                travel.move_to(now + TASK_TIMEOUT - 1)
-                pull_task_2 = create_pull_task(2)
-                pull_task_2 = await validator.pull_task(pull_task_2)
-                assert pull_task_2 is not None
-                assert pull_task_2.task is not None
-                assert pull_task_2.task.id == pull_task.task.id
+        pull = await validator.pull_task(create_pull_task(1, wallets))
+        assert pull.task is not None
 
-                # Task can't be assigned to the miner after task timeout.
-                travel.move_to(now + TASK_TIMEOUT + 1)
-                pull_task_3 = create_pull_task(3)
-                pull_task_3 = await validator.pull_task(pull_task_3)
-                assert pull_task_3 is not None
-                assert pull_task_3.task is not None
-                assert pull_task_3.task.id != pull_task.task.id
+        organic_task = organic_task_storage._running_task_queue[0]
+        assert organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
 
-                # Task is deleted after double task timeout.
-                travel.move_to(now + TASK_TIMEOUT * 2 + 1)
-                pull_task_4 = create_pull_task(4)
-                pull_task_4 = await validator.pull_task(pull_task_4)
-                assert pull_task_4 is not None
-                assert pull_task_4.task is not None
-                assert pull_task_4.task.id != pull_task.task.id
-                # Wait for the task to be removed from the running tasks.
-                await asyncio.sleep(0.2)
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
-                assert task is None
+        time_travel.move_to(FROZEN_TIME + timedelta(seconds=TASK_TIMEOUT + 1))
+        other = await validator.pull_task(create_pull_task(2, wallets))
+        assert other.task != pull.task
+
+        time_travel.move_to(FROZEN_TIME + timedelta(seconds=2 * TASK_TIMEOUT + 1))
+        synthetic = await validator.pull_task(create_pull_task(3, wallets))
+        # Pulling task triggers the task recycling.
+
+        assert synthetic.task is not None
+        assert not validator.task_manager._organic_task_storage.has_task(task_id=synthetic.task.id)
+        assert validator.task_manager._synthetic_task_storage.has_task(task_id=synthetic.task.id)
+        assert len(organic_task_storage._running_task_queue) == 0
+        assert len(organic_task_storage._gateway_task_queue) == 0
+
+        await asyncio.sleep(0)  # Sleep to switch to the task timeout coroutine.
+        assert len(organic_task_storage._running_tasks) == 0
 
     @pytest.mark.asyncio
-    async def test_send_result_timeout_for_gateway_task(
+    async def test_task_timeouts(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
         validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
         """
-        Test that task can be assigned to second miner during send_result_timeout.
-        Then a task is not accessible, and the result is sent to the gateway.
+        Scenario: intermediate task results are sent in case of the task timeout.
         """
-        config.task.organic.send_result_timeout = 1
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            now = time.time()
-            with time_machine.travel(now, tick=True):
-                # First miner gets the task
-                pull_task_1 = create_pull_task(1)
-                pull_task_1 = await validator.pull_task(pull_task_1)
-                assert pull_task_1 is not None
-                assert pull_task_1.task is not None
-                assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task_1.task.id)
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_1.task.id, None)
-                assert task is not None
-                assert isinstance(task, GatewayOrganicTask)
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
 
-                # First miner submits the result
-                await validator.submit_results(synapse=create_submit_result(1, pull_task_1.task))
+        pull = await validator.pull_task(create_pull_task(1, wallets))
+        assert pull.task is not None
 
-                # Other miner can get the task before send_result_timeout expires
-                pull_task_2 = create_pull_task(2)
-                pull_task_2 = await validator.pull_task(pull_task_2)
-                assert pull_task_2 is not None
-                assert pull_task_2.task is not None
-                assert pull_task_2.task.id == pull_task_1.task.id
-                await asyncio.sleep(config.task.organic.send_result_timeout + 1)
+        await validator.submit_results(create_submit_result(1, pull.task, wallets))
+        await asyncio.sleep(0)  # sleep to switch to the taskmanager submit
+        await asyncio.sleep(0)  # sleep to let wait_for start
 
-                # Another miner can't get the task after send_result_timeout expires
-                pull_task_3 = create_pull_task(10)
-                pull_task_3 = await validator.pull_task(pull_task_3)
-                assert pull_task_3 is not None
-                assert pull_task_3.task is not None
-                assert pull_task_3.task.id != pull_task_1.task.id
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 0
+        # No results are sent yet.
 
-                # Task is removed from active tasks
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_1.task.id, None)
-                assert task is None
-
-                # The result should be in mock gateway storage.
-                task_id = pull_task_1.task.id
-                results = cast(
-                    GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
-                ).results
-                assert task_id in results
+        time_travel.move_to(FROZEN_TIME + timedelta(seconds=SECOND_MINER_TIMEOUT + 2), tick=True)
+        await asyncio.sleep(0.01)  # Sleep to switch to the task timeout coroutine.
+        assert len(sent_results) == 1
+        assert sent_results[pull.task.id].uid == 1  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
-    async def test_send_result_timeout_for_legacy_task(
+    async def test_best_result_based_on_rating(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
-        """
-        Test that task can be assigned to second miner during send_result_timeout.
-        Then a task is not accessible, and the result is sent to the gateway.
-        """
-        config.task.organic.send_result_timeout = 0.5
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            # Remove all gateway tasks.
-            validator.task_manager._organic_task_storage._gateway_task_queue.clear()
+        organic_task = OrganicTask(prompt="prompt")
+        for uid in range(1, 5):
+            miner = AssignedMiner(uid=uid, hotkey=wallets[uid].hotkey.ss58_address, assign_time=0)
+            organic_task.assigned_miners[miner.hotkey] = miner
 
-            now = time.time()
-            with time_machine.travel(now, tick=True):
-                # First miner gets the task
-                pull_task_1 = create_pull_task(1)
-                pull_task_1 = await validator.pull_task(pull_task_1)
-                assert pull_task_1 is not None
-                assert pull_task_1.task is not None
-                assert not validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task_1.task.id)
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_1.task.id, None)
-                assert task is not None
-                assert isinstance(task, LegacyOrganicTask)
+        for hotkey, miner in organic_task.assigned_miners.items():
+            miner.score = 1.0
+            miner.rating = 1500 + miner.uid
+            organic_task.update_best(miner)
 
-                # First miner submits the result
-                await validator.submit_results(synapse=create_submit_result(1, pull_task_1.task))
-
-                # Other miner can get the task before send_result_timeout expires
-                pull_task_2 = create_pull_task(2)
-                pull_task_2 = await validator.pull_task(pull_task_2)
-                assert pull_task_2 is not None
-                assert pull_task_2.task is not None
-                assert pull_task_2.task.id == pull_task_1.task.id
-                result = await validator.task_manager._organic_task_storage.get_best_results(
-                    task_id=pull_task_1.task.id
-                )
-                assert result is not None
-                assert result.hotkey == WALLETS[1].hotkey.ss58_address
-
-                # Other miner can't get the task after send_result_timeout expires
-                pull_task_3 = create_pull_task(10)
-                pull_task_3 = await validator.pull_task(pull_task_3)
-                assert pull_task_3 is not None
-                assert pull_task_3.task is not None
-                assert pull_task_3.task.id != pull_task_1.task.id
-
-                # Task is removed from active tasks
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task_1.task.id, None)
-                assert task is None
+        assert organic_task.best_result.rating == 1500 + 4  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
-    async def test_task_count_limited_by_miner_count(
+    async def test_best_result_based_on_score(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
-        """
-        Test that task count is limited by miner count.
-        It is defined by config parameter `task.max_miners_per_task`.
-        """
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            task_id: str | None = None
-            # The same task should be assigned to the miners below.
-            for idx in range(config.task.organic.assigned_miners_count):
-                pull_task = create_pull_task(idx)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                if task_id is None:
-                    task_id = pull_task.task.id
-                assert pull_task.task.id == task_id
+        organic_task = OrganicTask(prompt="prompt")
+        for uid in range(1, 5):
+            miner = AssignedMiner(uid=uid, hotkey=wallets[uid].hotkey.ss58_address, assign_time=0)
+            organic_task.assigned_miners[miner.hotkey] = miner
 
-            # Then this task can't be assigned to the miner.
-            pull_task = create_pull_task(config.task.organic.assigned_miners_count)
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task.task is not None
-            assert pull_task.task.id != task_id
+        for hotkey, miner in organic_task.assigned_miners.items():
+            miner.score = 0.6 + miner.uid / 1000
+            miner.rating = 1500
+            organic_task.update_best(miner)
+
+        assert organic_task.best_result.score == 0.6 + 4 / 1000  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
-    async def test_task_can_be_assigned_to_strong_miner(
+    async def test_all_results_are_the_same(
         self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        judge_server: HTTPServer,
         validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
         """
-        Test that task can be assigned to a strong miner if it was not assigned to any miner before.
+        Scenario: all miners returned the same result, no judgement needed.
         """
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            task_id: str | None = None
-            # The same task should be assigned to the weak miners below.
-            for idx in range(1, config.task.organic.assigned_miners_count + 1):
-                pull_task = create_pull_task(idx)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                if task_id is None:
-                    task_id = pull_task.task.id
-                assert pull_task.task.id == task_id
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
 
-            # Then this task can't be assigned to the weak miner again.
-            pull_task = create_pull_task(config.task.organic.assigned_miners_count + 2)
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task.task is not None
-            assert pull_task.task.id != task_id
+        strong_miners = list(validator.metagraph_sync._strong_miners)[:ASSIGNED_MINERS_COUNT]
 
-            # But we can assign this task to the strong miner.
-            pull_task = create_pull_task(
-                config.public_api.strong_miners_count + config.task.organic.assigned_miners_count + 1
+        pull = await validator.pull_task(create_pull_task(strong_miners[0], wallets))
+        assert pull.task is not None
+        organic_task = organic_task_storage._running_task_queue[0]
+
+        for uid in strong_miners[1:]:
+            await validator.pull_task(create_pull_task(uid, wallets))
+
+        assert not organic_task.should_be_assigned(strong_miner=True, copies=ASSIGNED_MINERS_COUNT)
+
+        for uid in strong_miners:
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
+
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
+
+        assert organic_task.all_miners_finished(ASSIGNED_MINERS_COUNT)
+        assert organic_task.all_work_done(ASSIGNED_MINERS_COUNT)
+
+        while not organic_task.finalized:
+            await asyncio.sleep(0)
+
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 1
+        assert sent_results[organic_task.id].uid == strong_miners[0]  # type: ignore[union-attr]
+
+    @pytest.mark.asyncio
+    async def test_duel_skip_for_finalized_task(
+        self,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        judge_server: HTTPServer,
+        validator: Validator,
+        wallets: list[bt.Wallet],
+    ) -> None:
+        """
+        Scenario: organic task duel is pulled when task is being sent/expired already.
+        """
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
+
+        pull = await validator.pull_task(create_pull_task(1, wallets))
+        assert pull.task is not None
+        await validator.pull_task(create_pull_task(2, wallets))
+
+        organic_task = organic_task_storage._running_task_queue[0]
+
+        for uid in [1, 2]:
+            validation_server.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
+                {
+                    "score": 0.6 + uid / 10.0,
+                    "grid_preview": pybase64.b64encode(f"grid preview {uid}".encode()).decode(),
+                }
             )
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task.task is not None
-            assert pull_task.task.id == task_id
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
 
-            # If strong miner was assigned then task became unavailable for strong miner again.
-            pull_task = create_pull_task(
-                config.public_api.strong_miners_count + config.task.organic.assigned_miners_count + 2
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
+
+        time_travel.move_to(FROZEN_TIME + timedelta(seconds=SECOND_MINER_TIMEOUT + 2), tick=True)
+        await asyncio.sleep(0.01)  # Sleep to switch to the task timeout coroutine.
+
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 1
+
+        assert organic_task.finalized
+
+        assert len(organic_task.results_to_judge) == 2  # Still some results to judge
+        assert organic_task_storage._pending_judgment_queue.qsize() == 1  # Still one task enqueued.
+
+        await organic_task_storage.start_judging_results()
+
+        await organic_task_storage._pending_judgment_queue.join()
+
+        duel_requests = [req for req, res in judge_server.log if req.path == "/v1/chat/completions"]
+        assert len(duel_requests) == 0
+
+        organic_task_storage.stop_judging_results()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("no_preview_miner_score", [0.7, 0.9])
+    async def test_judge_no_preview(
+        self,
+        config: bt.config,
+        wallets: list[bt.Wallet],
+        judge_server: HTTPServer,
+        no_preview_miner_score: float,
+    ) -> None:
+        """
+        - Scenario: one of the miner has no preview
+            miner with no preview has 0.7 score - miner is the second priority miner (right preview),
+            miner with no preview has 0.9 score - miner is the first priority miner (left preview),
+        """
+        pending_judgment_queue: asyncio.PriorityQueue[tuple[OrganicTaskJudgeQueuePriority, OrganicTask]] = (
+            asyncio.PriorityQueue()
+        )
+        finished_judgment_queue: asyncio.Queue[OrganicTask] = asyncio.Queue()
+        judge_service = OrganicJudgeService(
+            config=config,
+            pending_judgment_queue=pending_judgment_queue,
+            finished_judgment_queue=finished_judgment_queue,
+        )
+        organic_task = OrganicTask(prompt="prompt")
+        miner = AssignedMiner(
+            uid=1, hotkey=wallets[1].hotkey.ss58_address, assign_time=0, score=0.8, grid_preview="preview"
+        )
+        organic_task.assigned_miners[miner.hotkey] = miner
+
+        no_preview_miner = AssignedMiner(
+            uid=2, hotkey=wallets[2].hotkey.ss58_address, score=no_preview_miner_score, assign_time=0
+        )
+        organic_task.assigned_miners[no_preview_miner.hotkey] = no_preview_miner
+
+        organic_task.queue_for_judgment(miner)
+        organic_task.queue_for_judgment(no_preview_miner)
+
+        await pending_judgment_queue.put((organic_task.judge_queue_priority(), organic_task))
+
+        await judge_service._process_next_duel(worker_id=0)
+
+        duel_requests = [req for req, res in judge_server.log if req.path == "/v1/chat/completions"]
+        assert len(duel_requests) == 0
+
+        assert len(organic_task.results_to_judge) == 1
+        assert organic_task.results_to_judge[0][1].uid == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "judge_decision,best_uid",
+        [
+            (0, 1),  # Draw - the fist miner should win
+            (1, 2),  # Left is worst - the second miner wins
+            (2, 1),  # Right is worst - the first miner wins
+            ("failure", 1),  # Failure=draw - the first miner wins.
+        ],
+    )
+    async def test_judge_different_winner(
+        self,
+        config: bt.config,
+        wallets: list[bt.Wallet],
+        judge_server: HTTPServer,
+        judge_decision: int,
+        best_uid: int,
+    ) -> None:
+        pending_judgment_queue: asyncio.PriorityQueue[tuple[OrganicTaskJudgeQueuePriority, OrganicTask]] = (
+            asyncio.PriorityQueue()
+        )
+        finished_judgment_queue: asyncio.Queue[OrganicTask] = asyncio.Queue()
+        judge_service = OrganicJudgeService(
+            config=config,
+            pending_judgment_queue=pending_judgment_queue,
+            finished_judgment_queue=finished_judgment_queue,
+        )
+        organic_task = OrganicTask(prompt="prompt")
+        miner_1 = AssignedMiner(
+            uid=1, hotkey=wallets[1].hotkey.ss58_address, assign_time=0, score=0.9, grid_preview="preview 1"
+        )
+        organic_task.assigned_miners[miner_1.hotkey] = miner_1
+
+        miner_2 = AssignedMiner(
+            uid=2, hotkey=wallets[2].hotkey.ss58_address, assign_time=0, score=0.8, grid_preview="preview 2"
+        )
+        organic_task.assigned_miners[miner_2.hotkey] = miner_2
+
+        organic_task.queue_for_judgment(miner_1)
+        organic_task.queue_for_judgment(miner_2)
+
+        await pending_judgment_queue.put((organic_task.judge_queue_priority(), organic_task))
+
+        judge_server.expect_oneshot_request("/v1/chat/completions", method="POST").respond_with_json(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            f"content": f'{{"issues": "issues", "worst": {judge_decision}}}',
+                        },
+                    }
+                ]
+            }
+        )
+
+        await judge_service._process_next_duel(worker_id=0)
+
+        duel_requests = [req for req, res in judge_server.log if req.path == "/v1/chat/completions"]
+        assert len(duel_requests) == 1
+
+        assert len(organic_task.results_to_judge) == 1
+        assert organic_task.results_to_judge[0][1].uid == best_uid
+
+    @pytest.mark.asyncio
+    async def test_all_miners_fail(
+        self,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        judge_server: HTTPServer,
+        validator: Validator,
+        wallets: list[bt.Wallet],
+    ) -> None:
+        """
+        Scenario: all miners are strong, they pull the same task and fail.
+        """
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
+
+        strong_miners = list(validator.metagraph_sync._strong_miners)[:ASSIGNED_MINERS_COUNT]
+
+        pull = await validator.pull_task(create_pull_task(strong_miners[0], wallets))
+        assert pull.task is not None
+
+        organic_task = organic_task_storage._running_task_queue[0]
+        for uid in strong_miners[1:]:
+            await validator.pull_task(create_pull_task(uid, wallets))
+
+        for idx, uid in enumerate(strong_miners, start=1):
+            validation_server.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
+                {
+                    "score": 0.0,
+                }
             )
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task.task is not None
-            assert pull_task.task.id != task_id
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
+
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
+
+        assert organic_task.all_miners_finished(ASSIGNED_MINERS_COUNT)
+        assert organic_task.all_work_done(ASSIGNED_MINERS_COUNT)
+        assert organic_task.best_result is None
+
+        time_travel.move_to(FROZEN_TIME, tick=True)
+        await asyncio.sleep(0.01)
+
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 1
+        assert sent_results[organic_task.id] == "4 miners submitted results but no one is good"
 
     @pytest.mark.asyncio
-    async def test_best_result_for_gateway_task_is_selected(
+    async def test_last_miners_fail(
         self,
-        reset_validation_server: HTTPServer,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
+        time_travel: time_machine.Coordinates,
+        validation_server: HTTPServer,
+        judge_server: HTTPServer,
         validator: Validator,
-        ratings: DuelRatings,
+        wallets: list[bt.Wallet],
     ) -> None:
         """
-        Test that best result is selected from the results.
+        Scenario: all miners are strong, they pull the same task, two miners succeed, other fail.
         """
-        config.task.organic.send_result_timeout = 1
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            task: ValidatorTask | None = None
-            random_ratings = [1500 + i for i in range(config.task.organic.assigned_miners_count)]
-            rd.shuffle(random_ratings)
-            # For 4 miners - shuffled list of [1500, 1501, 1502, 1503].
+        organic_task_storage = validator.task_manager._organic_task_storage
+        await organic_task_storage._fetch_tasks_from_gateway()
 
-            random_scores = [(0.8 + i / 100) for i in range(config.task.organic.assigned_miners_count)]
-            rd.shuffle(random_scores)
+        strong_miners = list(validator.metagraph_sync._strong_miners)[:ASSIGNED_MINERS_COUNT]
+        pull = await validator.pull_task(create_pull_task(strong_miners[0], wallets))
+        assert pull.task is not None
+        organic_task = organic_task_storage._running_task_queue[0]
 
-            # The same task should be assigned to the weak miners below.
-            for idx in range(config.task.organic.assigned_miners_count):
-                reset_validation_server.clear()
-                reset_validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-                    {"score": random_scores[idx]}
-                )
+        for uid in strong_miners[1:]:
+            await validator.pull_task(create_pull_task(uid, wallets))
 
-                ratings._ratings[idx].glicko.rating = random_ratings[idx]
-
-                # Pull task
-                pull_task = create_pull_task(idx)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                # Submit result
-                result = await validator.submit_results(synapse=create_submit_result(idx, pull_task.task, full=True))
-                assert result is not None
-                assert result.feedback is not None
-                assert result.feedback.validation_failed is False
-
-                # Get task
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
-                assert task is not None
-                miner_hotkey = WALLETS[idx].hotkey.ss58_address
-
-                # Wait while background tasks in task_manager are finished.
-                for _ in range(5):
-                    await asyncio.sleep(config.task.organic.send_result_timeout / 100)
-                assert task.assigned_miners[miner_hotkey].score == random_scores[idx]
-                assert task.assigned_miners[miner_hotkey].finished
-
-            # Wait for the results to be sent to the gateway mock.
-            await asyncio.sleep(config.task.organic.send_result_timeout + 0.1)
-
-            # Check that the best result is selected.
-            assert task is not None
-            best_result = cast(OrganicTask, task).get_best_result()
-            assert best_result is not None
-            max_miner_idx, max_rating = max(enumerate(random_ratings), key=lambda x: x[1])
-            assert best_result.hotkey == WALLETS[max_miner_idx].hotkey.ss58_address
-            assert best_result.rating == max_rating
-
-            # Check that the result is sent to the gateway mock.
-            assert pull_task.task is not None
-            task_id = pull_task.task.id
-            results = cast(
-                GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
-            ).results
-            assert task_id in results
-            assert isinstance(results[task_id], AssignedMiner)
-            assert cast(AssignedMiner, results[task_id]).hotkey == WALLETS[max_miner_idx].hotkey.ss58_address
-
-    @pytest.mark.asyncio
-    async def test_best_result_for_gateway_task_is_selected_same_rating(
-        self,
-        reset_validation_server: HTTPServer,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
-    ) -> None:
-        """
-        Test that best result is selected from the results.
-        """
-        config.task.organic.send_result_timeout = 1
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            task: ValidatorTask | None = None
-            random_ratings = [1500 + i for i in range(config.task.organic.assigned_miners_count)]
-            random_ratings[-1] = random_ratings[-2]
-            rd.shuffle(random_ratings)
-            # For 4 miners - shuffled list of [1500, 1501, 1502, 1502(!)].
-
-            random_scores = [(0.8 + i / 100) for i in range(config.task.organic.assigned_miners_count)]
-            rd.shuffle(random_scores)
-
-            # The same task should be assigned to the weak miners below.
-            for idx in range(config.task.organic.assigned_miners_count):
-                reset_validation_server.clear()
-                reset_validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-                    {"score": random_scores[idx]}
-                )
-
-                ratings._ratings[idx].glicko.rating = random_ratings[idx]
-
-                # Pull task
-                pull_task = create_pull_task(idx)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-                # Submit result
-                await validator.submit_results(synapse=create_submit_result(idx, pull_task.task, full=True))
-
-                # Get task
-                task = validator.task_manager._organic_task_storage._running_tasks[pull_task.task.id]
-                miner_hotkey = WALLETS[idx].hotkey.ss58_address
-
-                # Wait while background tasks in task_manager are finished.
-                for _ in range(5):
-                    await asyncio.sleep(config.task.organic.send_result_timeout / 100)
-                assert task.assigned_miners[miner_hotkey].finished
-
-            # Wait for the results to be sent to the gateway mock.
-            await asyncio.sleep(config.task.organic.send_result_timeout + 0.1)
-
-            # Check that the best result is selected.
-            best_result = cast(OrganicTask, task).get_best_result()
-            assert best_result is not None
-            max_miner_idx, (max_rating, max_score) = max(
-                enumerate(zip(random_ratings, random_scores)), key=lambda x: x[1]
+        for uid in strong_miners[:2]:
+            validation_server.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
+                {
+                    "score": 0.6 + uid / 1000.0,
+                    "grid_preview": pybase64.b64encode(f"grid preview {uid}".encode()).decode(),
+                }
             )
-            assert best_result.hotkey == WALLETS[max_miner_idx].hotkey.ss58_address
-            assert best_result.rating == max_rating
-            assert best_result.score == max_score
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
 
-            # Check that the result is sent to the gateway mock.
-            assert pull_task.task is not None
-            task_id = pull_task.task.id
-            results = cast(
-                GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
-            ).results
-            assert cast(AssignedMiner, results[task_id]).hotkey == WALLETS[max_miner_idx].hotkey.ss58_address
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
 
-    @pytest.mark.asyncio
-    async def test_best_result_for_legacy_task_is_selected(
-        self,
-        reset_validation_server: HTTPServer,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
-    ) -> None:
-        """
-        Test that best result is selected from the results.
-        """
-        config.task.organic.send_result_timeout = 1
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            # Remove all gateway tasks.
-            validator.task_manager._organic_task_storage._gateway_task_queue.clear()
-            task: ValidatorTask | None = None
-            random_ratings = [1500 + i for i in range(config.task.organic.assigned_miners_count)]
-            rd.shuffle(random_ratings)
+        await organic_task_storage._judge_service._process_next_duel(worker_id=0)
 
-            random_scores = [(0.8 + i / 100) for i in range(config.task.organic.assigned_miners_count)]
-            rd.shuffle(random_scores)
+        duel_requests = [req for req, res in judge_server.log if req.path == "/v1/chat/completions"]
+        assert len(duel_requests) == 1
+        left_preview = self.get_grid_preview_from_openai_request(duel_requests[0], left=True)
+        right_preview = self.get_grid_preview_from_openai_request(duel_requests[0], right=True)
+        assert left_preview == f"grid preview {strong_miners[1]}"
+        assert right_preview == f"grid preview {strong_miners[0]}"
 
-            # The same task should be assigned to the weak miners below.
-            for idx in range(config.task.organic.assigned_miners_count):
-                reset_validation_server.clear()
-                reset_validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-                    {"score": random_scores[idx]}
-                )
-
-                ratings._ratings[idx].glicko.rating = random_ratings[idx]
-
-                # Pull task
-                pull_task = create_pull_task(idx)
-                pull_task = await validator.pull_task(pull_task)
-                assert pull_task is not None
-                assert pull_task.task is not None
-
-                # Submit result
-                result = await validator.submit_results(synapse=create_submit_result(idx, pull_task.task))
-                assert result is not None
-                assert result.feedback is not None
-                assert result.feedback.validation_failed is False
-
-                # Get task
-                task = validator.task_manager._organic_task_storage._running_tasks.get(pull_task.task.id, None)
-                assert task is not None
-                miner_hotkey = WALLETS[idx].hotkey.ss58_address
-
-                # Wait while background tasks in task_manager are finished.
-                for _ in range(5):
-                    await asyncio.sleep(config.task.organic.send_result_timeout / 100)
-                assert task.assigned_miners[miner_hotkey].score == random_scores[idx]
-                assert task.assigned_miners[miner_hotkey].finished
-
-            # Wait for the best result
-            assert pull_task.task is not None
-            best_result = await validator.task_manager._organic_task_storage.get_best_results(task_id=pull_task.task.id)
-            assert best_result is not None
-            max_miner_idx, max_rating = max(enumerate(random_ratings), key=lambda x: x[1])
-            assert best_result.hotkey == WALLETS[max_miner_idx].hotkey.ss58_address
-            assert best_result.rating == max_rating
-
-    @pytest.mark.asyncio
-    async def test_incorrect_data_from_gateway(
-        self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        validator: Validator,
-    ) -> None:
-        """
-        Test that task can be assigned to strong miner if it was not assigned to any miner before.
-        """
-
-        class Http3ClientMock(Http3Client):
-            async def post(
-                self,
-                *,
-                url: str,
-                payload: dict[str, Any],
-                headers: dict[str, Any] | None = None,
-            ) -> Http3Response:
-                bt.logging.error(f"Incorrect data from gateway: {payload}")
-                return Http3Response(data="incorrect data", latency=0)
-
-            async def get(
-                self, *, url: str, headers: dict[str, Any] | None = None, payload: dict[str, Any] | None = None
-            ) -> Http3Response:
-                bt.logging.error(f"Incorrect data from gateway: {payload}")
-                return Http3Response(data="incorrect data", latency=0)
-
-        # Use mock because pytest doesn't support http3
-        validator.task_manager._organic_task_storage._gateway_manager._gateway_api = GatewayApi()
-        validator.task_manager._organic_task_storage._gateway_manager._gateway_api._http3_client = Http3ClientMock()
-        asyncio.create_task(validator.task_manager._organic_task_storage.fetch_gateway_tasks_cron())
-        for _ in range(20):
-            await asyncio.sleep(0.1)
-
-        # Pull task. It should work ok and be synthetic.
-        pull_task = create_pull_task(1)
-        pull_task = await validator.pull_task(pull_task)
-        assert pull_task.task is not None
-        assert validator.task_manager._synthetic_task_storage.has_task(task_id=pull_task.task.id)
-
-        # Submit result. It should fail.
-        result = await validator.submit_results(synapse=create_submit_result(1, pull_task.task))
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_result_is_submitted_if_timeout_occurs(
-        self,
-        reset_validation_server: HTTPServer,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
-    ) -> None:
-        """
-        Test that result is submitted if timeout occurs after first result.
-        """
-        config.task.organic.send_result_timeout = 1
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            # Pull and submit the first task.
-            reset_validation_server.clear()
-            reset_validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-                {"score": 0.9}
+        for uid in strong_miners[2:]:
+            validation_server.expect_oneshot_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
+                {
+                    "score": 0.0,
+                }
             )
+            await validator.submit_results(create_submit_result(uid, pull.task, wallets))
 
-            # Pull task
-            pull_task = create_pull_task(1)
-            pull_task = await validator.pull_task(pull_task)
-            assert pull_task is not None
-            assert pull_task.task is not None
+            await asyncio.sleep(0)
+            # Sleep to switch to the submit task coroutine.
 
-            # Submit result
-            result = await validator.submit_results(synapse=create_submit_result(1, pull_task.task))
-            assert result is not None
-            assert result.feedback is not None
-            assert result.feedback.validation_failed is False
+        assert organic_task.all_miners_finished(ASSIGNED_MINERS_COUNT)
+        assert organic_task.all_work_done(ASSIGNED_MINERS_COUNT)
 
-            # Wait for the best result
-            for _ in range(11):
-                await asyncio.sleep(config.task.organic.send_result_timeout / 10)
-            gateway_result = cast(
-                GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
-            ).results
-            assert pull_task.task is not None
-            assert pull_task.task.id in gateway_result
-            assert isinstance(gateway_result[pull_task.task.id], AssignedMiner)
-            assert cast(AssignedMiner, gateway_result[pull_task.task.id]).hotkey == WALLETS[1].hotkey.ss58_address
-            assert cast(AssignedMiner, gateway_result[pull_task.task.id]).score == 0.9
+        time_travel.move_to(FROZEN_TIME, tick=True)
+        await asyncio.sleep(0.01)
 
-    @pytest.mark.asyncio
-    async def test_send_result_timeout_for_not_assigned_tasks(
-        self,
-        reset_validation_server: ValidationService,
-        config: bt.config,
-        subtensor: bt.MockSubtensor,
-        task_manager: TaskManager,
-        validator: Validator,
-        ratings: DuelRatings,
-    ) -> None:
-        """
-        Test that task is removed when timeout occurs
-        """
-        task_manager._organic_task_storage._organic_task_expire_timeout = 0.2
-        async with get_validator_with_available_organic_tasks(
-            config=config,
-            subtensor=subtensor,
-            task_manager=task_manager,
-            ratings=ratings,
-        ) as validator:
-            await asyncio.sleep(task_manager._organic_task_storage._organic_task_expire_timeout + 0.2)
-            _ = await validator.pull_task(create_pull_task(1))
-            # Wait for all old tasks are removed
-            await asyncio.sleep(0.1)
-            assert len(validator.task_manager._organic_task_storage._running_tasks) == 0
-            assert len(validator.task_manager._organic_task_storage._gateway_task_queue) == 0
-            assert len(validator.task_manager._organic_task_storage._legacy_task_queue) == 0
-
-            assert (
-                len(
-                    cast(
-                        GatewayApiMock,
-                        validator.task_manager._organic_task_storage._gateway_manager._gateway_api,
-                    ).results
-                )
-                > 0
-            )
-            for error in cast(
-                GatewayApiMock,
-                validator.task_manager._organic_task_storage._gateway_manager._gateway_api,
-            ).results.values():
-                assert type(error) is str
-                assert "miners submitted results but no one is good" in error
-
-    @pytest.mark.asyncio
-    async def test_gateway_disabled_by_default(
-        self,
-        validator: Validator,
-        reset_validation_server: ValidationService,
-    ) -> None:
-        """
-        Test that gateway is disabled by default.
-        """
-        validator.task_manager._organic_task_storage._config.task.gateway.enabled = False
-
-        asyncio.create_task(validator.task_manager._organic_task_storage.fetch_gateway_tasks_cron())
-        for _ in range(10):
-            await asyncio.sleep(0.1)
-
-        assert len(validator.task_manager._organic_task_storage._running_tasks) == 0
-        assert len(validator.task_manager._organic_task_storage._gateway_task_queue) == 0
+        sent_results = cast(
+            GatewayApiMock, validator.task_manager._organic_task_storage._gateway_manager._gateway_api
+        ).results
+        assert len(sent_results) == 1
+        assert sent_results[organic_task.id].uid == strong_miners[1]  # type: ignore[union-attr]

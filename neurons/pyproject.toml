@@ -40,6 +40,7 @@ exclude = '''
   | \.idea
   | \.venv
   | \.vscode
+  | subtensor_mock.py
 )/
 '''
 
@@ -54,7 +55,8 @@ output-format = "full"
 include = ["*.py"]
 exclude = [
     ".*",
-    "tests/"
+    "tests/",
+    "**/subtensor_mock.py"
 ]
 
 [tool.ruff.lint]
@@ -71,7 +73,7 @@ select = [
 ]
 fixable = ["ALL"]
 unfixable = []
-per-file-ignores = { "tests/**/*.py" = ["S101"] }
+per-file-ignores = { "tests/**/*.py" = ["S101"], "**/subtensor_mock.py" = ["ALL"] }
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = []
@@ -88,6 +90,7 @@ skips = ["B104"]
 exclude_dirs = [
     "./.*/**",
     "./tests/**",
+    "**/subtensor_mock.py",
 ]
 
 [tool.mypy]
@@ -102,8 +105,13 @@ warn_unreachable = true
 strict_equality = true
 warn_redundant_casts = true
 exclude = [
-    '.venv/.*'
+    '.venv/.*',
 ]
+
+[[tool.mypy.overrides]]
+module = ["tests.test_validator.subtensor_mock"]
+ignore_errors = true
+
 
 [[tool.mypy.overrides]]
 module = [

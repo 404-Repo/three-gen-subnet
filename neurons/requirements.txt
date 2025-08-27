@@ -1,5 +1,5 @@
-bittensor==9.0.0
-bittensor-wallet==3.0.3
+bittensor==9.9.0
+bittensor-wallet==4.0.0
 websockets==14.2
 pybase64==1.4.0
 git+https://github.com/404-Repo/spz.git@0.1

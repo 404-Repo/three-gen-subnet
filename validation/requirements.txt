@@ -25,3 +25,4 @@ pytorch_lightning==2.5.0.post0
 git+https://github.com/404-Repo/spz.git@0.1
 pyinstrument==3.1.3
 rich==14.0.0
+safetensors==0.4.1

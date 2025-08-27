@@ -1,21 +1,61 @@
 import asyncio
+import heapq
 import time
-import uuid
+from enum import IntEnum
+from typing import NamedTuple
 
+import bittensor as bt
 import pybase64
 import pyspz
 from pydantic import BaseModel, ConfigDict, Field
 
 from validator.api.protocol import MinerStatistics, TaskStatistics
+from validator.task_manager.validator_task import ValidatorTask
+
+
+class DuelStatus(IntEnum):
+    """Duel status enumeration with priority-based ordering."""
+
+    # WARNING: Values are priority-ordered (lower = higher priority)
+    # These values are used directly in tuple comparisons for sorting.
+    # Changing them will break ResultPriority and all duel sorting logic!
+    WIN = 0
+    DRAW = 1
+    NOT_JUDGED = 2
+    LOSS = 3
+
+
+class ResultPriority(NamedTuple):
+    """
+    Result priority tuple for comparison (lower value = higher priority).
+
+    Priority order (highest to lowest):
+    1. Wins over losses (DuelStatus.WON < DuelStatus.LOST)
+    2. Higher miner rating (stored as negative for natural ordering)
+    3. Higher validation score (stored as negative for natural ordering)
+    4. Earlier submit time (older submissions prioritized)
+
+    Note: Rating and score are stored as negative values to achieve
+    descending sort with Python's natural tuple comparison.
+    """
+
+    status: DuelStatus
+    neg_rating: float
+    neg_validation_score: float
+    submit_time: int
 
 
 class AssignedMiner(BaseModel):
+    uid: int
+    """Neuron UID of the miner."""
     hotkey: str
     """Neuron hotkey of the miner."""
     assign_time: int
     """When the task was assigned to the miner."""
     compressed_result: str | None = None
     """Submitted results."""
+    grid_preview: str | None = None
+    """Base64-encoded PNG of 2x2 grid showing multiple angles/views."""
     score: float = 0
     """Validation score of the miner results."""
     rating: float = 0
@@ -24,6 +64,8 @@ class AssignedMiner(BaseModel):
     """When task was submitted by the miner."""
     finished: bool = False
     """Status whether assigned miner is finished with the task."""
+    duel_status: DuelStatus = DuelStatus.NOT_JUDGED
+    """Status whether results where compared with other results using the judge service."""
 
     def miner_stats(self) -> MinerStatistics:
         return MinerStatistics(
@@ -43,23 +85,27 @@ class AssignedMiner(BaseModel):
             ).decode(encoding="utf-8")
         )
 
-
-class ValidatorTask(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    """Unique id."""
-    prompt: str
-    """Prompt to use for generation."""
+    def result_priority(self) -> ResultPriority:
+        """Returns the priority of the miner result (lower value - higher priority)."""
+        return ResultPriority(self.duel_status, -self.rating, -self.score, self.submit_time)
 
 
-class SyntheticTask(ValidatorTask):
-    pass
+class OrganicTaskJudgeQueuePriority(NamedTuple):
+    """
+    Task priority in the judge service queue (lower value = higher priority).
 
+    Priority order (highest to lowest):
+    1. Fewer duels performed (ensures all tasks get initial judgments)
+    2. Earlier registration time (older tasks prioritized)
+    """
 
-class DuelTask(ValidatorTask):
-    pass
+    num_duels: int
+    registration_time: float
 
 
 class OrganicTask(ValidatorTask):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     assigned_miners: dict[str, AssignedMiner] = Field(default_factory=dict)
     """Miners assigned for the job."""
     create_time: float = Field(default_factory=time.time)
@@ -70,11 +116,31 @@ class OrganicTask(ValidatorTask):
     """True if the strong miner is amongst assigned miners."""
     first_result_time: float = 0.0
     """Time of the first acceptable results."""
+    best_result: AssignedMiner | None = None
+    """Current best result."""
+    results_to_judge: list[tuple[ResultPriority, AssignedMiner]] = Field(default_factory=list, exclude=True)
+    """Results pending judgment. Prioritized by `result_priority()`.
+    Once judged, result might be enqueued again to compare with another result."""
+    num_results_judged: int = 0
+    """Number of results judged. Used to prioritize task in the judge queue."""
+    num_results_being_judged: int = 0
+    """Counter for the results queued for judgement."""
+    finalized: bool = False
+    """
+    True when task processing is complete and result has been sent to gateway.
+    Occurs when either: 
+    - Best possible result is obtained
+    - 30-second timeout reached (sends best available result)
+    """
 
     def get_stats(self) -> TaskStatistics:
         return TaskStatistics(
             create_time=int(self.create_time), miners=[miner.miner_stats() for miner in self.assigned_miners.values()]
         )
+
+    def judge_queue_priority(self) -> OrganicTaskJudgeQueuePriority:
+        """Returns the priority of the task in the judge service queue (lower value - higher priority)."""
+        return OrganicTaskJudgeQueuePriority(self.num_results_judged, self.create_time)
 
     def should_be_assigned(self, strong_miner: bool, copies: int) -> bool:
         """Return True if the task should be further assigned to miners.
@@ -93,21 +159,39 @@ class OrganicTask(ValidatorTask):
             strong_miner=True, copies=copies
         )
 
-    def get_best_result(self) -> AssignedMiner | None:
-        """Returns miner with the highest validation score."""
-        best: AssignedMiner | None = None
-        for miner in self.assigned_miners.values():
-            if miner.compressed_result is None:
-                continue
-            if best is None:
-                best = miner
-                continue
-            if miner.rating > best.rating:
-                best = miner
-                continue
-            if miner.rating == best.rating and miner.score > best.score:
-                best = miner
-        return best
+    def all_work_done(self, copies: int) -> bool:
+        """Return True if strong miner was assigned, all miners finished and all results are judged."""
+        return (
+            self.num_results_being_judged == 0 and len(self.results_to_judge) < 2 and self.all_miners_finished(copies)
+        )
+
+    def is_duplicate_result(self, miner: AssignedMiner) -> bool:
+        """Check if miner's result matches any other miner's submission."""
+        for other in self.assigned_miners.values():
+            if other.uid != miner.uid and other.grid_preview == miner.grid_preview:
+                bt.logging.debug(
+                    f"[{miner.uid}] and [{other.uid}] sent identical for organic task ({self.prompt[:100]})."
+                )
+                return True
+        return False
+
+    def queue_for_judgment(self, miner: AssignedMiner) -> None:
+        """Add miner to judgment queue"""
+        heapq.heappush(self.results_to_judge, (miner.result_priority(), miner))
+
+    def update_best(self, miner: AssignedMiner) -> None:
+        """Update best result if this has higher priority."""
+        if self.best_result is None:
+            self.best_result = miner
+            return
+
+        if miner.result_priority() < self.best_result.result_priority():
+            self.best_result = miner
+
+    def finalize(self) -> AssignedMiner | None:
+        """Finalize the task and return the best result."""
+        self.finalized = True
+        return self.best_result
 
 
 class GatewayOrganicTask(OrganicTask):
@@ -156,14 +240,3 @@ class LegacyOrganicTask(OrganicTask):
             best_result_future=asyncio.get_event_loop().create_future(),
         )
         return task
-
-
-def set_future(future: asyncio.Future[AssignedMiner | None] | None, miner: AssignedMiner | None) -> None:
-    """Forcely sets result to the future."""
-
-    def do_set(f: asyncio.Future[AssignedMiner | None], results: AssignedMiner | None) -> None:
-        if not f.done() and not f.cancelled():
-            f.set_result(results)
-
-    if future is not None:
-        future.get_loop().call_soon_threadsafe(do_set, future, miner)

@@ -129,6 +129,3 @@ class GatewayScorer:
         if not max_task_count:
             return self.GATEWAY_MIN_SCORE
         return self._GATEWAY_TASK_COUNT_MAX_PTS * task_count / max_task_count
-
-
-gateway_scorer = GatewayScorer()
