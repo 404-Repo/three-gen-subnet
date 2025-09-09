@@ -7,8 +7,6 @@ import pydantic
 from common.protocol import SubmitResults
 from pydantic import BaseModel, Field
 
-from validator.config import config
-
 
 VALIDATION_TIME_DECAY_FACTOR = 0.95
 
@@ -22,16 +20,20 @@ class ValidationResponse(BaseModel):
     ssim: float = Field(default=0.0, description="Structure similarity score")
     lpips: float = Field(default=0.0, description="Perceptive similarity score")
     preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+    grid_preview: str | None = Field(
+        default=None, description="Base64-encoded PNG of 2x2 grid showing multiple angles/views"
+    )
 
 
 class ValidationService:
-    def __init__(self, *, endpoints: list[str], storage_enabled: bool, validation_score_threshold: float) -> None:
+    def __init__(self, *, endpoints: list[str], validation_score_threshold: float) -> None:
         self._endpoints = endpoints
-        self._storage_enabled = storage_enabled
         self._validation_score_threshold = validation_score_threshold
         self._peak_validation_time = 1.0
 
-    async def validate(self, *, synapse: SubmitResults, neuron_uid: int) -> ValidationResponse | None:
+    async def validate(
+        self, *, synapse: SubmitResults, neuron_uid: int, generate_single_preview: bool, generate_grid_preview: bool
+    ) -> ValidationResponse | None:
         """Validates miner's result using validation service."""
         prompt = synapse.task.prompt
         data = synapse.results
@@ -48,7 +50,8 @@ class ValidationService:
                         "prompt": prompt,
                         "data": data,
                         "compression": 2,
-                        "generate_preview": self._storage_enabled,
+                        "generate_single_preview": generate_single_preview,
+                        "generate_grid_preview": generate_grid_preview,
                         "preview_score_threshold": self._validation_score_threshold - 0.1,
                     },
                 ) as response:
@@ -153,10 +156,3 @@ class ValidationService:
                 bt.logging.error(f"An unexpected error occurred: {e} ({version_url})")
 
         return "unexpected error"
-
-
-validation_service = ValidationService(
-    endpoints=config.validation.endpoints,
-    storage_enabled=config.storage.enabled,
-    validation_score_threshold=config.storage.validation_score_threshold,
-)

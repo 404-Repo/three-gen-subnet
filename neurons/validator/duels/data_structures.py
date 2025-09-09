@@ -1,14 +1,18 @@
 from pydantic import BaseModel
 
 from validator.duels.ratings import Rating
-from validator.task_manager.task import DuelTask
+from validator.task_manager.validator_task import ValidatorTask
+
+
+class DuelTask(ValidatorTask):
+    pass
 
 
 class MinerResults(BaseModel):
     """Results and metadata for a miner participating in a duel."""
 
-    view: bytes | None
-    """Rendered duel view or None if miner failed the task."""
+    grid_preview: str | None
+    """Rendered duel view (encoded) or None if miner failed the task."""
     score: float
     """Validation score."""
     hotkey: str
@@ -47,5 +51,3 @@ class Duel(BaseModel):
     """Second participant in the duel."""
     last_miner_pull_time: float = 0.0
     """Time the duel was pulled by the last miner."""
-    failed_by_validator: bool = False
-    """True, if duel failed and it's not a miner's fault."""

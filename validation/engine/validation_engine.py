@@ -1,7 +1,7 @@
 import torch
 from loguru import logger
 
-from engine.data_structures import ValidationResult
+from engine.data_structures import ValidationResponse
 from engine.metrics.alignment_scorer import ImageVSImageMetric, TextVSImageMetric
 from engine.metrics.quality_scorer import ImageQualityMetric
 from engine.metrics.similarity_scorer import SimilarityMetrics
@@ -45,34 +45,32 @@ class ValidationEngine:
         ssim_score = self._similarity_metric.score_ssim_similarity(images, "geometric_mean", True)
         return combined_quality_score, lpips_score, ssim_score
 
-    def _compute_final_score(self, validation_results: ValidationResult) -> ValidationResult:
+    def _compute_final_score(self, validation_results: ValidationResponse) -> ValidationResponse:
         """Function that combines all metrics' scores and combine them in a single final score"""
 
-        if validation_results.alignment_score < 0.3:
+        if validation_results.alignment < 0.3:
             final_score = 0.0
         else:
             final_score = float(
-                0.75 * validation_results.combined_quality_score
-                + 0.2 * validation_results.alignment_score
-                + 0.025 * sigmoid(torch.tensor(validation_results.ssim_score), 35, 0.83)
-                + 0.025
-                * validation_results.lpips_score
-                * sigmoid(torch.tensor(validation_results.lpips_score), 30, 0.7)
+                0.75 * validation_results.iqa
+                + 0.2 * validation_results.alignment
+                + 0.025 * sigmoid(torch.tensor(validation_results.ssim), 35, 0.83)
+                + 0.025 * validation_results.lpips * sigmoid(torch.tensor(validation_results.lpips), 30, 0.7)
             )
-        validation_results.final_score = final_score
+        validation_results.score = final_score
 
         if self._verbose:
-            logger.debug(f" ssim score: {validation_results.ssim_score}")
-            logger.debug(f" lpips score: {validation_results.lpips_score}")
-            logger.debug(f" clip score: {validation_results.alignment_score}")
-            logger.debug(f" combined models quality score: {validation_results.combined_quality_score}")
-            logger.debug(f" final score: {validation_results.final_score}")
+            logger.debug(f" ssim score: {validation_results.ssim}")
+            logger.debug(f" lpips score: {validation_results.lpips}")
+            logger.debug(f" clip score: {validation_results.alignment}")
+            logger.debug(f" image quality assessment (iqa) score: {validation_results.iqa}")
+            logger.debug(f" final score: {validation_results.score}")
 
         return validation_results
 
     def validate_image_to_gs(
         self, prompt_image: torch.Tensor, images: list[torch.Tensor], mean_op: str = ""
-    ) -> ValidationResult:
+    ) -> ValidationResponse:
         """Function that validates the input 3D data generated using provided prompt-image"""
 
         alignment_score = self._image_vs_image_metric.score_image_alignment(
@@ -80,17 +78,17 @@ class ValidationEngine:
         )
         combined_quality_score, lpips_score, ssim_score = self._compute_image_based_metrics(images, mean_op)
 
-        validation_results = ValidationResult(
-            final_score=0,
-            combined_quality_score=combined_quality_score,
-            alignment_score=alignment_score,
-            ssim_score=ssim_score,
-            lpips_score=lpips_score,
+        validation_results = ValidationResponse(
+            score=0,
+            iqa=combined_quality_score,
+            alignment=alignment_score,
+            ssim=ssim_score,
+            lpips=lpips_score,
         )
 
         return self._compute_final_score(validation_results)
 
-    def validate_text_to_gs(self, prompt: str, images: list[torch.Tensor], mean_op: str = "") -> ValidationResult:
+    def validate_text_to_gs(self, prompt: str, images: list[torch.Tensor], mean_op: str = "") -> ValidationResponse:
         """Function that validates the input 3D data generated using provided prompt"""
 
         alignment_score = self._text_vs_image_metric.score_text_alignment(
@@ -98,11 +96,11 @@ class ValidationEngine:
         )
         combined_quality_score, lpips_score, ssim_score = self._compute_image_based_metrics(images, mean_op)
 
-        validation_results = ValidationResult(
-            final_score=0,
-            combined_quality_score=combined_quality_score,
-            alignment_score=alignment_score / 0.35,  # artificial normalization for current clip version
-            ssim_score=ssim_score,
-            lpips_score=lpips_score,
+        validation_results = ValidationResponse(
+            score=0,
+            iqa=combined_quality_score,
+            alignment=alignment_score / 0.35,  # artificial normalization for current clip version
+            ssim=ssim_score,
+            lpips=lpips_score,
         )
         return self._compute_final_score(validation_results)

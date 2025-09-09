@@ -11,14 +11,13 @@ import bittensor as bt
 import pybase64
 from common.protocol import SubmitResults
 
-from validator.config import config
-from validator.duels.data_structures import Duel, MinerInDuel, MinerResults
-from validator.duels.judge_service import JudgeResponse, JudgeService
-from validator.duels.ratings import DuelRatings, Rating, duel_ratings, update_ratings
-from validator.task_manager.task import DuelTask
+from validator.duels.base_judge_service import JudgeResponse
+from validator.duels.data_structures import Duel, DuelTask, MinerInDuel, MinerResults
+from validator.duels.rating_judge_service import RatingJudgeService
+from validator.duels.ratings import DuelRatings, Rating, update_ratings
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
-from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage, synthetic_task_storage
-from validator.validation_service import ValidationResponse, ValidationService, validation_service
+from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage
+from validator.validation_service import ValidationResponse, ValidationService
 
 
 NEURONS_LIMIT = 256
@@ -89,7 +88,7 @@ class DuelsTaskStorage(BaseTaskStorage):
         self._garbage_collecting_job: asyncio.Task | None = None
         """Periodic job to check the active duels and recycle the expired ones."""
 
-        self._judge_service: JudgeService = JudgeService(
+        self._judge_service: RatingJudgeService = RatingJudgeService(
             config=config,
             pending_judgment_queue=self._pending_judgment_queue,
             process_results_queue=self._process_results_queue,
@@ -210,29 +209,12 @@ class DuelsTaskStorage(BaseTaskStorage):
 
         axon = metagraph.axons[miner_uid]
         results = MinerResults(
-            view=None,
+            grid_preview=validation_res.grid_preview,
             score=validation_res.score,
             coldkey=axon.coldkey,
             hotkey=axon.hotkey,
             rating=self._ratings.get_miner_rating(miner_uid),
         )
-        await self._render_and_submit(
-            synapse=synapse,
-            miner_uid=miner_uid,
-            duel=duel,
-            results=results,
-        )
-
-    async def _render_and_submit(
-        self,
-        synapse: SubmitResults,
-        miner_uid: int,
-        duel: Duel,
-        results: MinerResults,
-    ) -> None:
-        results.view = await self._validation_service.render_duel_view(synapse=synapse, neuron_uid=miner_uid)
-        if results.view is None:
-            duel.failed_by_validator = True
         await self._submit_results(miner_uid=miner_uid, duel=duel, results=results)
 
     async def fail_task(self, *, task_id: str, task_prompt: str, miner_uid: int, metagraph: bt.metagraph) -> None:
@@ -245,7 +227,7 @@ class DuelsTaskStorage(BaseTaskStorage):
 
         axon = metagraph.axons[miner_uid]
         results = MinerResults(
-            view=None,
+            grid_preview=None,
             score=0.0,
             coldkey=axon.coldkey,
             hotkey=axon.hotkey,
@@ -271,15 +253,11 @@ class DuelsTaskStorage(BaseTaskStorage):
 
         self._active_duels.pop(duel.task.id, None)
 
-        if duel.failed_by_validator:
-            bt.logging.warning(f"[{miner.uid}] vs [{opponent.uid}] duel failed (validator fault)")
-            return
-
-        if miner.results.view is None and opponent.results.view is None:
+        if miner.results.grid_preview is None and opponent.results.grid_preview is None:
             worst = 0
-        elif miner.results.view is None:
+        elif miner.results.grid_preview is None:
             worst = miner_position
-        elif opponent.results.view is None:
+        elif opponent.results.grid_preview is None:
             worst = 3 - miner_position
         else:
             worst = None
@@ -380,21 +358,31 @@ class DuelsTaskStorage(BaseTaskStorage):
                 left_uid=duel.left.uid,
                 right_uid=duel.right.uid,
                 results=duel_results,
-                preview1=duel.left.results.view,
-                preview2=duel.right.results.view,
+                preview1=duel.left.results.grid_preview,
+                preview2=duel.right.results.grid_preview,
             )
         )
 
     async def _publish_results(
-        self, left_uid: int, right_uid: int, results: dict[str, Any], preview1: bytes | None, preview2: bytes | None
+        self, left_uid: int, right_uid: int, results: dict[str, Any], preview1: str | None, preview2: str | None
     ) -> None:
         async with aiohttp.ClientSession() as session:
             try:
                 endpoint = self._config.duels.duel_saver_endpoint
                 form_data = aiohttp.FormData()
                 form_data.add_field("results", json.dumps(results))
-                form_data.add_field("preview1", preview1 or b"", filename="preview1.png", content_type="image/png")
-                form_data.add_field("preview2", preview2 or b"", filename="preview2.png", content_type="image/png")
+                if preview1 is not None:
+                    form_data.add_field(
+                        "preview1", pybase64.b64decode(preview1), filename="preview1.png", content_type="image/png"
+                    )
+                else:
+                    form_data.add_field("preview1", b"", filename="preview1.png", content_type="image/png")
+                if preview2 is not None:
+                    form_data.add_field(
+                        "preview2", pybase64.b64decode(preview2), filename="preview2.png", content_type="image/png"
+                    )
+                else:
+                    form_data.add_field("preview2", b"", filename="preview2.png", content_type="image/png")
                 async with session.post(
                     endpoint,
                     data=form_data,
@@ -413,12 +401,3 @@ class DuelsTaskStorage(BaseTaskStorage):
                 bt.logging.error(f"An unexpected client error occurred: {e} ({endpoint})")
             except Exception as e:
                 bt.logging.error(f"An unexpected error occurred: {e} ({endpoint})")
-
-
-duel_task_storage = DuelsTaskStorage(
-    config=config,
-    wallet=None,
-    synthetic_task_storage=synthetic_task_storage,
-    validation_service=validation_service,
-    ratings=duel_ratings,
-)

@@ -1,5 +1,5 @@
 import torch
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, AliasChoices
 
 
 class GaussianSplattingData(BaseModel):
@@ -28,38 +28,62 @@ class GaussianSplattingData(BaseModel):
         )
 
 
-class ValidationResult(BaseModel):
-    final_score: float  # combined score
-    combined_quality_score: float  # (non-normalized) combined models predictor - score
-    alignment_score: float  # clip similarity scores
-    ssim_score: float  # structure similarity index score
-    lpips_score: float  # perceptive similarity score
-
-
 class ValidationRequest(BaseModel):
-    prompt: str | None = Field(default=None, max_length=1024, description="Prompt used to generate assets")
-    prompt_image: str | None = Field(default=None, description="Prompt-image used to generate assets")
-    data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
-    compression: int = Field(default=0, description="0 for uncompressed results, 2 for spz compression")
-    generate_preview: bool = Field(default=False, description="Optional. Pass to render and return a preview")
-    preview_score_threshold: float = Field(default=0.8, description="Minimal score to return a preview")
+    prompt: str | None = Field(
+        default=None, max_length=1024, description="Text prompt used to generate the 3D assets or images"
+    )
+    prompt_image: str | None = Field(
+        default=None, description="Base64-encoded reference image used as input for image-to-3D generation"
+    )
+
+    data: str = Field(
+        max_length=500 * 1024 * 1024,
+        description="Generated 3D asset data (mesh, textures, etc.) in base64 or binary format",
+    )
+    compression: int = Field(
+        default=0, description="Asset compression level: 0 for uncompressed data, 2 for SPZ compressed format"
+    )
+
+    generate_single_preview: bool = Field(
+        default=False,
+        validation_alias=AliasChoices('generate_preview', 'generate_single_preview'),
+        description="Generate a single front-facing render preview of the 3D asset",
+    )
+    generate_grid_preview: bool = Field(
+        default=False,
+        description="Generate a 2x2 grid preview showing multiple viewing angles (front, side, top, perspective)",
+    )
+    preview_score_threshold: float = Field(
+        default=0.6, description="Minimum validation score required to generate and return preview images (0.0-1.0)"
+    )
 
 
 class ValidationResponse(BaseModel):
-    score: float = Field(default=0.0, description="Validation score, from 0.0 to 1.0")
-    iqa: float = Field(default=0.0, description="Aesthetic Predictor (quality) score")
-    alignment_score: float = Field(
-        default=0.0, description="prompt vs rendered images or prompt-image vs rendered images score."
+    score: float = Field(default=0.0, description="Final validation score. Combines all Metrics, 0.0-1.0")
+    iqa: float = Field(default=0.0, description="Image Quality Assessment score")
+    alignment: float = Field(
+        default=0.0, serialization_alias="alignment_score", description="Semantic alignment score."
     )
-    ssim: float = Field(default=0.0, description="Structure similarity score")
-    lpips: float = Field(default=0.0, description="Perceptive similarity score")
-    preview: str | None = Field(default=None, description="Optional. Preview image, base64 encoded PNG")
+    ssim: float = Field(default=0.0, description="Structural Similarity Index (SSIM).")
+    lpips: float = Field(default=0.0, description="Learned Perceptual Image Patch Similarity (LPIPS).")
+
+    preview: str | None = Field(default=None, description="Base64-encoded PNG of single front-facing render")
+    grid_preview: str | None = Field(
+        default=None, description="Base64-encoded PNG of 2x2 grid showing multiple angles/views"
+    )
 
 
 class RenderRequest(BaseModel):
-    prompt: str | None = Field(default=None, max_length=1024, description="Prompt used to generate assets")
-    data: str = Field(max_length=500 * 1024 * 1024, description="Generated assets")
-    compression: int = Field(default=0, description="0 for uncompressed results, 2 for spz compression")
+    prompt: str | None = Field(
+        default=None, max_length=1024, description="Text prompt used to generate the 3D assets or images"
+    )
+    data: str = Field(
+        max_length=500 * 1024 * 1024,
+        description="Generated 3D asset data (mesh, textures, etc.) in base64 or binary format",
+    )
+    compression: int = Field(
+        default=0, description="Asset compression level: 0 for uncompressed data, 2 for SPZ compressed format"
+    )
 
 
 class TimeStat(BaseModel):

@@ -20,8 +20,8 @@ test_data_folder = current_file_path.parent / "resources"
 DEFAULT_FILEPATH = test_data_folder / "hamburger.ply"
 DEFAULT_PROMPT = "A hamburger"
 DEFAULT_PROMPT_IMAGE = test_data_folder / "test_render_ply.png"
-DEFAULT_URL_TXT_TO_3D = "http://localhost:10006/validate_txt_to_3d_ply/"
-DEFAULT_URL_IMG_TO_3D = "http://localhost:10006/validate_img_to_3d_ply/"
+DEFAULT_URL_TXT_TO_3D = "http://localhost:8094/validate_txt_to_3d_ply/"
+DEFAULT_URL_IMG_TO_3D = "http://localhost:8094/validate_img_to_3d_ply/"
 DEFAULT_VERSION = 0
 GENERATE_PREVIEW = False
 

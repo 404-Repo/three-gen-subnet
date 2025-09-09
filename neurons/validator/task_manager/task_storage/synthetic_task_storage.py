@@ -6,15 +6,17 @@ from pathlib import Path
 import bittensor as bt
 from common.protocol import SubmitResults
 
-from validator.config import config
-from validator.task_manager.task import SyntheticTask
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
-from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage, synthetic_asset_storage
+from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage
 from validator.task_manager.task_storage.synthetic_prompt_service import (
     SyntheticPromptService,
-    synthetic_prompt_service,
 )
+from validator.task_manager.validator_task import ValidatorTask
 from validator.validation_service import ValidationResponse
+
+
+class SyntheticTask(ValidatorTask):
+    pass
 
 
 class SyntheticTaskStorage(BaseTaskStorage):
@@ -106,11 +108,3 @@ class SyntheticTaskStorage(BaseTaskStorage):
             self._default_prompts = default_prompts
 
         bt.logging.info(f"{len(self._default_prompts)} default prompts loaded")
-
-
-synthetic_task_storage = SyntheticTaskStorage(
-    default_prompts_path=config.task.synthetic.default_prompts_path,
-    synthetic_prompt_service=synthetic_prompt_service,
-    synthetic_asset_storage=synthetic_asset_storage,
-    config=config,
-)

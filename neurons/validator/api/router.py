@@ -15,8 +15,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from validator.api.api_key_manager import ApiKeyManager
 from validator.api.protocol import Auth, PromptData, TaskResults, TaskStatus, TaskUpdate
-from validator.task_manager.task import LegacyOrganicTask
-from validator.task_manager.task_manager import task_manager
+from validator.task_manager.task_manager import TaskManager
+from validator.task_manager.task_storage.organic_task import LegacyOrganicTask
 
 
 # This router is used by clients that want to generate 3D assets from prompts.
@@ -24,6 +24,8 @@ router = APIRouter()
 
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+task_manager: TaskManager  # Set in serve_validator.
 
 
 def get_api_key_manager(request: WebSocket) -> ApiKeyManager:
@@ -105,7 +107,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
     bt.logging.info(f"New organic prompt received from [{client_name}]: {prompt_data.prompt}")
 
     start_time = time.time()
-    legacy_task = task_manager._organic_task_storage.add_legacy_task(
+    legacy_task = task_manager._organic_task_storage.add_legacy_task(  # noqa: F821
         task=LegacyOrganicTask.create_task(id=str(uuid4()), prompt=prompt_data.prompt)
     )
 
@@ -126,7 +128,7 @@ async def _websocket_generate(websocket: WebSocket, client_name: str) -> None:
         f"Size: {len(first_result.compressed_result or '')}"
     )
 
-    best_result = await task_manager._organic_task_storage.get_best_results(task_id=legacy_task.id)
+    best_result = await task_manager._organic_task_storage.get_best_results(task_id=legacy_task.id)  # noqa: F821
     if best_result is None:
         bt.logging.warning(f"Failed to generate results for organic prompt: {prompt_data.prompt}")
         await websocket.close(code=4404, reason="Generation failed")

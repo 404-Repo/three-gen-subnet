@@ -23,7 +23,7 @@ imageio = "==2.35.1"
 open3d = "==0.18.0"
 pybase64 = "==1.4.0"
 openai-clip = "==1.0.1"
-
+safetensors = "==0.4.1"
 
 [tool.poetry.group.dev.dependencies]
 poetry = { version = "2.1.4" }

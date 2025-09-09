@@ -1,11 +1,8 @@
-import asyncio
 from base64 import b64encode
-from collections.abc import AsyncGenerator, Generator
-from contextlib import asynccontextmanager
+from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
 from uuid import uuid4
 
 import bittensor as bt
@@ -25,16 +22,18 @@ from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_manager import GatewayManager
 from validator.gateway.gateway_scorer import GatewayScorer
-from validator.task_manager.task import AssignedMiner, LegacyOrganicTask
 from validator.task_manager.task_manager import TaskManager
-from validator.task_manager.task_storage.organic_task_storage import OrganicTaskStorage
+from validator.task_manager.task_storage.organic_task_storage import (
+    OrganicTaskStorage,
+)
+from validator.task_manager.task_storage.organic_task import AssignedMiner, LegacyOrganicTask
 from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage
 from validator.task_manager.task_storage.synthetic_prompt_service import SyntheticPromptService
 from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage
 from validator.validation_service import ValidationService
 from validator.validator import Validator
+from tests.test_validator.subtensor_mock import MockSubtensor
 
-from tests.test_validator.subtensor_mocks import METAGRAPH_INFO, NEURONS, WALLETS
 
 FROZEN_TIME = datetime(year=2025, month=1, day=1)
 TASK_THROTTLE_PERIOD = 20
@@ -65,22 +64,27 @@ GATEWAY_TASK_COUNT = 100
 DUELS_START_DELAY = 1800
 
 
-def create_pull_task(uid: int | None) -> PullTask:
+@pytest.fixture(scope="session")
+def netuid() -> int:
+    return 17
+
+
+def create_pull_task(uid: int | None, wallets: list[bt.Wallet]) -> PullTask:
     synapse = PullTask()
     if uid is None:
         synapse.dendrite.hotkey = "unknown"
     else:
-        synapse.dendrite.hotkey = WALLETS[uid].hotkey.ss58_address
-    synapse.axon.hotkey = WALLETS[0].hotkey.ss58_address
+        synapse.dendrite.hotkey = wallets[uid].hotkey.ss58_address
+    synapse.axon.hotkey = wallets[0].hotkey.ss58_address
     return synapse
 
 
-def create_submit_result(uid: int | None, task: Task, full: bool = False) -> SubmitResults:
+def create_submit_result(uid: int | None, task: Task, wallets: list[bt.Wallet], full: bool = False) -> SubmitResults:
     if uid is None:
         miner_hotkey = get_mock_wallet().hotkey
     else:
-        miner_hotkey = WALLETS[uid].hotkey
-    validator_wallet = WALLETS[0]
+        miner_hotkey = wallets[uid].hotkey
+    validator_wallet = wallets[0]
     signature = b64encode(
         miner_hotkey.sign(
             f"{MINER_LICENSE_CONSENT_DECLARATION}{0}{task.prompt}{validator_wallet.hotkey.ss58_address}{miner_hotkey.ss58_address}"
@@ -92,30 +96,20 @@ def create_submit_result(uid: int | None, task: Task, full: bool = False) -> Sub
         synapse = SubmitResults(task=task, results=MINER_RESULT_FULL, submit_time=0, signature=signature, compression=0)
 
     synapse.dendrite.hotkey = miner_hotkey.ss58_address
-    synapse.axon.hotkey = WALLETS[0].hotkey.ss58_address
+    synapse.axon.hotkey = wallets[0].hotkey.ss58_address
     return synapse
 
 
 @pytest.fixture
-def time_travel() -> Generator[time_machine.travel, None, None]:
+def time_travel() -> Generator[time_machine.Coordinates, None, None]:
     traveller = time_machine.travel(FROZEN_TIME, tick=False)
-    traveller.start()
-    yield traveller
+    yield traveller.start()
     traveller.stop()
 
 
-@pytest.fixture
-def synthetic_prompt_server(make_httpserver: HTTPServer) -> HTTPServer:
-    make_httpserver.expect_request("/get", method="GET").respond_with_json(
-        {"prompts": [f"synthetic_prompt_{idx}" for idx in range(SYNTHETIC_PROMPT_BATCH_SIZE)]}
-    )
-    return make_httpserver
-
-
-@pytest.fixture
-def storage_server(make_httpserver: HTTPServer) -> HTTPServer:
-    make_httpserver.expect_request("/store", method="POST").respond_with_json({"status": "ok"})
-    return make_httpserver
+@pytest.fixture(scope="session")
+def wallets() -> list[bt.Wallet]:
+    return [get_mock_wallet() for _ in range(200)]
 
 
 @pytest.fixture(scope="function")
@@ -125,6 +119,7 @@ def config(
     storage_server: HTTPServer,
     judge_server: HTTPServer,
     duel_save_server: HTTPServer,
+    netuid: int,
 ) -> bt.config:
     parser = _build_parser()
     default_prompts_path = Path(__file__).parent.parent / "resources" / "prompts.txt"
@@ -132,7 +127,7 @@ def config(
         parser,
         args=[
             "--netuid",
-            "17",
+            f"{netuid}",
             "--task.synthetic.default_prompts_path",
             str(default_prompts_path),
             "--generation.task_cooldown",
@@ -183,20 +178,10 @@ def config(
 @pytest.fixture(scope="function")
 def validation_server(make_httpserver: HTTPServer) -> HTTPServer:
     make_httpserver.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-        {"score": VALIDATION_SCORE}
+        {"score": VALIDATION_SCORE, "grid_preview": pybase64.b64encode("grid preview".encode()).decode()}
     )
     make_httpserver.expect_request("/render_duel_view/", method="POST").respond_with_data(b"render.png")
     return make_httpserver
-
-
-@pytest.fixture
-def reset_validation_server(validation_server: HTTPServer) -> HTTPServer:
-    validation_server.clear()
-    validation_server.expect_request("/validate_txt_to_3d_ply/", method="POST").respond_with_json(
-        {"score": VALIDATION_SCORE}
-    )
-    validation_server.expect_request("/render_duel_view/", method="POST").respond_with_data(b"render.png")
-    return validation_server
 
 
 @pytest.fixture(scope="function")
@@ -222,10 +207,29 @@ def duel_save_server(make_httpserver: HTTPServer) -> HTTPServer:
     return make_httpserver
 
 
+@pytest.fixture(scope="function")
+def synthetic_prompt_server(make_httpserver: HTTPServer) -> HTTPServer:
+    make_httpserver.expect_request("/get", method="GET").respond_with_json(
+        {"prompts": [f"synthetic_prompt_{idx}" for idx in range(SYNTHETIC_PROMPT_BATCH_SIZE)]}
+    )
+    return make_httpserver
+
+
+@pytest.fixture(scope="function")
+def storage_server(make_httpserver: HTTPServer) -> HTTPServer:
+    make_httpserver.expect_request("/store", method="POST").respond_with_json({"status": "ok"})
+    return make_httpserver
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_http_server(make_httpserver: HTTPServer) -> None:
+    make_httpserver.clear()
+
+
 # Mock is necessary because GatewayApi uses http3 that is not compatible with pytest-httpserver.
 class GatewayApiMock(GatewayApi):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self._tasks = {str(uuid4()): f"gateway_0_prompt_{idx}" for idx in range(GATEWAY_TASK_COUNT)}
         self.results: dict[str, AssignedMiner | None | str] = {}
 
@@ -256,12 +260,18 @@ class GatewayApiMock(GatewayApi):
         task: GatewayTask,
         score: float | None = None,
         miner_hotkey: str | None = None,
+        miner_uid: int | None = None,
+        miner_rating: float | None = None,
         asset: bytes | None = None,
         error: str | None = None,
     ) -> None:
         if miner_hotkey is not None:
+            assert miner_uid is not None
+            assert miner_rating is not None
             self.results[task.id] = AssignedMiner(
+                uid=miner_uid,
                 hotkey=miner_hotkey,
+                rating=miner_rating,
                 score=score if score is not None else VALIDATION_SCORE,
                 compressed_result=pybase64.b64encode(asset).decode(encoding="utf-8") if asset is not None else None,
                 assign_time=int(FROZEN_TIME.timestamp()),
@@ -273,14 +283,24 @@ class GatewayApiMock(GatewayApi):
 
 
 @pytest.fixture(scope="session")
-def subtensor() -> bt.MockSubtensor:
-    subtensor_mock = bt.MockSubtensor()
+def subtensor(netuid: int, wallets: list[bt.Wallet]) -> MockSubtensor:
+    subtensor_mock = MockSubtensor()
     subtensor_mock.setup()
-    subtensor_mock.create_subnet(17)
+    subtensor_mock.create_subnet(netuid)
 
-    subtensor_mock.get_metagraph_info = Mock(return_value=METAGRAPH_INFO)
-    subtensor_mock.neurons_lite = Mock(return_value=NEURONS)
-    subtensor_mock.query_runtime_api = Mock(return_value=None)
+    for wallet in wallets:
+        # It is important to use float number for stake and balance.
+        # int is considered as rao. It is divided internally by 1e9.
+        subtensor_mock.force_register_neuron(
+            netuid=netuid,
+            hotkey=wallet.hotkey.ss58_address,
+            coldkey=wallet.coldkey.ss58_address,
+            stake=bt.Balance(10000.0),
+            balance=bt.Balance(10000.0),
+        )
+
+    metagraph = bt.Metagraph(netuid=netuid, network=subtensor_mock.network, sync=False)
+    metagraph.sync(subtensor=subtensor_mock)
     return subtensor_mock
 
 
@@ -290,7 +310,7 @@ def ratings() -> DuelRatings:
 
 
 @pytest.fixture(scope="function")
-def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
+def task_manager(config: bt.config, ratings: DuelRatings, wallets: list[bt.Wallet]) -> TaskManager:
     synthetic_task_storage = SyntheticTaskStorage(
         default_prompts_path=config.task.synthetic.default_prompts_path,
         synthetic_prompt_service=SyntheticPromptService(
@@ -304,11 +324,10 @@ def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
             validation_score_threshold=config.storage.validation_score_threshold,
         ),
         config=config,
-        wallet=WALLETS[0],
+        wallet=wallets[0],
     )
     validation_service = ValidationService(
         endpoints=config.validation.endpoints,
-        storage_enabled=config.validation.storage_enabled,
         validation_score_threshold=config.storage.validation_score_threshold,
     )
     return TaskManager(
@@ -319,13 +338,13 @@ def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
                 gateway_info_server=config.task.gateway.bootstrap_gateway,
             ),
             config=config,
-            wallet=WALLETS[0],
+            wallet=wallets[0],
             ratings=ratings,
         ),
         synthetic_task_storage=synthetic_task_storage,
         duel_task_storage=DuelsTaskStorage(
             config=config,
-            wallet=WALLETS[0],
+            wallet=wallets[0],
             synthetic_task_storage=synthetic_task_storage,
             validation_service=validation_service,
             ratings=ratings,
@@ -336,63 +355,21 @@ def task_manager(config: bt.config, ratings: DuelRatings) -> TaskManager:
 
 @pytest.fixture
 def validator(
-    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
+    config: bt.config,
+    subtensor: bt.MockSubtensor,
+    task_manager: TaskManager,
+    ratings: DuelRatings,
+    wallets: list[bt.Wallet],
 ) -> Validator:
     validation_service = ValidationService(
         endpoints=config.validation.endpoints,
-        storage_enabled=config.validation.storage_enabled,
         validation_score_threshold=config.storage.validation_score_threshold,
     )
     return Validator(
         config=config,
-        wallet=WALLETS[0],
+        wallet=wallets[0],
         subtensor=subtensor,
         task_manager=task_manager,
         validation_service=validation_service,
         ratings=ratings,
     )
-
-
-@asynccontextmanager
-async def get_validator_with_available_organic_tasks(
-    config: bt.config, subtensor: bt.MockSubtensor, task_manager: TaskManager, ratings: DuelRatings
-) -> AsyncGenerator[Validator, None]:
-    """
-    Returns validator with the same number of organic and legacy tasks.
-    Do not use it inside time_machine context with tick=False. Will hand.
-    """
-
-    validation_service = ValidationService(
-        endpoints=config.validation.endpoints,
-        storage_enabled=config.validation.storage_enabled,
-        validation_score_threshold=config.storage.validation_score_threshold,
-    )
-
-    task_manager = task_manager
-
-    validator = Validator(
-        config=config,
-        wallet=WALLETS[0],
-        subtensor=subtensor,
-        task_manager=task_manager,
-        validation_service=validation_service,
-        ratings=ratings,
-    )
-
-    # Put legacy organic tasks to the task manager.
-    for idx in range(GATEWAY_TASK_QUEUE_SIZE):
-        task = LegacyOrganicTask.create_task(
-            id=str(uuid4()),
-            prompt=f"legacy_organic_task_prompt_{idx}",
-        )
-        validator.task_manager._organic_task_storage.add_legacy_task(task=task)
-
-    # Put gateway organic tasks to the task manager.
-    async_task = asyncio.create_task(validator.task_manager._organic_task_storage.fetch_gateway_tasks_cron())
-    while True:
-        if validator.task_manager._organic_task_storage._gateway_task_queue:
-            async_task.cancel()
-            break
-        await asyncio.sleep(0.1)
-
-    yield validator

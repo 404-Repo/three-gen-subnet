@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from pyinstrument import Profiler
 from pyinstrument.renderers import JSONRenderer
 from rich import print
-from serve import decode_and_validate_txt
+from server.pipeline import decode_and_validate_txt
 
 from benchmark.execution_tree_visualizer import ExecutionTreeVisualizer
 

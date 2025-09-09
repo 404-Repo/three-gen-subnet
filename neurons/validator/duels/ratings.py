@@ -51,6 +51,7 @@ class DuelRatings:
         path = full_path / "ratings.json"
         if not path.exists():
             bt.logging.warning("No saved ratings found")
+            return
 
         try:
             with path.open("r") as f:
@@ -113,6 +114,3 @@ def update_glicko2(left: Glicko2Rating, right: Glicko2Rating, winner: int) -> No
     right.rd = max(MIN_GLICKO_RD, min(MAX_GLICKO_RD, right.rd))
     left.vol = max(MIN_GLICKO_VOL, min(MAX_GLICKO_VOL, left.vol))
     right.vol = max(MIN_GLICKO_VOL, min(MAX_GLICKO_VOL, right.vol))
-
-
-duel_ratings = DuelRatings()
