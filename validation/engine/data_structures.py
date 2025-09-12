@@ -33,7 +33,7 @@ class ValidationRequest(BaseModel):
         default=None, max_length=1024, description="Text prompt used to generate the 3D assets or images"
     )
     prompt_image: str | None = Field(
-        default=None, description="Base64-encoded reference image used as input for image-to-3D generation"
+        default=None, description="Base64-encoded image data for 3D model generation"
     )
 
     data: str = Field(

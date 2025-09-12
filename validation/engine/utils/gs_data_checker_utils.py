@@ -3,6 +3,7 @@ from typing import Any
 
 import torch
 from loguru import logger
+from PIL import Image
 
 from engine.data_structures import GaussianSplattingData
 
@@ -82,3 +83,11 @@ def is_input_data_valid(gs_data: GaussianSplattingData, verbose: bool = True) ->
         return False
 
     return True
+
+
+def add_white_background(image: Image.Image) -> Image.Image:
+    # Create white background with same size
+    white_bg = Image.new("RGBA", image.size, (255, 255, 255, 255))
+
+    # Composite the image onto white background
+    return Image.alpha_composite(white_bg, image.convert("RGBA"))

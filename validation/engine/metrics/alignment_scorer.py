@@ -9,6 +9,7 @@ from loguru import logger
 from open_clip import CLIP
 from open_clip.tokenizer import HFTokenizer
 from torchvision import transforms
+from transformers import AutoModel
 
 from engine.utils.statistics_computation_utils import compute_mean, filter_outliers
 
@@ -112,64 +113,69 @@ class ImageVSImageMetric:
         std = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(1, 3, 1, 1) * 3
         self._normalize_transform = transforms.Normalize(mean, std)
 
-    def load_model(self, model_name: str, pretrained: str = "") -> None:
+    def load_model(self, model_name: str) -> None:
         """Function that loading the model for prompt-image-vs-images alignment"""
 
-        logger.info("Loading text vs image alignment model.")
-        self._model, _, _ = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained, device=self._device
+        logger.info("Loading prompt-image vs rendered images alignment model.")
+        self._model = AutoModel.from_pretrained(
+            model_name,
+            revision="92512331f393a003c3d98404677f991c188162c9",
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
         )
+        self._model = self._model.to(self._device)
         self._model.eval()
 
     def unload_model(self) -> None:
         """Function that unloads model from the memory"""
 
-        logger.info("Unloading image vs image alignment model.")
+        logger.info("Unloading prompt-image vs rendered images alignment model.")
         del self._model
         self._model = None
 
         torch.cuda.empty_cache()
         gc.collect()
 
-    def preprocess_images(self, images: list[torch.Tensor], image_res: int) -> torch.Tensor:
+    def preprocess_images(self, images: list[torch.Tensor], image_res: int) -> Any:
         """Function for preprocessing input images"""
 
-        stacked_images: torch.Tensor = torch.stack(images, dim=0).to(self._device) / 255.0
+        stacked_images = torch.stack(images, dim=0).to(self._device) / 255.0
         stacked_images = stacked_images.permute(0, 3, 1, 2).to(torch.float16)
         stacked_images = F.interpolate(stacked_images, size=(image_res, image_res), mode="bicubic", align_corners=False)
         stacked_images = self._normalize_transform(stacked_images)
+
         return stacked_images
+
+    def compute_image_embeddings(self, images: list[torch.Tensor], img_preproc_res: int) -> torch.Tensor:
+        """Function for computing image embeddings."""
+
+        if self._model is None:
+            raise RuntimeError("The model was not initialized!")
+
+        preproce_images_tensor = self.preprocess_images(images, img_preproc_res)
+
+        with torch.no_grad():
+            embeddings_preproc_images = self._model.get_image_features(preproce_images_tensor)
+            embeddings_preproc_images /= embeddings_preproc_images.norm(dim=-1, keepdim=True)
+        return torch.tensor(embeddings_preproc_images)
 
     def score_image_alignment(
         self,
         prompt_image: torch.Tensor,
         images: list[torch.Tensor],
-        img_preproc_res: int = 224,
+        img_preproc_res: int = 336,
         mean_op: str = "mean",
         use_filter_outliers: bool = False,
     ) -> float:
-        """Function for computing the alignment score"""
+        """Function for computing input image vs images similarity score"""
 
-        if self._model is None:
-            raise RuntimeError("The model was not initialized!")
+        prompt_image_embeddings = self.compute_image_embeddings([prompt_image], img_preproc_res)
+        images_embeddings = self.compute_image_embeddings(images, img_preproc_res)
 
-        t1 = time()
-        preproc_prompt_image = self.preprocess_images([prompt_image], img_preproc_res)
-        preproc_images = self.preprocess_images(images, img_preproc_res)
-
-        with torch.no_grad(), torch.amp.autocast(self._device.type):
-            images_features = self._model.encode_image(preproc_images)
-            preview_image_features = self._model.encode_image(preproc_prompt_image)
-            images_features /= images_features.norm(dim=-1, keepdim=True)
-            preview_image_features /= preview_image_features.norm(dim=-1, keepdim=True)
-        clip_scores = (images_features @ preview_image_features.T).to(torch.float32)
+        scores = (prompt_image_embeddings @ images_embeddings.T).to(torch.float32)
 
         if use_filter_outliers:
-            clip_scores = filter_outliers(clip_scores)
-        clip_score = compute_mean(clip_scores, mean_op)
+            scores = filter_outliers(scores)
+        score = compute_mean(scores, mean_op)
 
-        t2 = time()
-        if self._verbose:
-            logger.debug(f"Image vs Image alignment score computation took: {t2 - t1} sec")
-
-        return float(clip_score)
+        return float(score)

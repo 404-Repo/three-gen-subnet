@@ -10,7 +10,7 @@ import pyspz
 from aiohttp import ClientTimeout
 from aiohttp.helpers import sentinel
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
-from common.protocol import PullTask, SubmitResults
+from common.protocol import ProtocolTask, PullTask, SubmitResults
 
 from miner import ValidatorSelector
 
@@ -67,7 +67,7 @@ async def _complete_one_task(
     results = await _generate(generate_url, pull.task.prompt) or b""
 
     async with bt.dendrite(wallet=wallet) as dendrite:
-        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull, results)
+        submit = await _submit_results(wallet, dendrite, metagraph, validator_uid, pull.task, results)
         if submit.feedback is None:
             bt.logging.warning(
                 f"Failed to submit results to [{metagraph.hotkeys[validator_uid]}]. "
@@ -76,7 +76,7 @@ async def _complete_one_task(
             validator_selector.set_cooldown(validator_uid, int(time.time()) + FAILED_VALIDATOR_DELAY)
             return
 
-    _log_feedback(validator_uid, submit)
+    _log_feedback(validator_uid=validator_uid, task=pull.task, submit=submit)
 
     validator_selector.set_cooldown(validator_uid, submit.cooldown_until)
 
@@ -97,21 +97,20 @@ async def _submit_results(
     dendrite: bt.dendrite,
     metagraph: bt.metagraph,
     validator_uid: int,
-    pull: PullTask,
+    task: ProtocolTask,
     results: bytes,
 ) -> SubmitResults:
     submit_time = time.time_ns()
-    prompt = pull.task.prompt if pull.task is not None else None
     message = (
         f"{MINER_LICENSE_CONSENT_DECLARATION}"
-        f"{submit_time}{prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
+        f"{submit_time}{task.prompt}{metagraph.hotkeys[validator_uid]}{wallet.hotkey.ss58_address}"
     )
     signature = base64.b64encode(dendrite.keypair.sign(message)).decode(encoding="utf-8")
     if results:
         compressed_results = base64.b64encode(pyspz.compress(results, workers=-1)).decode(encoding="utf-8")
     else:
         compressed_results = ""  # Skipping task not to be penalized (same could be done for low quality results)
-    synapse = SubmitResults(task=pull.task, results=compressed_results, submit_time=submit_time, signature=signature)
+    synapse = SubmitResults(task_id=task.id, results=compressed_results, submit_time=submit_time, signature=signature)
     response = typing.cast(
         SubmitResults,
         await dendrite.call(
@@ -124,12 +123,12 @@ async def _submit_results(
     return response
 
 
-def _log_feedback(validator_uid: int, submit: SubmitResults) -> None:
+def _log_feedback(validator_uid: int, task: ProtocolTask, submit: SubmitResults) -> None:
     feedback = submit.feedback
     if feedback is None:
         return
     score = "failed" if feedback.validation_failed else feedback.task_fidelity_score
-    bt.logging.debug(f"Feedback received from [{validator_uid}]. Prompt: {submit.task.prompt}. Score: {score}")
+    bt.logging.debug(f"Feedback received from [{validator_uid}]. Score: {score}. ({task.log_id})")
     bt.logging.debug(
         f"Average score: {feedback.average_fidelity_score}. "
         f"Current duel rating: {feedback.current_duel_rating}. "

@@ -3,6 +3,7 @@ import heapq
 import time
 
 import bittensor as bt
+from common.protocol import ProtocolTask
 
 from validator.duels.base_judge_service import BaseJudgeService, JudgeResponse
 from validator.task_manager.task_storage.organic_task import DuelStatus, OrganicTask, OrganicTaskJudgeQueuePriority
@@ -38,11 +39,11 @@ class OrganicJudgeService(BaseJudgeService):
             self._pending_judgment_queue.task_done()
 
             if task.finalized:
-                bt.logging.debug(f"Organic task is finalized. Skipping the task ({task.prompt[:100]}).")
+                bt.logging.debug(f"Organic task is finalized. Skipping the task ({task.log_id}).")
                 return
 
             if len(task.results_to_judge) < 2:
-                bt.logging.debug(f"Not enough results to judge. Skipping the task ({task.prompt[:100]}).")
+                bt.logging.debug(f"Not enough results to judge. Skipping the task ({task.log_id}).")
                 return
 
             task.num_results_being_judged += 2
@@ -52,17 +53,17 @@ class OrganicJudgeService(BaseJudgeService):
 
             if left.grid_preview is None:
                 bt.logging.error(
-                    f"[{left.uid}] Undefined behaviour. No grid preview for organic task ({task.prompt[:100]}).]"
+                    f"[{left.uid}] Undefined behaviour. No grid preview for organic task ({task.log_id}).]"
                 )
                 judgement = JudgeResponse(worst=1, issues="No grid preview")
             elif right.grid_preview is None:
                 bt.logging.error(
-                    f"[{right.uid}] Undefined behaviour. No grid preview for organic task ({task.prompt[:100]}).]"
+                    f"[{right.uid}] Undefined behaviour. No grid preview for organic task ({task.log_id}).]"
                 )
                 judgement = JudgeResponse(worst=2, issues="No grid preview")
             else:
                 judgement = await self._request_organic_duel(
-                    prompt=task.prompt,
+                    task=task.protocol,
                     left_grid_preview=left.grid_preview,
                     right_grid_preview=right.grid_preview,
                     seed=int(task.create_time),
@@ -93,25 +94,35 @@ class OrganicJudgeService(BaseJudgeService):
             bt.logging.error(f"Judge worker {worker_id} failed with: {e}")
 
     async def _request_organic_duel(
-        self, *, prompt: str, left_grid_preview: str, right_grid_preview: str, seed: int
+        self, *, task: ProtocolTask, left_grid_preview: str, right_grid_preview: str, seed: int
     ) -> JudgeResponse:
         try:
             duel_start_time = time.time()
-            judgement = await self._request_duel(
-                prompt=prompt,
-                left_grid_preview_encoded=left_grid_preview,
-                right_grid_preview_encoded=right_grid_preview,
-                seed=seed,
-            )
+            if task.type == "text":
+                judgement = await self._request_duel_text_prompt(
+                    prompt=task.prompt,
+                    left_grid_preview_encoded=left_grid_preview,
+                    right_grid_preview_encoded=right_grid_preview,
+                    seed=seed,
+                )
+            elif task.type == "image":
+                judgement = await self._request_duel_image_prompt(
+                    prompt_encoded=task.prompt,
+                    left_grid_preview_encoded=left_grid_preview,
+                    right_grid_preview_encoded=right_grid_preview,
+                    seed=seed,
+                )
+            else:
+                raise RuntimeError(f"Unknown task type: {task.type}")
             duel_time = time.time() - duel_start_time
             self.track_average_duel_time(duel_time)
             bt.logging.debug(
                 f"Organic task duel judged. "
                 f"Duel time: {duel_time:.2f} sec ({self._average_duel_time:.2f} sec). "
-                f"Worst: {judgement.worst} ({prompt[:100]})."
+                f"Worst: {judgement.worst} ({task.log_id})."
             )
-        except Exception:
-            bt.logging.warning(f"Organic task duel failed (validator error). Prompt: {prompt[:100]}")
+        except Exception as e:
+            bt.logging.warning(f"Organic task duel failed (validator error) with {e} ({task.log_id})")
             judgement = JudgeResponse(worst=0, issues="Duel failed")
 
         return judgement

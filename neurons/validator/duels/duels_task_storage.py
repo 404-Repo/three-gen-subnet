@@ -1,15 +1,14 @@
 import asyncio
-import hashlib
 import json
 import time
-import uuid
 from collections import deque
 from typing import Any
 
 import aiohttp
 import bittensor as bt
+import blake3
 import pybase64
-from common.protocol import SubmitResults
+from common.protocol import ProtocolTask, SubmitResults
 
 from validator.duels.base_judge_service import JudgeResponse
 from validator.duels.data_structures import Duel, DuelTask, MinerInDuel, MinerResults
@@ -21,7 +20,8 @@ from validator.validation_service import ValidationResponse, ValidationService
 
 
 NEURONS_LIMIT = 256
-PENDING_DUELS_SIZE = NEURONS_LIMIT * 4
+PENDING_DUELS_SIZE = NEURONS_LIMIT * 2
+MAX_DUEL_CREATION_ATTEMPTS = 3
 GARBAGE_COLLECTION_CYCLE = 60 * 60  # 1 hour
 
 
@@ -73,7 +73,7 @@ class DuelsTaskStorage(BaseTaskStorage):
         Duel is removed when miner pulls a task.
         """
 
-        self._active_duels: dict[str, Duel] = {}
+        self._started_duels: dict[str, Duel] = {}
         """Duels started by at least one miner (task id -> duel)."""
 
         self._pending_judgment_queue: asyncio.Queue[Duel] = asyncio.Queue()
@@ -108,19 +108,19 @@ class DuelsTaskStorage(BaseTaskStorage):
         current_time = time.time()
         expired_duels = [
             duel
-            for duel in self._active_duels.values()
+            for duel in self._started_duels.values()
             if duel.last_miner_pull_time + GARBAGE_COLLECTION_CYCLE < current_time
         ]
         for duel in expired_duels:
             bt.logging.debug(f"[{duel.left.uid}] vs [{duel.right.uid}] duel was recycled")
-            self._active_duels.pop(duel.task.id, None)
+            self._started_duels.pop(duel.task.id, None)
             self._pending_duels.pop(duel.timestamp_nonce, None)
             if duel in self._pending_duels_by_miner[duel.left.uid]:
                 self._pending_duels_by_miner[duel.left.uid].remove(duel)
             if duel in self._pending_duels_by_miner[duel.right.uid]:
                 self._pending_duels_by_miner[duel.right.uid].remove(duel)
 
-    def get_next_task(self, *, miner_uid: int) -> DuelTask | None:
+    async def get_next_task(self, *, miner_uid: int) -> DuelTask | None:
         if self._config.duels.disabled:
             return None
 
@@ -130,7 +130,7 @@ class DuelsTaskStorage(BaseTaskStorage):
         if current_time < self._duels_start:
             return None
 
-        self._fill_pending_duels(current_time)
+        await self._create_new_miner_duel(current_time)
 
         miner_duels = self._pending_duels_by_miner.get(miner_uid, None)
 
@@ -141,42 +141,57 @@ class DuelsTaskStorage(BaseTaskStorage):
         miner = duel.left if duel.left.uid == miner_uid else duel.right
         miner.started = True
 
-        self._active_duels[duel.task.id] = duel
+        self._started_duels[duel.task.id] = duel
         duel.last_miner_pull_time = current_time
 
         if duel.left.started and duel.right.started:
             self._pending_duels.pop(duel.timestamp_nonce)
 
         bt.logging.debug(
-            f"[{miner_uid}] received a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({duel.task.prompt[:100]}). "
-            f"Stats: {len(self._pending_duels)} ({len(miner_duels)}) + {len(self._active_duels)} "
-            f"+ {self._pending_judgment_queue.qsize()}"
+            f"[{miner_uid}] received a duel: [{duel.left.uid}] vs [{duel.right.uid}]. "
+            f"Pending: {len(self._pending_duels)} ({len(miner_duels)}), started: {len(self._started_duels)}, "
+            f"to judge: {self._pending_judgment_queue.qsize()}. "
+            f"({duel.task.log_id})"
         )
 
         return duel.task
 
-    def _fill_pending_duels(self, current_time: float) -> None:
+    async def _create_new_miner_duel(self, current_time: float) -> None:
+        """
+        Attempts to create a single duel.
+
+        Uses deterministic hashing (timestamp_nonce + prompt) to pseudo-randomly select
+        a miner pair. Retries up to MAX_DUEL_CREATION_ATTEMPTS times if the selected
+        pair is invalid (same miner, inactive miners, or hash collision).
+
+        Stops immediately after successfully creating one duel or exhausting all attempts.
+        """
         total_duels = len(self._pending_duels) + self._pending_judgment_queue.qsize()
         if total_duels >= PENDING_DUELS_SIZE:
             return
 
         inactivity_threshold = current_time - self._config.duels.inactivity_time
-        attempts = max(3, PENDING_DUELS_SIZE - total_duels)
-        for _ in range(attempts):
+        for _ in range(MAX_DUEL_CREATION_ATTEMPTS):
             timestamp_nonce = max(int(current_time), self._last_timestamp_nonce + 1)
             self._last_timestamp_nonce = timestamp_nonce
 
-            prompt = self._synthetic_task_storage.get_random_prompt()
-            hash_bytes = hashlib.sha256(f"{timestamp_nonce}:{prompt}".encode()).digest()
+            task = await self._synthetic_task_storage.get_random_task()
+
+            hash_bytes = blake3.blake3(f"{timestamp_nonce}:{task.prompt}".encode()).digest()
             left_uid = int.from_bytes(hash_bytes[0:4], "big") % NEURONS_LIMIT
             right_uid = int.from_bytes(hash_bytes[4:8], "big") % NEURONS_LIMIT
 
             if left_uid == right_uid:
+                bt.logging.debug(f"[{left_uid}] vs [{right_uid}]: duel not added ({task.log_id})")
                 continue
             if self._last_pull_time.get(left_uid, 0) < inactivity_threshold:
+                bt.logging.debug(f"[{left_uid}] (inactive) vs [{right_uid}]: duel not added ({task.log_id})")
                 continue
             if self._last_pull_time.get(right_uid, 0) < inactivity_threshold:
+                bt.logging.debug(f"[{left_uid}] vs [{right_uid}] (inactive): duel not added ({task.log_id})")
                 continue
+
+            bt.logging.debug(f"[{left_uid}] vs [{right_uid}]: duel added ({task.log_id})")
 
             duel = Duel(
                 timestamp_nonce=timestamp_nonce,
@@ -186,25 +201,30 @@ class DuelsTaskStorage(BaseTaskStorage):
                 right=MinerInDuel(
                     uid=right_uid,
                 ),
-                task=DuelTask(id=str(uuid.uuid4()), prompt=prompt),
+                task=DuelTask(protocol=task),
             )
 
             self._pending_duels[duel.timestamp_nonce] = duel
             self._pending_duels_by_miner.setdefault(left_uid, deque()).append(duel)
             self._pending_duels_by_miner.setdefault(right_uid, deque()).append(duel)
 
+            return
+
     async def submit_result(
-        self, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int, metagraph: bt.metagraph
+        self,
+        protocol_task: ProtocolTask,
+        synapse: SubmitResults,
+        validation_res: ValidationResponse,
+        miner_uid: int,
+        metagraph: bt.metagraph,
     ) -> None:
-        duel = self._active_duels.get(synapse.task.id, None)
+        duel = self._started_duels.get(synapse.task_id, None)
         if duel is None:  # pragma: no cover
-            bt.logging.warning(
-                f"[{miner_uid}] submitted duel results but duel was not found ({synapse.task.prompt[:100]})"
-            )
+            bt.logging.warning(f"[{miner_uid}] submitted duel results but duel was not found ({protocol_task.log_id})")
             return
 
         bt.logging.debug(
-            f"[{miner_uid}] submitted a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({synapse.task.prompt[:100]})"
+            f"[{miner_uid}] submitted a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({duel.task.log_id})"
         )
 
         axon = metagraph.axons[miner_uid]
@@ -217,13 +237,15 @@ class DuelsTaskStorage(BaseTaskStorage):
         )
         await self._submit_results(miner_uid=miner_uid, duel=duel, results=results)
 
-    async def fail_task(self, *, task_id: str, task_prompt: str, miner_uid: int, metagraph: bt.metagraph) -> None:
-        duel = self._active_duels.get(task_id, None)
+    async def fail_task(self, *, protocol_task: ProtocolTask, miner_uid: int, metagraph: bt.metagraph) -> None:
+        duel = self._started_duels.get(protocol_task.id, None)
         if duel is None:  # pragma: no cover
-            bt.logging.warning(f"[{miner_uid}] failed a duel but duel was not found ({task_prompt[:100]})")
+            bt.logging.warning(f"[{miner_uid}] failed a duel but duel was not found ({protocol_task.log_id})")
             return
 
-        bt.logging.debug(f"[{miner_uid}] failed a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({task_prompt[:100]})")
+        bt.logging.debug(
+            f"[{miner_uid}] failed a duel: [{duel.left.uid}] vs [{duel.right.uid}] ({protocol_task.log_id})"
+        )
 
         axon = metagraph.axons[miner_uid]
         results = MinerResults(
@@ -251,7 +273,7 @@ class DuelsTaskStorage(BaseTaskStorage):
             # Waiting for another miner
             return
 
-        self._active_duels.pop(duel.task.id, None)
+        self._started_duels.pop(duel.task.id, None)
 
         if miner.results.grid_preview is None and opponent.results.grid_preview is None:
             worst = 0
@@ -271,7 +293,7 @@ class DuelsTaskStorage(BaseTaskStorage):
         await self._pending_judgment_queue.put(duel)
 
     def has_task(self, *, task_id: str) -> bool:
-        return task_id in self._active_duels
+        return task_id in self._started_duels
 
     async def start_judging_duels(self) -> None:
         await self._judge_service.start_judging_duels()
@@ -331,12 +353,12 @@ class DuelsTaskStorage(BaseTaskStorage):
         bt.logging.debug(
             f"[{duel.left.uid}] rating: {left_r_before.glicko.rating:.1f} "
             f"-> {duel.left.results.rating.glicko.rating:.1f} "
-            f"({duel.task.prompt[:100]})"
+            f"({duel.task.log_id})"
         )
         bt.logging.debug(
             f"[{duel.right.uid}] rating: {right_r_before.glicko.rating:.1f} "
             f"-> {duel.right.results.rating.glicko.rating:.1f} "
-            f"({duel.task.prompt[:100]})"
+            f"({duel.task.log_id})"
         )
 
         validator_hotkey = self._wallet.hotkey.ss58_address
@@ -347,7 +369,8 @@ class DuelsTaskStorage(BaseTaskStorage):
             "signature": signature,
             "finish_time": time.time(),
             "timestamp_nonce": duel.timestamp_nonce,
-            "prompt": duel.task.prompt,
+            "prompt": duel.task.prompt if duel.task.protocol.type == "text" else duel.task.protocol.prompt_hash,
+            "task_type": duel.task.protocol.type,
             "winner": winner,
             "explanation": judgement.issues,
             "left": _fill_duel_results(duel.left.results, left_r_before, duel.left.results.rating),
@@ -358,31 +381,37 @@ class DuelsTaskStorage(BaseTaskStorage):
                 left_uid=duel.left.uid,
                 right_uid=duel.right.uid,
                 results=duel_results,
+                image_prompt=duel.task.prompt if duel.task.protocol.type == "image" else None,
                 preview1=duel.left.results.grid_preview,
                 preview2=duel.right.results.grid_preview,
             )
         )
 
     async def _publish_results(
-        self, left_uid: int, right_uid: int, results: dict[str, Any], preview1: str | None, preview2: str | None
+        self,
+        left_uid: int,
+        right_uid: int,
+        results: dict[str, Any],
+        image_prompt: str | None,
+        preview1: str | None,
+        preview2: str | None,
     ) -> None:
         async with aiohttp.ClientSession() as session:
             try:
                 endpoint = self._config.duels.duel_saver_endpoint
                 form_data = aiohttp.FormData()
                 form_data.add_field("results", json.dumps(results))
-                if preview1 is not None:
-                    form_data.add_field(
-                        "preview1", pybase64.b64decode(preview1), filename="preview1.png", content_type="image/png"
-                    )
-                else:
-                    form_data.add_field("preview1", b"", filename="preview1.png", content_type="image/png")
-                if preview2 is not None:
-                    form_data.add_field(
-                        "preview2", pybase64.b64decode(preview2), filename="preview2.png", content_type="image/png"
-                    )
-                else:
-                    form_data.add_field("preview2", b"", filename="preview2.png", content_type="image/png")
+                for field, data, filename in [
+                    ("image_prompt", image_prompt, "image_prompt.png"),
+                    ("preview1", preview1, "preview1.png"),
+                    ("preview2", preview2, "preview2.png"),
+                ]:
+                    if data is not None:
+                        form_data.add_field(
+                            field, pybase64.b64decode(data), filename=filename, content_type="image/png"
+                        )
+                    else:
+                        form_data.add_field(field, b"", filename=filename, content_type="image/png")
                 async with session.post(
                     endpoint,
                     data=form_data,
@@ -391,7 +420,7 @@ class DuelsTaskStorage(BaseTaskStorage):
                     response_data = await response.json()
                     duel_id = response_data.get("duel_id", "unknown")
                 bt.logging.debug(
-                    f"[{left_uid}] vs [{right_uid}] duel published. Duel ID: {duel_id} " f"({results['prompt'][:100]})"
+                    f"[{left_uid}] vs [{right_uid}] duel published. Duel ID: {duel_id} ({results['prompt'][:100]})"
                 )
             except aiohttp.ClientConnectorError:
                 bt.logging.error(f"Failed to connect to the endpoint. The endpoint might be inaccessible: {endpoint}.")

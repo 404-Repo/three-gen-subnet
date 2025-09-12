@@ -1,10 +1,18 @@
-import uuid
-
+from common.protocol import ProtocolTask
 from pydantic import BaseModel, Field
 
 
 class ValidatorTask(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    """Unique id."""
-    prompt: str
-    """Prompt to use for generation."""
+    protocol: ProtocolTask = Field(discriminator="type")
+
+    @property
+    def id(self) -> str:
+        return self.protocol.id
+
+    @property
+    def prompt(self) -> str:
+        return self.protocol.prompt
+
+    @property
+    def log_id(self) -> str:
+        return self.protocol.log_id

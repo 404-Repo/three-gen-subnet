@@ -10,7 +10,7 @@ from validator.gateway.gateway_scorer import GatewayScorer
 from validator.task_manager.task_manager import TaskManager
 from validator.task_manager.task_storage.organic_task_storage import OrganicTaskStorage
 from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage
-from validator.task_manager.task_storage.synthetic_prompt_service import SyntheticPromptService
+from validator.task_manager.task_storage.synthetic_prompts_fetcher import SyntheticPromptsFetcher
 from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage
 from validator.validation_service import ValidationService
 from validator.validator import Validator
@@ -19,9 +19,8 @@ from validator.validator import Validator
 async def main() -> None:
     config = read_config()
 
-    synthetic_prompt_service = SyntheticPromptService(
-        prompt_service_url=config.task.synthetic.prompter.endpoint,
-        batch_size=config.task.synthetic.prompter.batch_size,
+    synthetic_prompts_fetcher = SyntheticPromptsFetcher(
+        config=config,
     )
 
     synthetic_asset_storage = SyntheticAssetStorage(
@@ -32,8 +31,9 @@ async def main() -> None:
     )
 
     synthetic_task_storage = SyntheticTaskStorage(
-        default_prompts_path=config.task.synthetic.default_prompts_path,
-        synthetic_prompt_service=synthetic_prompt_service,
+        default_text_prompts_path=config.task.synthetic.default_text_prompts_path,
+        default_image_prompts_path=config.task.synthetic.default_image_prompts_path,
+        synthetic_prompts_fetcher=synthetic_prompts_fetcher,
         synthetic_asset_storage=synthetic_asset_storage,
         config=config,
     )
@@ -82,7 +82,7 @@ async def main() -> None:
     neuron = Validator(
         config=config, task_manager=task_manager, validation_service=validation_service, ratings=duel_ratings
     )
-    asyncio.create_task(synthetic_task_storage.fetch_synthetic_tasks_cron())
+    await synthetic_prompts_fetcher.start_fetching_prompts()
     asyncio.create_task(organic_task_storage.fetch_gateway_tasks_cron())
     await duel_task_storage.start_garbage_collection_cron()
     await duel_task_storage.start_judging_duels()

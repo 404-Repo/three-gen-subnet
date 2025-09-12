@@ -7,6 +7,7 @@ from typing import NamedTuple
 import bittensor as bt
 import pybase64
 import pyspz
+from common.protocol import TextTask
 from pydantic import BaseModel, ConfigDict, Field
 
 from validator.api.protocol import MinerStatistics, TaskStatistics
@@ -169,9 +170,7 @@ class OrganicTask(ValidatorTask):
         """Check if miner's result matches any other miner's submission."""
         for other in self.assigned_miners.values():
             if other.uid != miner.uid and other.grid_preview == miner.grid_preview:
-                bt.logging.debug(
-                    f"[{miner.uid}] and [{other.uid}] sent identical for organic task ({self.prompt[:100]})."
-                )
+                bt.logging.debug(f"[{miner.uid}] and [{other.uid}] sent identical for organic task ({self.log_id}).")
                 return True
         return False
 
@@ -203,15 +202,6 @@ class GatewayOrganicTask(OrganicTask):
     result_future: asyncio.Future[AssignedMiner | None] | None = None
     """Future is set when the task result is ready to be sent to the gateway."""
 
-    @classmethod
-    def create_task(cls, *, id: str, prompt: str, gateway_url: str) -> "GatewayOrganicTask":
-        task = cls(
-            id=id,
-            prompt=prompt,
-            gateway_url=gateway_url,
-        )
-        return task
-
 
 class LegacyOrganicTask(OrganicTask):
     """Class that represents a task to generate 3D assets from a prompt that came from the
@@ -233,8 +223,7 @@ class LegacyOrganicTask(OrganicTask):
     @classmethod
     def create_task(cls, *, id: str, prompt: str) -> "LegacyOrganicTask":
         task = cls(
-            id=id,
-            prompt=prompt,
+            protocol=TextTask(id=id, prompt=prompt),
             start_future=asyncio.get_event_loop().create_future(),
             first_result_future=asyncio.get_event_loop().create_future(),
             best_result_future=asyncio.get_event_loop().create_future(),

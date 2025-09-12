@@ -70,7 +70,7 @@ class RatingJudgeService(BaseJudgeService):
                     bt.logging.debug(
                         f"[{duel.left.uid}] vs [{duel.right.uid}] duel judged. "
                         f"Duel time: {duel_time:.2f} sec ({self._average_duel_time:.2f} sec). "
-                        f"Worst: {judgement.worst} ({duel.task.prompt[:100]})."
+                        f"Worst: {judgement.worst} ({duel.task.log_id})."
                     )
 
                     await self._process_results_queue.put((duel, judgement))
@@ -140,9 +140,19 @@ class RatingJudgeService(BaseJudgeService):
             )
             return None
 
-        return await self._request_duel(
-            prompt=duel.task.prompt,
-            left_grid_preview_encoded=duel.left.results.grid_preview,
-            right_grid_preview_encoded=duel.right.results.grid_preview,
-            seed=duel.timestamp_nonce,
-        )
+        if duel.task.protocol.type == "text":
+            return await self._request_duel_text_prompt(
+                prompt=duel.task.prompt,
+                left_grid_preview_encoded=duel.left.results.grid_preview,
+                right_grid_preview_encoded=duel.right.results.grid_preview,
+                seed=duel.timestamp_nonce,
+            )
+        elif duel.task.protocol.type == "image":
+            return await self._request_duel_image_prompt(
+                prompt_encoded=duel.task.prompt,
+                left_grid_preview_encoded=duel.left.results.grid_preview,
+                right_grid_preview_encoded=duel.right.results.grid_preview,
+                seed=duel.timestamp_nonce,
+            )
+        else:
+            raise RuntimeError(f"Unknown protocol type: {duel.task.protocol.type}")

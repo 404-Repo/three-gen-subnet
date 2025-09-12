@@ -3,7 +3,7 @@ import urllib.parse
 
 import aiohttp
 import bittensor as bt
-from common.protocol import SubmitResults
+from common.protocol import ProtocolTask, SubmitResults
 
 from validator.validation_service import ValidationResponse
 
@@ -27,7 +27,7 @@ class SyntheticAssetStorage:
         }
 
     async def save_assets(
-        self, synapse: SubmitResults, results: str, signature: str, validation: ValidationResponse
+        self, task: ProtocolTask, synapse: SubmitResults, results: str, signature: str, validation: ValidationResponse
     ) -> None:
         """Saves the assets to the external storage.
         When miner submits results and validator validates them through validation service,
@@ -38,7 +38,7 @@ class SyntheticAssetStorage:
 
         try:
             data = {
-                "prompt": synapse.task.prompt,
+                "prompt": task.prompt,
                 "assets": results,
                 "compression": 2,
                 "preview": validation.preview,

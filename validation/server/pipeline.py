@@ -9,7 +9,7 @@ import torch
 from engine.data_structures import GaussianSplattingData, RenderRequest, TimeStat, ValidationRequest, ValidationResponse
 from engine.io.ply import PlyLoader
 from engine.rendering.renderer import Renderer
-from engine.utils.gs_data_checker_utils import is_input_data_valid
+from engine.utils.gs_data_checker_utils import add_white_background, is_input_data_valid
 from engine.validation_engine import ValidationEngine
 from fastapi import HTTPException
 from loguru import logger
@@ -101,6 +101,8 @@ def decode_and_validate_img(
     t2 = time.time()
     image_data = pybase64.b64decode(request.prompt_image)
     prompt_image = Image.open(io.BytesIO(image_data))
+    if len(prompt_image.getbands()) == 4:
+        prompt_image = add_white_background(prompt_image)
     prompt_image = prompt_image.convert("RGB")
     np_img = np.asarray(prompt_image)
     torch_prompt_image = torch.from_numpy(np_img)

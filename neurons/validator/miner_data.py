@@ -2,7 +2,7 @@ import time
 from collections import deque
 
 import bittensor as bt
-from common.protocol import Task
+from common.protocol import ProtocolTask
 from pydantic import BaseModel, Field
 
 
@@ -24,7 +24,7 @@ class MinerData(BaseModel):
     fidelity_score: float = 1.0
     """Exponential moving average (EMA) of the fidelity score."""
 
-    assigned_task: Task | None = None
+    assigned_task: ProtocolTask | None = None
     """The task currently assigned to the miner, if any."""
 
     assignment_time: float | None = None
@@ -55,7 +55,7 @@ class MinerData(BaseModel):
         self.assigned_task = None
         self.assignment_time = None
 
-    def assign_task(self, task: Task) -> None:
+    def assign_task(self, task: ProtocolTask) -> None:
         """
         Assign a task to the miner.
         Sets time when the task was assigned.

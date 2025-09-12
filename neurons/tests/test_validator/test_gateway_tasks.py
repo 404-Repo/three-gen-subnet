@@ -9,6 +9,7 @@ from asyncpg.pgproto.pgproto import timedelta
 from pytest_httpserver import HTTPServer
 from werkzeug import Request
 
+from common.protocol import TextTask
 from validator.duels.organic_judge_service import OrganicJudgeService
 from validator.task_manager.task_storage.organic_task import OrganicTask, AssignedMiner, OrganicTaskJudgeQueuePriority
 from validator.validator import Validator
@@ -251,7 +252,7 @@ class TestGatewayTasks:
         self,
         wallets: list[bt.Wallet],
     ) -> None:
-        organic_task = OrganicTask(prompt="prompt")
+        organic_task = OrganicTask(protocol=TextTask(prompt="prompt"))
         for uid in range(1, 5):
             miner = AssignedMiner(uid=uid, hotkey=wallets[uid].hotkey.ss58_address, assign_time=0)
             organic_task.assigned_miners[miner.hotkey] = miner
@@ -268,7 +269,7 @@ class TestGatewayTasks:
         self,
         wallets: list[bt.Wallet],
     ) -> None:
-        organic_task = OrganicTask(prompt="prompt")
+        organic_task = OrganicTask(protocol=TextTask(prompt="prompt"))
         for uid in range(1, 5):
             miner = AssignedMiner(uid=uid, hotkey=wallets[uid].hotkey.ss58_address, assign_time=0)
             organic_task.assigned_miners[miner.hotkey] = miner
@@ -402,7 +403,7 @@ class TestGatewayTasks:
             pending_judgment_queue=pending_judgment_queue,
             finished_judgment_queue=finished_judgment_queue,
         )
-        organic_task = OrganicTask(prompt="prompt")
+        organic_task = OrganicTask(protocol=TextTask(prompt="prompt"))
         miner = AssignedMiner(
             uid=1, hotkey=wallets[1].hotkey.ss58_address, assign_time=0, score=0.8, grid_preview="preview"
         )
@@ -453,7 +454,7 @@ class TestGatewayTasks:
             pending_judgment_queue=pending_judgment_queue,
             finished_judgment_queue=finished_judgment_queue,
         )
-        organic_task = OrganicTask(prompt="prompt")
+        organic_task = OrganicTask(protocol=TextTask(prompt="prompt"))
         miner_1 = AssignedMiner(
             uid=1, hotkey=wallets[1].hotkey.ss58_address, assign_time=0, score=0.9, grid_preview="preview 1"
         )

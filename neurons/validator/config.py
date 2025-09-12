@@ -256,35 +256,49 @@ def add_task_args(parser: argparse.ArgumentParser) -> None:
 
     # Synthetic task parameters
     parser.add_argument(
-        "--task.synthetic.default_prompts_path",
+        "--task.synthetic.default_text_prompts_path",
         type=str,
-        help="Path to the file with the default synthetic prompts (relative or absolute)",
-        default="resources/prompts.txt",
+        help="Path to the file with the default synthetic text prompts (relative or absolute)",
+        default="resources/text_prompts.txt",
     )
     parser.add_argument(
-        "--task.synthetic.prompter.endpoint",
+        "--task.synthetic.default_image_prompts_path",
         type=str,
-        help="Specifies the URL of the endpoint responsible for providing fresh batches of synthetic prompts. "
-        "This endpoint should handle the /get/ GET route.",
+        help="Path to the file with the URLS for default synthetic image prompts (relative or absolute)",
+        default="resources/image_prompts.txt",
+    )
+    parser.add_argument(
+        "--task.synthetic.text_tasks_ratio",
+        type=float,
+        help="Ratio of text tasks to total synthetic tasks (0.0 = all image, 1.0 = all text)",
+        default=0.8,
+    )
+    parser.add_argument(
+        "--task.synthetic.get_prompts.endpoint",
+        type=str,
+        help="Base URL for the prompt generation service. Must support POST requests to "
+        "/text-prompts/get/ and /image-prompts/get/ routes for fetching synthetic prompt batches.",
         default="http://44.219.222.104:9100",
     )
     parser.add_argument(
-        "--task.synthetic.prompter.fetch_interval",
+        "--task.synthetic.get_prompts.text_fetch_interval",
         type=int,
-        help="Defines the fetch interval. The prompt batch is quite big (100k+) prompts. No need to fetch frequently",
-        default=30 * 60,  # 30 min
+        help="Interval in seconds between fetching text prompt batches (100k prompts per batch). "
+        "Default: 30 minutes.",
+        default=30 * 60,
     )
     parser.add_argument(
-        "--task.synthetic.prompter.batch_size",
+        "--task.synthetic.get_prompts.image_fetch_interval",
         type=int,
-        help="Defines the batch size of the synthetic prompts",
-        default=100000,
+        help="Interval in seconds between fetching image prompt batches (10k prompts per batch). "
+        "Default: 10 minutes.",
+        default=10 * 60,
     )
     parser.add_argument(
-        "--task.synthetic.prompter.delay",
+        "--task.synthetic.get_prompts.initial_delay",
         type=int,
-        help="Defines the delay in seconds before the first fetch of the synthetic prompts",
-        default=30,  # 30 seconds
+        help="Delay in seconds before the first fetch of synthetic prompts.",
+        default=30,
     )
 
 

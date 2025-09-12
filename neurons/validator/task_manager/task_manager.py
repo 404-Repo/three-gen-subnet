@@ -1,5 +1,5 @@
 import bittensor as bt
-from common.protocol import SubmitResults
+from common.protocol import ProtocolTask, SubmitResults
 
 from validator.duels.duels_task_storage import DuelsTaskStorage
 from validator.task_manager.task_storage.organic_task_storage import OrganicTaskStorage
@@ -38,15 +38,15 @@ class TaskManager:
         if organic_task is not None:
             return organic_task
 
-        duel_task = self._duel_task_storage.get_next_task(miner_uid=miner_uid)
+        duel_task = await self._duel_task_storage.get_next_task(miner_uid=miner_uid)
         if duel_task is not None:
             return duel_task
 
-        return self._synthetic_task_storage.get_next_task(miner_uid=miner_uid)
+        return await self._synthetic_task_storage.get_next_task(miner_uid=miner_uid)
 
     def grid_preview_needed(self, *, synapse: SubmitResults) -> bool:
         """Some types of tasks require a grid preview (e.g. for duels)."""
-        task_id = synapse.task.id
+        task_id = synapse.task_id
         if self._organic_task_storage.has_task(task_id=task_id):
             return True
         if self._duel_task_storage.has_task(task_id=task_id):
@@ -54,42 +54,45 @@ class TaskManager:
         return False
 
     async def submit_result(
-        self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int, metagraph: bt.metagraph
+        self,
+        *,
+        task: ProtocolTask,
+        synapse: SubmitResults,
+        validation_res: ValidationResponse,
+        miner_uid: int,
+        metagraph: bt.metagraph,
     ) -> None:
         """Method is called when miner completes the task."""
-        task_id = synapse.task.id
+        task_id = synapse.task_id
         if self._organic_task_storage.has_task(task_id=task_id):
             await self._organic_task_storage.submit_result(
-                synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
+                protocol_task=task, synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
             )
             return
 
         if self._duel_task_storage.has_task(task_id=task_id):
             await self._duel_task_storage.submit_result(
-                synapse=synapse, validation_res=validation_res, miner_uid=miner_uid, metagraph=metagraph
+                protocol_task=task,
+                synapse=synapse,
+                validation_res=validation_res,
+                miner_uid=miner_uid,
+                metagraph=metagraph,
             )
             return
 
         if self._synthetic_task_storage.has_task(task_id=task_id):
             await self._synthetic_task_storage.submit_result(
-                synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
+                protocol_task=task, synapse=synapse, validation_res=validation_res, miner_uid=miner_uid
             )
             return
 
-        bt.logging.warning(f"[{miner_uid}]: Unexpected behavior. Undefined task {synapse.task.prompt[:50]}.")
-
-    async def fail_task(
-        self, *, task_id: str, task_prompt: str, hotkey: str, miner_uid: int, metagraph: bt.metagraph
-    ) -> None:
-        if self._organic_task_storage.has_task(task_id=task_id):
-            self._organic_task_storage.fail_task(
-                task_id=task_id, task_prompt=task_prompt, hotkey=hotkey, miner_uid=miner_uid
-            )
+    async def fail_task(self, *, task: ProtocolTask, hotkey: str, miner_uid: int, metagraph: bt.metagraph) -> None:
+        if self._organic_task_storage.has_task(task_id=task.id):
+            self._organic_task_storage.fail_task(protocol_task=task, hotkey=hotkey, miner_uid=miner_uid)
             return
 
-        if self._duel_task_storage.has_task(task_id=task_id):
-            await self._duel_task_storage.fail_task(
-                task_id=task_id, task_prompt=task_prompt, miner_uid=miner_uid, metagraph=metagraph
-            )
+        if self._duel_task_storage.has_task(task_id=task.id):
+            await self._duel_task_storage.fail_task(protocol_task=task, miner_uid=miner_uid, metagraph=metagraph)
+            return
 
-        self._synthetic_task_storage.fail_task(task_id=task_id, task_prompt=task_prompt, miner_uid=miner_uid)
+        self._synthetic_task_storage.fail_task(protocol_task=task, miner_uid=miner_uid)
