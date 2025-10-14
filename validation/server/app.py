@@ -60,7 +60,7 @@ async def lifespan(app: MyFastAPI) -> AsyncIterator[None]:
     cleanup()
 
 
-app = MyFastAPI(title="404--GEN Validation Service", version="2.3.1")
+app = MyFastAPI(title="404--GEN Validation Service", version="2.4.0")
 
 
 @app.middleware("http")

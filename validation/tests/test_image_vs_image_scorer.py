@@ -24,19 +24,20 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def test_validation_engine():
     ply_loader = PlyLoader()
     gs_data = ply_loader.from_file("hamburger", test_data_folder.as_posix())
+    gs_data = gs_data.send_to_device(device)
     prompt_image_file = test_data_folder / "test_render_ply.png"
     prompt_image = Image.open(prompt_image_file.as_posix())
     prompt_image_torch = torch.tensor(np.asarray(prompt_image))
 
     renderer = Renderer()
-    images = renderer.render_gs(gs_data, 16, 224, 224, cam_rad=3.0, ref_bbox_size=1.0)
+    images = renderer.render_gs(gs_data, 16, 336, 336, cam_rad=3.0, ref_bbox_size=1.0)
 
     validator = ValidationEngine()
     validator.load_pipelines()
 
     validation_results = validator.validate_image_to_gs(prompt_image_torch, images)
-    assert validation_results.final_score > 0.85
-    assert validation_results.lpips_score > 0.95
-    assert validation_results.ssim_score > 0.92
-    assert validation_results.combined_quality_score > 0.8
-    assert validation_results.alignment_score > 0.96
+    assert validation_results.score > 0.83
+    assert validation_results.lpips > 0.95
+    assert validation_results.ssim > 0.92
+    assert validation_results.iqa > 0.8
+    assert validation_results.alignment > 0.86

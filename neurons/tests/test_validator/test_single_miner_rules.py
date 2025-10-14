@@ -1,21 +1,15 @@
 import asyncio
-import base64
 import time
 from collections import deque
 from datetime import timedelta
-from typing import cast
 
 import bittensor as bt
 import pybase64
-import pyspz
 import pytest
 import time_machine
-from common.protocol import Feedback, Task
+from common.protocol import Feedback, TextTask
 from pytest_httpserver import HTTPServer
 
-from validator.duels.ratings import DuelRatings
-from validator.task_manager.task_storage.organic_task import AssignedMiner
-from validator.task_manager.task_manager import TaskManager
 from validator.validator import Validator
 
 from tests.test_validator.conftest import (
@@ -27,7 +21,6 @@ from tests.test_validator.conftest import (
     TASK_THROTTLE_PERIOD,
     TASK_TIMEOUT,
     VALIDATION_SCORE,
-    GatewayApiMock,
     create_pull_task,
     create_submit_result,
 )
@@ -221,7 +214,7 @@ class TestSingleMinerRules:
     ) -> None:
         """Miner can't submit an unknown task."""
         pull = await validator.pull_task(create_pull_task(1, wallets))
-        submit = await validator.submit_results(create_submit_result(1, Task(prompt="invalid task"), wallets))
+        submit = await validator.submit_results(create_submit_result(1, TextTask(prompt="invalid task"), wallets))
 
         assert submit.results == ""
         assert submit.feedback == Feedback(average_fidelity_score=1, current_duel_rating=1500)

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import httpx
 from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat import ChatCompletion, ChatCompletionMessage, ChatCompletionMessageParam
 from pydantic import BaseModel
 
 
@@ -13,7 +13,7 @@ SYSTEM_PROMPT = (
     "Always respond with valid JSON only."
 )
 
-USER_PROMPT = """Evaluate two 3D models (4 renders each) generated from: "{prompt}"
+USER_PROMPT_TEXT = """Evaluate two 3D models (4 renders each) generated from: "{prompt}"
 Find the WORST one.
 
 Problems to spot:
@@ -26,6 +26,11 @@ Compare BOTH directions: What's wrong with 1? What's wrong with 2?
 Pick the WORST: 1, 2, or 0 (tie).
 
 Output: {{"issues": "<1's problems> vs <2's problems>", "worst": <1/2/0>}}"""
+
+USER_PROMPT_IMAGE = """Which of the 3D models does match the object in the image prompt less?
+Pick the WORST: 1, 2, or 0 (tie).
+
+Output: {"issues": "<1's problems> vs <2's problems>", "worst": <1/2/0> }"""
 
 DUEL_TIME_EMA_ALPHA = 0.2
 BASE_DUEL_TIMEOUT_SECONDS = 20
@@ -145,29 +150,62 @@ class BaseJudgeService(ABC):
         """
         raise NotImplementedError()
 
-    async def _request_duel(
+    async def _request_duel_text_prompt(
         self, *, prompt: str, left_grid_preview_encoded: str, right_grid_preview_encoded: str, seed: int
     ) -> JudgeResponse:
-        """Request judgment for a duel between two 3D model renders.
+        """Request judgment for a duel between two 3D models generated from a text prompt.
 
-        Sends the prompt and rendered views to the judge model for evaluation.
-        The judge compares both models and determines which one is worse based
-        on prompt adherence and visual quality.
+        Sends the text prompt and rendered views to the judge model for evaluation.
+        The judge compares both models and determines which one is worse based on prompt adherence and visual quality.
         """
-
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": USER_PROMPT.format(prompt=prompt)},
-                    {"type": "text", "text": "First 3D model (multiple views):"},
+                    {"type": "text", "text": USER_PROMPT_TEXT.format(prompt=prompt)},
+                    {"type": "text", "text": "First 3D model (4 different views):"},
                     {"type": "image_url", "image_url": {"url": image_to_uri(left_grid_preview_encoded)}},
-                    {"type": "text", "text": "Second 3D model (multiple views):"},
+                    {"type": "text", "text": "Second 3D model (4 different views):"},
                     {"type": "image_url", "image_url": {"url": image_to_uri(right_grid_preview_encoded)}},
                 ],
             },
         ]
+        return await self._request_duel(messages=messages, seed=seed, max_tokens=1024)  # type: ignore
+
+    async def _request_duel_image_prompt(
+        self, *, prompt_encoded: str, left_grid_preview_encoded: str, right_grid_preview_encoded: str, seed: int
+    ) -> JudgeResponse:
+        """Request judgment for a duel between two 3D models generated from an image prompt.
+
+        Sends the text prompt and rendered views to the judge model for evaluation.
+        The judge compares both models and determines which one is worse based on prompt adherence and visual quality.
+        """
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Image prompt to generate 3D model:"},
+                    {"type": "image_url", "image_url": {"url": image_to_uri(prompt_encoded)}},
+                    {"type": "text", "text": "First 3D model (4 different views):"},
+                    {"type": "image_url", "image_url": {"url": image_to_uri(left_grid_preview_encoded)}},
+                    {"type": "text", "text": "Second 3D model (4 different views):"},
+                    {"type": "image_url", "image_url": {"url": image_to_uri(right_grid_preview_encoded)}},
+                    {"type": "text", "text": USER_PROMPT_IMAGE},
+                ],
+            },
+        ]
+        return await self._request_duel(messages=messages, seed=seed, max_tokens=1024)  # type: ignore
+
+    async def _request_duel(self, *, messages: ChatCompletionMessageParam, seed: int, max_tokens: int) -> JudgeResponse:
+        """Base method for requesting judgment from the judge model.
+
+        Called internally by _request_duel_text_prompt and _request_duel_image_prompt.
+        Handles the API call, response validation, and JSON parsing.
+
+        Not intended to be called directly - use the specific text or image methods instead.
+        """
         response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -177,10 +215,10 @@ class BaseJudgeService(ABC):
         }
         completion: ChatCompletion = await self._client.chat.completions.create(
             model="THUDM/GLM-4.1V-9B-Thinking",
-            messages=messages,  # type: ignore
+            messages=messages,
             temperature=0.1,
             seed=seed,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             response_format=response_format,  # type: ignore
             timeout=20.0,
         )

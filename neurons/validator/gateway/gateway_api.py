@@ -1,11 +1,12 @@
 import json
 import time
 from enum import Enum
+from typing import Self
 
 import bittensor as bt
 import pybase64
 from bittensor_wallet import Keypair
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from validator.gateway.gateway import Gateway
 from validator.gateway.http3_client.http3_client import Http3Client
@@ -22,8 +23,17 @@ class GatewayTask(BaseModel):
     """Task from gateway"""
 
     id: str
-    prompt: str
+    prompt: str | None = None
+    image: str | None = None
     gateway_host: str
+
+    @model_validator(mode="after")
+    def check_prompt_xor_image(self) -> Self:
+        if self.prompt is None and self.image is None:
+            raise ValueError("Either prompt or image must be provided")
+        if self.prompt is not None and self.image is not None:
+            raise ValueError("Only one of prompt or image should be provided, not both")
+        return self
 
 
 class GetGatewayTasksResult(BaseModel):

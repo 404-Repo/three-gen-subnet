@@ -1,15 +1,16 @@
 import asyncio
 import random as rd
-import uuid
 from pathlib import Path
 
+import aiohttp
 import bittensor as bt
-from common.protocol import SubmitResults
+import pybase64
+from common.protocol import ImageTask, ProtocolTask, SubmitResults, TextTask
 
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
 from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage
-from validator.task_manager.task_storage.synthetic_prompt_service import (
-    SyntheticPromptService,
+from validator.task_manager.task_storage.synthetic_prompts_fetcher import (
+    SyntheticPromptsFetcher,
 )
 from validator.task_manager.validator_task import ValidatorTask
 from validator.validation_service import ValidationResponse
@@ -25,74 +26,96 @@ class SyntheticTaskStorage(BaseTaskStorage):
     def __init__(
         self,
         *,
-        default_prompts_path: str,
+        default_text_prompts_path: str,
+        default_image_prompts_path: str,
         config: bt.config,
         wallet: bt.wallet | None = None,
-        synthetic_prompt_service: SyntheticPromptService,
+        synthetic_prompts_fetcher: SyntheticPromptsFetcher,
         synthetic_asset_storage: SyntheticAssetStorage,
     ) -> None:
         super().__init__(config=config, wallet=wallet)
 
-        self._default_prompts: list[str] = []
-        self._load_default_prompts(default_prompts_path)
-        self._prompts: list[str] = []
-        self._tasks: dict[str, str] = {}
-        self._synthetic_prompt_service = synthetic_prompt_service
+        self._default_text_prompts: list[str] = self._load_default_prompts(default_text_prompts_path)
+        self._default_image_prompts: list[str] = self._load_default_prompts(default_image_prompts_path)
+
+        self._text_tasks_ratio = config.task.synthetic.text_tasks_ratio
+
+        self._tasks: set[str] = set()
+
+        self._synthetic_prompts_fetcher = synthetic_prompts_fetcher
         self._synthetic_asset_storage = synthetic_asset_storage
 
-    def get_random_prompt(self) -> str:
-        if self._prompts:
-            return rd.choice(self._prompts)  # noqa: S311 # nosec: B311
+    def _get_random_text_task(self) -> TextTask:
+        prompt = self._synthetic_prompts_fetcher.get_random_text_prompt(self._default_text_prompts)
+        return TextTask(prompt=prompt)
+
+    async def _try_get_random_image_task(self) -> ImageTask | None:
+        """Downloads a random image from a URL and returns it as base64-encoded data."""
+        if not self._default_image_prompts:
+            return None
+        url = self._synthetic_prompts_fetcher.get_random_image_prompt(self._default_image_prompts)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    resp.raise_for_status()
+                    content = await resp.read()
+                    prompt = pybase64.b64encode(content).decode("utf-8")
+                    task = ImageTask(prompt=prompt)
+                    bt.logging.debug(f"Image prompt downloaded from: {url} ({task.log_id})")
+                    return task
+        except Exception as e:
+            bt.logging.error(f"Failed to download image prompt from {url}: {e}")
+            return None
+
+    async def get_random_task(self) -> ProtocolTask:
+        """Returns a random synthetic task.
+        The task type (text/image) is chosen randomly based on text_tasks_ratio config."""
+        if self._text_tasks_ratio >= 1.0:
+            desired_type = "text"
+        elif self._text_tasks_ratio <= 0.0:
+            desired_type = "image"
         else:
-            return rd.choice(self._default_prompts)  # noqa: S311 # nosec: B311
+            desired_type = "text" if rd.random() < self._text_tasks_ratio else "image"  # noqa: S311  # nosec: B311
 
-    def get_next_task(self, *, miner_uid: int) -> SyntheticTask:
-        """Returns random prompt. First returns from fresh_prompts and then from default_prompts."""
-        prompt = self.get_random_prompt()
-        task_id = str(uuid.uuid4())
-        self._tasks[task_id] = prompt
-        bt.logging.info(f"[{miner_uid}] received synthetic task ({prompt[:100]})")
-        return SyntheticTask(id=task_id, prompt=prompt)
+        task: ProtocolTask | None = None
+        if desired_type == "image":
+            task = await self._try_get_random_image_task()
 
-    async def fetch_synthetic_tasks_cron(self) -> None:
-        """Fetches new prompts from the prompter service."""
-        if not self._synthetic_prompt_service or not self._wallet:
-            bt.logging.warning("Cannot fetch tasks - missing prompt service or wallet")
-            return
+        if task is None:
+            task = self._get_random_text_task()
 
-        await asyncio.sleep(self._config.task.synthetic.prompter.delay)
-        while True:
-            try:
-                prompts = await self._synthetic_prompt_service.get_prompts(hotkey=self._wallet.hotkey)
-                if prompts:
-                    self._prompts = prompts
-            except Exception as e:
-                bt.logging.error(f"Failed fetching synthetic tasks cron: {e}")
-            finally:
-                await asyncio.sleep(self._config.task.synthetic.prompter.fetch_interval)
+        self._tasks.add(task.id)
+        return task
+
+    async def get_next_task(self, *, miner_uid: int) -> SyntheticTask:
+        """Returns a synthetic task (random task)."""
+        task = await self.get_random_task()
+        bt.logging.info(f"[{miner_uid}] received synthetic {task.type} task ({task.log_id})")
+        return SyntheticTask(protocol=task)
 
     def has_task(self, *, task_id: str) -> bool:
         return task_id in self._tasks
 
     async def submit_result(
-        self, *, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int
+        self, *, protocol_task: ProtocolTask, synapse: SubmitResults, validation_res: ValidationResponse, miner_uid: int
     ) -> None:
         bt.logging.info(
-            f"[{miner_uid}] submit synthetic task results with score {validation_res.score} "
-            f"({synapse.task.prompt[:100]})"
+            f"[{miner_uid}] submit synthetic task results with score {validation_res.score} ({protocol_task.log_id})"
         )
-        self._tasks.pop(synapse.task.id)
-        if self._synthetic_asset_storage.enabled:
+        self._tasks.discard(synapse.task_id)
+
+        if self._synthetic_asset_storage.enabled and protocol_task.type == "text":
             asyncio.create_task(
-                self._synthetic_asset_storage.save_assets(synapse, synapse.results, synapse.signature, validation_res)
+                self._synthetic_asset_storage.save_assets(
+                    protocol_task, synapse, synapse.results, synapse.signature, validation_res
+                )
             )
 
-    def fail_task(self, *, task_id: str, task_prompt: str, miner_uid: int) -> None:
-        bt.logging.info(f"[{miner_uid}] failed synthetic task ({task_prompt[:50]}).")
-        if task_id in self._tasks:
-            self._tasks.pop(task_id)
+    def fail_task(self, *, protocol_task: ProtocolTask, miner_uid: int) -> None:
+        bt.logging.info(f"[{miner_uid}] failed synthetic task ({protocol_task.log_id}).")
+        self._tasks.discard(protocol_task.id)
 
-    def _load_default_prompts(self, path: str) -> None:
+    def _load_default_prompts(self, path: str) -> list[str]:
         """Loads default synthetic prompts from the file if it exists."""
         dataset_path = Path(path)
         if not dataset_path.is_absolute():
@@ -105,6 +128,6 @@ class SyntheticTaskStorage(BaseTaskStorage):
 
         with dataset_path.open() as f:
             default_prompts = f.read().strip().split("\n")
-            self._default_prompts = default_prompts
 
-        bt.logging.info(f"{len(self._default_prompts)} default prompts loaded")
+        bt.logging.info(f"{len(default_prompts)} default prompts loaded from {dataset_path}")
+        return default_prompts

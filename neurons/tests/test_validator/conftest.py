@@ -13,7 +13,7 @@ import time_machine
 from bittensor_wallet import Keypair
 from bittensor_wallet.mock import get_mock_wallet
 from common.miner_license_consent_declaration import MINER_LICENSE_CONSENT_DECLARATION
-from common.protocol import PullTask, SubmitResults, Task
+from common.protocol import PullTask, SubmitResults, ProtocolTask
 from pytest_httpserver import HTTPServer
 from validator.config import _build_parser
 from validator.duels.duels_task_storage import DuelsTaskStorage
@@ -28,7 +28,7 @@ from validator.task_manager.task_storage.organic_task_storage import (
 )
 from validator.task_manager.task_storage.organic_task import AssignedMiner, LegacyOrganicTask
 from validator.task_manager.task_storage.synthetic_asset_storage import SyntheticAssetStorage
-from validator.task_manager.task_storage.synthetic_prompt_service import SyntheticPromptService
+from validator.task_manager.task_storage.synthetic_prompts_fetcher import SyntheticPromptsFetcher
 from validator.task_manager.task_storage.synthetic_task_storage import SyntheticTaskStorage
 from validator.validation_service import ValidationService
 from validator.validator import Validator
@@ -79,7 +79,9 @@ def create_pull_task(uid: int | None, wallets: list[bt.Wallet]) -> PullTask:
     return synapse
 
 
-def create_submit_result(uid: int | None, task: Task, wallets: list[bt.Wallet], full: bool = False) -> SubmitResults:
+def create_submit_result(
+    uid: int | None, task: ProtocolTask, wallets: list[bt.Wallet], full: bool = False
+) -> SubmitResults:
     if uid is None:
         miner_hotkey = get_mock_wallet().hotkey
     else:
@@ -89,11 +91,15 @@ def create_submit_result(uid: int | None, task: Task, wallets: list[bt.Wallet], 
         miner_hotkey.sign(
             f"{MINER_LICENSE_CONSENT_DECLARATION}{0}{task.prompt}{validator_wallet.hotkey.ss58_address}{miner_hotkey.ss58_address}"
         )
-    )
+    ).decode(encoding="utf-8")
     if not full:
-        synapse = SubmitResults(task=task, results=MINER_RESULT, submit_time=0, signature=signature, compression=2)
+        synapse = SubmitResults(
+            task_id=task.id, results=MINER_RESULT, submit_time=0, signature=signature, compression=2
+        )
     else:
-        synapse = SubmitResults(task=task, results=MINER_RESULT_FULL, submit_time=0, signature=signature, compression=0)
+        synapse = SubmitResults(
+            task_id=task.id, results=MINER_RESULT_FULL, submit_time=0, signature=signature, compression=0
+        )
 
     synapse.dendrite.hotkey = miner_hotkey.ss58_address
     synapse.axon.hotkey = wallets[0].hotkey.ss58_address
@@ -109,7 +115,7 @@ def time_travel() -> Generator[time_machine.Coordinates, None, None]:
 
 @pytest.fixture(scope="session")
 def wallets() -> list[bt.Wallet]:
-    return [get_mock_wallet() for _ in range(200)]
+    return [get_mock_wallet() for _ in range(255)]
 
 
 @pytest.fixture(scope="function")
@@ -122,14 +128,17 @@ def config(
     netuid: int,
 ) -> bt.config:
     parser = _build_parser()
-    default_prompts_path = Path(__file__).parent.parent / "resources" / "prompts.txt"
+    default_text_prompts_path = Path(__file__).parent.parent / "resources" / "text_prompts.txt"
+    default_image_prompts_path = Path(__file__).parent.parent / "resources" / "image_prompts.txt"
     return bt.config(
         parser,
         args=[
             "--netuid",
             f"{netuid}",
-            "--task.synthetic.default_prompts_path",
-            str(default_prompts_path),
+            "--task.synthetic.default_text_prompts_path",
+            str(default_text_prompts_path),
+            "--task.synthetic.default_image_prompts_path",
+            str(default_image_prompts_path),
             "--generation.task_cooldown",
             f"{TASK_COOLDOWN}",
             "--generation.throttle_period",
@@ -143,7 +152,7 @@ def config(
             "--public_api.enabled",
             "--validation.endpoints",
             validation_server.url_for(""),
-            "--task.synthetic.prompter.endpoint",
+            "--task.synthetic.get_prompts.endpoint",
             synthetic_prompt_server.url_for(""),
             "--telemetry.disabled",
             "--task.gateway.bootstrap_gateway",
@@ -154,12 +163,12 @@ def config(
             f"{GATEWAY_TASK_FETCH_INTERVAL}",
             "--task.gateway.task_timeout",
             f"{TASK_TIMEOUT}",
-            "--task.synthetic.prompter.fetch_interval",
+            "--task.synthetic.get_prompts.text_fetch_interval",
             f"{SYNTHETIC_PROMPT_FETCH_INTERVAL}",
-            "--task.synthetic.prompter.delay",
+            "--task.synthetic.get_prompts.image_fetch_interval",
+            f"{SYNTHETIC_PROMPT_FETCH_INTERVAL}",
+            "--task.synthetic.get_prompts.initial_delay",
             f"{SYNTHETIC_PROMPT_DELAY}",
-            "--task.synthetic.prompter.batch_size",
-            f"{SYNTHETIC_PROMPT_BATCH_SIZE}",
             "--public_api.strong_miners_count",
             f"{STRONG_MINER_COUNT}",
             "--task.organic.assigned_miners_count",
@@ -312,10 +321,11 @@ def ratings() -> DuelRatings:
 @pytest.fixture(scope="function")
 def task_manager(config: bt.config, ratings: DuelRatings, wallets: list[bt.Wallet]) -> TaskManager:
     synthetic_task_storage = SyntheticTaskStorage(
-        default_prompts_path=config.task.synthetic.default_prompts_path,
-        synthetic_prompt_service=SyntheticPromptService(
-            prompt_service_url=config.task.synthetic.prompter.endpoint,
-            batch_size=config.task.synthetic.prompter.batch_size,
+        default_text_prompts_path=config.task.synthetic.default_text_prompts_path,
+        default_image_prompts_path=config.task.synthetic.default_image_prompts_path,
+        synthetic_prompts_fetcher=SyntheticPromptsFetcher(
+            config=config,
+            wallet=wallets[0],
         ),
         synthetic_asset_storage=SyntheticAssetStorage(
             enabled=config.storage.enabled,

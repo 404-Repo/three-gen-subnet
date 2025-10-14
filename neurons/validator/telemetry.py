@@ -6,6 +6,7 @@ from typing import Any
 import aiohttp
 import bittensor as bt
 import pybase64
+from common.protocol import ProtocolTaskType
 
 from validator.miner_data import MinerData
 
@@ -46,6 +47,7 @@ class Telemetry:
         self,
         miner_hotkey: str,
         miner_coldkey: str,
+        task_type: ProtocolTaskType,
         score: float,
         delivery_time: float,
         size: int,
@@ -63,7 +65,7 @@ class Telemetry:
                 "labels": {
                     "miner_hotkey": miner_hotkey,
                     "miner_coldkey": miner_coldkey,
-                    "task_type": "text-to-3d",
+                    "task_type": task_type,
                 },
             }
         )
@@ -90,7 +92,7 @@ class Telemetry:
                 "labels": {
                     "miner_hotkey": miner.hotkey,
                     "miner_coldkey": metagraph.axons[miner.uid].coldkey,
-                    "task_type": "text-to-3d",
+                    "task_type": "*",
                 },
             }
             for miner in self.miners
