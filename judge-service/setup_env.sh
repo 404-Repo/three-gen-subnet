@@ -29,7 +29,7 @@ module.exports = {
   apps : [{
     name: 'vllm-glm4v',
     script: '${CONDA_VLLM_PATH}',
-    args: 'serve THUDM/GLM-4.1V-9B-Thinking --max-model-len 8096 --tensor-parallel-size 1 --gpu-memory-utilization 0.7  --max_num_seqs 12  --port 8095 --api-key local',
+    args: 'serve zai-org/GLM-4.1V-9B-Thinking --max-model-len 8096 --tensor-parallel-size 1 --gpu-memory-utilization 0.7  --max_num_seqs 12  --port 8095 --api-key local',
     interpreter: 'none',
     env: {
       PATH: '${CONDA_BIN_DIR}:/usr/local/bin:/usr/bin:/bin'

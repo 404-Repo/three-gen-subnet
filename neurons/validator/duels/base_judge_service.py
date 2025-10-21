@@ -214,7 +214,7 @@ class BaseJudgeService(ABC):
             },
         }
         completion: ChatCompletion = await self._client.chat.completions.create(
-            model="THUDM/GLM-4.1V-9B-Thinking",
+            model="zai-org/GLM-4.1V-9B-Thinking",
             messages=messages,
             temperature=0.1,
             seed=seed,

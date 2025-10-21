@@ -53,7 +53,7 @@ Our subnet supports prompt generation from two sources:
 By default, the prompt querying system regularly fetches new prompt batches from our autonomous prompt generation service. For real-time prompt generation, we currently utilize two prompt generators working on different principals. We will refer to them as [prompt_generator_1](#prompt-generator-1-) and [prompt_generator_2](#prompt-generator-2).
 
 ### Prompt Generator 1 
-Uses three LLM models ["Qwen/Qwen2.5-7B-Instruct-1M", "microsoft/phi-4", "THUDM/glm-4-9b-chat-1m"] for generating prompts that are automatically swapped after a certain period of time.
+Uses three LLM models ["Qwen/Qwen2.5-7B-Instruct-1M", "microsoft/phi-4", "zai-org/glm-4-9b-chat-1m"] for generating prompts that are automatically swapped after a certain period of time.
 
 To ensure suitability for 3D generation using this version of the prompt generator, our system employs a carefully tailored input 
 [prompt-instruction](https://github.com/404-Repo/text-prompt-generator/blob/main/configs/pipeline_config.yml). This instruction forces the LLM that is being used to pick objects (main subjects for the generating prompt) from one of the pre-defined 

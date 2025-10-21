@@ -1,6 +1,6 @@
 # Judge Service
 
-A judge service that uses the THUDM/GLM-4.1V-9B-Thinking LLM model to determine winners in miner vs miner duels. The service runs on a vLLM server for efficient inference.
+A judge service that uses the zai-org/GLM-4.1V-9B-Thinking LLM model to determine winners in miner vs miner duels. The service runs on a vLLM server for efficient inference.
 
 ## Overview
 
@@ -43,7 +43,7 @@ Run the vLLM server directly with the following command:
 
 ```bash
 conda activate three-gen-vllm
-vllm serve THUDM/GLM-4.1V-9B-Thinking \
+vllm serve zai-org/GLM-4.1V-9B-Thinking \
     --max-model-len 8096 \
     --tensor-parallel-size 1 \
     --gpu-memory-utilization 0.8 \
