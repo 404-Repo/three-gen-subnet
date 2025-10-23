@@ -24,7 +24,11 @@ class Gateway(BaseModel):
     score: float = 0.0
     """Score of the gateway."""
     disabled: bool = False
-    """Whether the gateway is disabled."""
+    """Whether the gateway is disabled.
+    The usecase is when there is a network error with the gateway or when there are no tasks fetched 
+    from the gateway. On the next iteration this gateway won't be requested to fetch tasks.
+    In 2 iterations disabled flag will be False again.
+    """
 
     @property
     def url(self) -> str:

@@ -7,6 +7,7 @@ from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_scorer import GatewayScorer
 from validator.task_manager.task_storage.organic_task import GatewayOrganicTask
+from validator.gateway.http3_client.http3_client import Http3Exception
 
 
 class GatewayManager:
@@ -45,10 +46,14 @@ class GatewayManager:
         self, *, gateway_host: str, validator_hotkey: Keypair, task_count: int
     ) -> GetGatewayTasksResult:
         """Fetches tasks from the gateway."""
-        tasks = await self._gateway_api.get_tasks(
-            host=gateway_host, validator_hotkey=validator_hotkey, task_count=task_count
-        )
-        return tasks
+        try:
+            tasks = await self._gateway_api.get_tasks(
+                host=gateway_host, validator_hotkey=validator_hotkey, task_count=task_count
+            )
+            return tasks
+        except Http3Exception as e:
+            bt.logging.error(f"Failed fetching gateway tasks: {e}.")
+            return GetGatewayTasksResult(tasks=[], gateways=self._gateways)
 
     async def add_result(
         self,
