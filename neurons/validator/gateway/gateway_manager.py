@@ -36,9 +36,9 @@ class GatewayManager:
             return rd.choice(self._gateways)  # noqa: S311 # nosec: B311
         return gateway
 
-    def _update_gateways(self) -> None:
+    def _update_gateways(self, *, gateways: list[Gateway]) -> None:
         """Updates the list of gateways."""
-        self._gateways = self._gateway_scorer.score(gateways=self._gateways)
+        self._gateways = self._gateway_scorer.score(gateways=gateways)
         for gateway in self._gateways:
             bt.logging.trace(f"Gateway updated: {gateway.get_info()}")
 
@@ -68,7 +68,7 @@ class GatewayManager:
                 if gateway.url == url:
                     gateway.disabled = True
                     break
-        self._update_gateways()
+        self._update_gateways(gateways=self._gateways)
 
     async def add_result(
         self,
