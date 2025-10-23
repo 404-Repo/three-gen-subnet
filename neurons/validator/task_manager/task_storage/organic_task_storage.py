@@ -9,7 +9,7 @@ from common.protocol import ImageTask, ProtocolTask, SubmitResults, TextTask
 
 from validator.duels.organic_judge_service import OrganicJudgeService
 from validator.duels.ratings import DuelRatings
-from validator.gateway.gateway_api import GatewayTask, GetGatewayTasksResult
+from validator.gateway.gateway_api import GatewayTask
 from validator.gateway.gateway_manager import GatewayManager
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
 from validator.task_manager.task_storage.organic_task import (
