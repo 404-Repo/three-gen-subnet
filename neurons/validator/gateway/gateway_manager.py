@@ -69,6 +69,7 @@ class GatewayManager:
                     gateway.disabled = True
                     break
         self._update_gateways(gateways=self._gateways)
+        return tasks
 
     async def add_result(
         self,
