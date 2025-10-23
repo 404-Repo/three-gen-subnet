@@ -145,7 +145,7 @@ class TestGatewayScorer:
         gateway_manager._gateways = [initial_gateway]
 
         # Update with new gateway information
-        gateway_manager.update_gateways(gateways=[updated_gateway])
+        gateway_manager._update_gateways(gateways=[updated_gateway])
 
         # Check that the gateway was updated
         assert len(gateway_manager._gateways) == 1
@@ -194,7 +194,7 @@ class TestGatewayScorer:
         gateway_manager._gateways = [initial_gateway]
 
         # Update with new gateway
-        gateway_manager.update_gateways(gateways=[initial_gateway, new_gateway])
+        gateway_manager._update_gateways(gateways=[initial_gateway, new_gateway])
 
         # Check that both gateways are present
         assert len(gateway_manager._gateways) == 2

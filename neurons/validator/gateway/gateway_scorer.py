@@ -81,7 +81,7 @@ class GatewayScorer:
         latencies: list[float] = [gateway.latency for gateway in gateways if gateway.latency is not None]
         min_latency = min(latencies) if latencies else None
         task_counts: list[int] = [gateway.available_tasks for gateway in gateways]
-        max_task_count: int = max(task_counts)
+        max_task_count: int = max(task_counts) if task_counts else 0
 
         for gateway in gateways:
             if gateway.disabled:

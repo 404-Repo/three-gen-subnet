@@ -9,7 +9,7 @@ from common.protocol import ImageTask, ProtocolTask, SubmitResults, TextTask
 
 from validator.duels.organic_judge_service import OrganicJudgeService
 from validator.duels.ratings import DuelRatings
-from validator.gateway.gateway_api import GetGatewayTasksResult
+from validator.gateway.gateway_api import GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_manager import GatewayManager
 from validator.task_manager.task_storage.base_task_storage import BaseTaskStorage
 from validator.task_manager.task_storage.organic_task import (
@@ -254,12 +254,11 @@ class OrganicTaskStorage(BaseTaskStorage):
         if task_count == 0:
             return
         url = self._get_best_gateway_url()
-        result = await self._gateway_manager.get_tasks(
-            gateway_host=url, validator_hotkey=self._wallet.hotkey, task_count=task_count
+        tasks = await self._gateway_manager.get_tasks(
+            url=url, validator_hotkey=self._wallet.hotkey, task_count=task_count
         )
-        bt.logging.trace(f"Fetched {len(result.tasks)} tasks from the gateway: {url}")
-        self._add_tasks(gateway_url=url, gateway_task_result=result)
-        self._update_gateway_scores(result=result, url=url)
+        bt.logging.trace(f"Fetched {len(tasks)} tasks from the gateway: {url}")
+        self._add_tasks(gateway_url=url, tasks=tasks)
 
     def _remove_expired_tasks(self) -> None:
         """Removes tasks from queue that are expired or were already removed."""
@@ -285,8 +284,8 @@ class OrganicTaskStorage(BaseTaskStorage):
 
         return best_gateway.url
 
-    def _add_tasks(self, *, gateway_url: str, gateway_task_result: GetGatewayTasksResult) -> None:
-        for task in gateway_task_result.tasks:
+    def _add_tasks(self, *, gateway_url: str, tasks: list[GatewayTask]) -> None:
+        for task in tasks:
             if task.prompt is not None:
                 organic_task = GatewayOrganicTask(
                     protocol=TextTask(id=task.id, prompt=task.prompt),
@@ -301,15 +300,6 @@ class OrganicTaskStorage(BaseTaskStorage):
                 continue
             self._gateway_task_queue.append(organic_task)
             bt.logging.info(f"New task from the gateway: {gateway_url} ({organic_task.log_id})")
-
-    def _update_gateway_scores(self, *, result: GetGatewayTasksResult, url: str) -> None:
-        if not result.tasks:
-            bt.logging.trace(f"Gateway {url} is disabled for the next iteration: no tasks returned.")
-            for gateway in result.gateways:
-                if gateway.url == url:
-                    gateway.disabled = True
-                    break
-        self._gateway_manager.update_gateways(gateways=result.gateways)
 
     def _process_first_result(self, *, task: OrganicTask, assigned_miner: AssignedMiner) -> None:
         task.first_result_time = time.time()
