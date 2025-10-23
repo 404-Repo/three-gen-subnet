@@ -6,8 +6,8 @@ from bittensor_wallet import Keypair
 from validator.gateway.gateway import Gateway
 from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
 from validator.gateway.gateway_scorer import GatewayScorer
-from validator.task_manager.task_storage.organic_task import GatewayOrganicTask
 from validator.gateway.http3_client.http3_client import Http3Exception
+from validator.task_manager.task_storage.organic_task import GatewayOrganicTask
 
 
 class GatewayManager:

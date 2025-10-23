@@ -5,7 +5,7 @@ import bittensor as bt
 import pybase64
 import pytest
 import time_machine
-from asyncpg.pgproto.pgproto import timedelta
+from datetime import timedelta
 from pytest_httpserver import HTTPServer
 from werkzeug import Request
 
