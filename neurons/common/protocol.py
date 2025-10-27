@@ -1,6 +1,6 @@
 import uuid
 from functools import cached_property
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 import bittensor as bt
 import blake3

@@ -4,7 +4,7 @@ import bittensor as bt
 from bittensor_wallet import Keypair
 
 from validator.gateway.gateway import Gateway
-from validator.gateway.gateway_api import GatewayApi, GatewayTask, GetGatewayTasksResult
+from validator.gateway.gateway_api import GatewayApi, GatewayTask
 from validator.gateway.gateway_scorer import GatewayScorer
 from validator.gateway.http3_client.http3_client import Http3Exception
 from validator.task_manager.task_storage.organic_task import GatewayOrganicTask
@@ -42,13 +42,11 @@ class GatewayManager:
         for gateway in self._gateways:
             bt.logging.trace(f"Gateway updated: {gateway.get_info()}")
 
-    async def get_tasks(
-        self, *, url: str, validator_hotkey: Keypair, task_count: int
-    ) -> list[GatewayTask]:
+    async def get_tasks(self, *, url: str, validator_hotkey: Keypair, task_count: int) -> list[GatewayTask]:
         """Fetches tasks from the gateway."""
-        tasks: list[GatewayTask] = []           
+        tasks: list[GatewayTask] = []
         try:
-            # Reset disabled flag after each try to fetch task 
+            # Reset disabled flag after each try to fetch task
             # and set up it again based on the result.
             for gateway in self._gateways:
                 gateway.disabled = False
