@@ -82,11 +82,11 @@ async def main() -> None:
     neuron = Validator(
         config=config, task_manager=task_manager, validation_service=validation_service, ratings=duel_ratings
     )
-    await synthetic_prompts_fetcher.start_fetching_prompts()
-    asyncio.create_task(organic_task_storage.fetch_gateway_tasks_cron())
-    await duel_task_storage.start_garbage_collection_cron()
-    await duel_task_storage.start_judging_duels()
-    await organic_task_storage.start_judging_results()
+    # await synthetic_prompts_fetcher.start_fetching_prompts()
+    # asyncio.create_task(organic_task_storage.fetch_gateway_tasks_cron())
+    # await duel_task_storage.start_garbage_collection_cron()
+    # await duel_task_storage.start_judging_duels()
+    # await organic_task_storage.start_judging_results()
     await neuron.run()
 
 
