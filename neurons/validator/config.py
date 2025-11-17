@@ -307,7 +307,7 @@ def add_duels_args(parser: argparse.ArgumentParser) -> None:
         "--duels.disabled",
         action="store_true",
         help="Disable the duels rating system",
-        default=False,
+        default=True,
     )
     parser.add_argument(
         "--duels.start_delay",

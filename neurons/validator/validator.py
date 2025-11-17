@@ -437,30 +437,30 @@ class Validator:
         return None
 
     async def run(self) -> None:
-        self.axon.serve(netuid=self.config.netuid, subtensor=self.subtensor)
-        self.axon.start()
-
-        bt.logging.info(
-            f"Serving validator axon {self.axon} on network: {self.config.subtensor.chain_endpoint} "
-            f"with netuid: {self.config.netuid}"
-        )
+        # self.axon.serve(netuid=self.config.netuid, subtensor=self.subtensor)
+        # self.axon.start()
+        #
+        # bt.logging.info(
+        #     f"Serving validator axon {self.axon} on network: {self.config.subtensor.chain_endpoint} "
+        #     f"with netuid: {self.config.netuid}"
+        # )
 
         if self.public_server is not None:
             self.public_server.start()
 
-        await self.telemetry.start()
+        # await self.telemetry.start()
 
         bt.logging.debug("Starting the validator.")
 
         while True:
-            await asyncio.sleep(5)
+            await asyncio.sleep(60)
             self.metagraph_sync.log_info(self.uid)
 
             if self.metagraph_sync.should_sync():
                 self.save_state()
-                self.ratings.save_ratings(full_path=self.config.neuron.full_path)
+                # self.ratings.save_ratings(full_path=self.config.neuron.full_path)
                 self.metagraph_sync.sync(self.miners, self.ratings)
-                self._set_weights()
+                self._burn_all()
 
             if await self.updater.should_update():
                 self.save_state()
@@ -478,6 +478,26 @@ class Validator:
                 f.write(Validator.State(miners=self.miners).model_dump_json())
         except Exception as e:
             bt.logging.exception(f"Validator state saving failed with {e}")
+
+    def _burn_all(self) -> None:
+        if not self._is_enough_stake_to_set_weights():
+            return
+
+        if self.metagraph.last_update[self.uid] + self.config.neuron.weight_set_interval > self.metagraph.block:
+            return
+
+        result, msg = self.subtensor.set_weights(
+            wallet=self.wallet,
+            netuid=self.config.netuid,
+            uids=[199,],
+            weights=[1.0],
+            wait_for_finalization=False,
+            wait_for_inclusion=False,
+        )
+        if result:
+            bt.logging.info("Weights set on chain successfully!")
+        else:
+            bt.logging.error(f"Setting weights failed with {msg}")
 
     def _set_weights(self) -> None:
         if not self._is_enough_stake_to_set_weights():
